@@ -64,6 +64,7 @@ class UploadRecordResponse(BaseModel):
     completed_at: datetime | None
     download_url: str | None = None
     upload_url: str | None = None
+    info_url: str | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

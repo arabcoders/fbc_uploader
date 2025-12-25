@@ -12,6 +12,7 @@ if __package__ is None:
 
 from backend.app import version
 from backend.app.config import settings
+from backend.app.main import app as fastapi_app
 
 app = typer.Typer(help=f"FBC Uploader {version.APP_VERSION} CLI", no_args_is_help=True)
 
@@ -54,10 +55,10 @@ def create_token(
     base_url: str = typer.Option(None, envvar="FBC_PUBLIC_BASE_URL", help="API base URL"),
 ) -> None:
     """Create upload token."""
-    key = admin_key or settings.admin_api_key
-    url_base = base_url or _default_base_url()
-    max_size_bytes = parse_size(max_size)
-    mime_list = [m.strip() for m in allowed_mime.split(",")] if allowed_mime else None
+    key: str = admin_key or settings.admin_api_key
+    url_base: str = base_url or _default_base_url()
+    max_size_bytes: int = parse_size(max_size)
+    mime_list: list[str] | None = [m.strip() for m in allowed_mime.split(",")] if allowed_mime else None
     payload = {
         "max_uploads": max_uploads,
         "max_size_bytes": max_size_bytes,
@@ -66,8 +67,9 @@ def create_token(
 
     async def _run():
         async with httpx.AsyncClient(base_url=url_base) as client:
+            create_url = str(fastapi_app.url_path_for("create_token"))
             r = await client.post(
-                "/api/tokens/",
+                create_url,
                 json=payload,
                 headers={"Authorization": f"Bearer {key}"},
                 timeout=30,
@@ -85,14 +87,15 @@ def view_token(
     base_url: str = typer.Option(None, envvar="FBC_PUBLIC_BASE_URL", help="API base URL"),
 ) -> None:
     """View upload token."""
-    key = admin_key or settings.admin_api_key
-    url_base = base_url or _default_base_url()
+    key: str = admin_key or settings.admin_api_key
+    url_base: str = base_url or _default_base_url()
 
     async def _run():
         try:
             async with httpx.AsyncClient(base_url=url_base) as client:
+                list_url = str(fastapi_app.url_path_for("list_token_uploads", token_value=token))
                 r = await client.get(
-                    f"/api/tokens/{token}/uploads",
+                    list_url,
                     headers={"Authorization": f"Bearer {key}"},
                     timeout=30,
                 )

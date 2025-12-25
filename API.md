@@ -24,6 +24,7 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [GET /api/tokens/{token\_value}/info](#get-apitokenstoken_valueinfo)
     - [GET /api/tokens/{token\_value}/uploads](#get-apitokenstoken_valueuploads)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}](#get-apitokensdownload_tokenuploadsupload_id)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
     - [POST /api/uploads/initiate](#post-apiuploadsinitiate)
     - [OPTIONS /api/uploads/tus](#options-apiuploadstus)
     - [HEAD /api/uploads/{upload\_id}/tus](#head-apiuploadsupload_idtus)
@@ -386,6 +387,43 @@ List all uploads for a specific token.
 ---
 
 ### GET /api/tokens/{download_token}/uploads/{upload_id}
+
+Get metadata information about a completed upload.
+
+**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+
+**Path Parameters:**
+- `download_token` (string): The download token (prefixed with `fbc_`)
+- `upload_id` (integer): The upload record ID
+
+**Response (200):**
+```json
+{
+  "id": 1,
+  "filename": "document.pdf",
+  "ext": "pdf",
+  "mimetype": "application/pdf",
+  "size_bytes": 1024000,
+  "meta_data": {
+    "title": "My Document"
+  },
+  "upload_length": 1024000,
+  "upload_offset": 1024000,
+  "status": "completed",
+  "created_at": "2025-01-01T12:00:00Z",
+  "completed_at": "2025-01-01T12:05:00Z",
+  "upload_url": "http://localhost:8000/api/uploads/1/tus",
+  "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/1/download"
+}
+```
+
+**Error Responses:**
+- `404 Not Found` - Download token or upload not found
+- `409 Conflict` - Upload not yet completed
+
+---
+
+### GET /api/tokens/{download_token}/uploads/{upload_id}/download
 
 Download a completed file.
 
