@@ -67,10 +67,6 @@ async def initiate_upload(
             detail="File type not allowed for this token",
         )
 
-    storage_dir = Path(settings.storage_path).expanduser().resolve() / token_row.token
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    storage_path = storage_dir / (payload.filename or f"upload-{datetime.now(UTC).timestamp()}")
-
     ext = None
     if payload.filename:
         ext = Path(payload.filename).suffix.lstrip(".")
@@ -82,16 +78,19 @@ async def initiate_upload(
         mimetype=payload.filetype,
         size_bytes=payload.size_bytes,
         meta_data=cleaned_metadata,
-        storage_path=str(storage_path),
+        storage_path="",
         upload_length=payload.size_bytes,
         status="initiated",
     )
     db.add(record)
+    await db.flush()
 
-    # Increment upload count immediately on initiation to prevent cheating
-    await db.execute(
-        update(models.UploadToken).where(models.UploadToken.id == token_row.id).values(uploads_used=models.UploadToken.uploads_used + 1)
-    )
+    storage_dir: Path = Path(settings.storage_path).expanduser().resolve() / token_row.token
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    filename_on_disk: str = f"{record.id}.{ext}" if ext else str(record.id)
+    storage_path: Path = storage_dir / filename_on_disk
+    record.storage_path = str(storage_path)
+    token_row.uploads_used += 1
 
     await db.commit()
     await db.refresh(record)
