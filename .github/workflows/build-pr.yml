@@ -1,0 +1,96 @@
+name: build-pr
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - master
+      - dev
+    paths-ignore:
+      - "**.md"
+      - ".github/ISSUE_TEMPLATE/**"
+
+env:
+  PNPM_VERSION: 10
+  NODE_VERSION: 20
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  test:
+    name: Run Tests & Build Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Run Python linting
+        run: uv run ruff check backend/
+
+      - name: Run Python tests
+        run: uv run pytest backend/tests/ -v --tb=short
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: "frontend/pnpm-lock.yaml"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        env:
+          NODE_ENV: development
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare frontend (nuxt prepare)
+        working-directory: frontend
+        env:
+          NODE_ENV: development
+        run: pnpm nuxt prepare
+
+      - name: Run frontend linting
+        working-directory: frontend
+        run: pnpm run lint
+
+      - name: Run frontend type checking
+        working-directory: frontend
+        run: pnpm run typecheck
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: pnpm run test:ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm run generate
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Docker build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=${{ github.workflow }}
+          cache-to: type=gha,mode=max,scope=${{ github.workflow }}
+          provenance: false

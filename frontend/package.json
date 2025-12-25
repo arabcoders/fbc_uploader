@@ -1,0 +1,60 @@
+{
+  "name": "nuxt-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev --public",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "typecheck": "nuxt typecheck",
+    "lint": "eslint .",
+    "lint:ci": "eslint . --quiet",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ci": "vitest run --silent --reporter=dot"
+  },
+  "dependencies": {
+    "@iconify-json/lucide": "^1.2.82",
+    "@internationalized/date": "^3.10.1",
+    "@nuxt/ui": "4.3.0",
+    "@pinia/nuxt": "^0.11.3",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/vite": "^4.1.18",
+    "@tailwindcss/typography": "^0.5.19",
+    "@vueuse/core": "^14.1.0",
+    "@vueuse/nuxt": "^14.1.0",
+    "marked": "^17.0.1",
+    "marked-alert": "^2.1.2",
+    "marked-base-url": "^1.1.8",
+    "marked-gfm-heading-id": "^4.1.3",
+    "moment": "^2.30.1",
+    "nuxt": "^4.2.2",
+    "pinia": "^3.0.4",
+    "tailwindcss": "^4.1.18",
+    "tus-js-client": "^4.3.1",
+    "vue": "^3.5.26",
+    "vue-router": "^4.6.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "esbuild",
+      "vue-demi"
+    ]
+  },
+  "devDependencies": {
+    "@nuxt/eslint": "^1.12.1",
+    "@nuxt/eslint-config": "^1.12.1",
+    "@types/node": "^25.0.3",
+    "@typescript-eslint/parser": "^8.50.0",
+    "eslint": "^9.39.2",
+    "jsdom": "^27.3.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16",
+    "vue-eslint-parser": "^10.2.0",
+    "vue-tsc": "^3.2.1"
+  }
+}

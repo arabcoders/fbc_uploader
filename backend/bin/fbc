@@ -1,0 +1,3 @@
+#!/bin/bash
+cd /app
+exec /opt/python/bin/python -m backend.app.cli "$@"

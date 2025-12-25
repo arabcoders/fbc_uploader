@@ -1,0 +1,14 @@
+name: delete-builds
+
+on:
+  workflow_dispatch:
+  
+jobs:
+  delete-builds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/delete-package-versions@v4
+        with:
+          package-name: "fbc_uploader"
+          package-type: "container"
+          min-versions-to-keep: 20
