@@ -212,6 +212,7 @@ async def list_token_uploads(
         if not settings.allow_public_downloads:
             item.download_url += f"?api_key={settings.admin_api_key}"
         item.upload_url = str(request.url_for("tus_head", upload_id=u.id))
+        item.info_url = str(request.url_for("get_file_info", download_token=token_row.download_token, upload_id=u.id))
         enriched.append(item)
     return enriched
 
@@ -244,6 +245,7 @@ async def token_info(request: Request, token_value: str, db: Annotated[AsyncSess
         item = schemas.UploadRecordResponse.model_validate(u, from_attributes=True)
         item.upload_url = str(request.url_for("tus_head", upload_id=u.id))
         item.download_url = str(request.url_for("download_file", download_token=token_row.download_token, upload_id=u.id))
+        item.info_url = str(request.url_for("get_file_info", download_token=token_row.download_token, upload_id=u.id))
         enriched_uploads.append(item)
 
     return schemas.TokenPublicInfo(
@@ -261,8 +263,46 @@ async def token_info(request: Request, token_value: str, db: Annotated[AsyncSess
     )
 
 
-@router.get("/{download_token}/uploads/{upload_id}", name="download_file")
+@router.get("/{download_token}/uploads/{upload_id}", name="get_file_info", summary="Get upload file info")
 @router.get("/{download_token}/uploads/{upload_id}/")
+async def get_file_info(
+    request: Request,
+    download_token: str,
+    upload_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[bool, Depends(optional_admin_check)],
+):
+    token_stmt = select(models.UploadToken).where(models.UploadToken.download_token == download_token)
+    token_res = await db.execute(token_stmt)
+    token_row = token_res.scalar_one_or_none()
+    if not token_row:
+        raise HTTPException(status_code=404, detail="Download token not found")
+
+    upload_stmt = select(models.UploadRecord).where(models.UploadRecord.id == upload_id, models.UploadRecord.token_id == token_row.id)
+    upload_res = await db.execute(upload_stmt)
+    record = upload_res.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    if record.status != "completed":
+        raise HTTPException(status_code=409, detail="Upload not yet completed")
+
+    path = Path(record.storage_path or "")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="File missing")
+
+    # Return JSON metadata about the file
+    item = schemas.UploadRecordResponse.model_validate(record, from_attributes=True)
+    item.download_url = str(request.url_for("download_file", download_token=download_token, upload_id=upload_id))
+    if not settings.allow_public_downloads:
+        item.download_url += f"?api_key={settings.admin_api_key}"
+
+    item.upload_url = str(request.url_for("tus_head", upload_id=upload_id))
+    item.info_url = str(request.url_for("get_file_info", download_token=download_token, upload_id=upload_id))
+    return item
+
+
+@router.get("/{download_token}/uploads/{upload_id}/download", name="download_file")
+@router.get("/{download_token}/uploads/{upload_id}/download/")
 async def download_file(
     download_token: str,
     upload_id: int,
