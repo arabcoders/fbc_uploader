@@ -10,13 +10,28 @@ class FBCIE(InfoExtractor):
     _APIKEY = None
     _NETRC_MACHINE = "fbc_uploader"
     _VALID_URL = r"https?:\/\/.+\/api\/tokens\/(?P<id>fbc_[A-Za-z0-9_-]{22})\/?"
-    _VALID_FBC = r"https?:\/\/.+\/api\/tokens\/(?P<id>fbc_[A-Za-z0-9_-]{22})\/uploads/?(?P<fid>\d+)?/?$"
+    _VALID_FBC: re.Pattern[str] = re.compile(r"https?:\/\/.+\/api\/tokens\/(?P<id>fbc_[A-Za-z0-9_-]{22})\/uploads/?(?P<fid>\d+)?/?$")
     _POSSIBLE_METADATA_FIELDS: typing.ClassVar = {
         "title": "title",
         "description": "description",
         "release_date": ("broadcast_date", {"format_date"}),
         "release_year": ("broadcast_date", {"format_year"}),
     }
+
+    @classmethod
+    def _match_valid_url(cls, url) -> re.Match[str] | None:
+        return cls._VALID_FBC.match(url)
+
+    @classmethod
+    def _match_id(cls, url) -> None | str:
+        mat = cls._match_valid_url(url)
+        if not mat:
+            return None
+
+        if mat.group("fid"):
+            return f"{mat.group('id')}-{mat.group('fid')}"
+
+        return mat.group("id")
 
     def _perform_login(self, _, password):
         FBCIE._APIKEY = password
@@ -32,12 +47,7 @@ class FBCIE(InfoExtractor):
         if not apikey:
             err_note += ", you may need to provide a valid API key --password or via FBC_API_KEY environment variable."
 
-        fid: str | None = None
-        _mat: re.Match[str] | None = re.search(self._VALID_FBC, url)
-        if _mat and _mat.group("fid") is not None:
-            fid = _mat.group("fid")
-
-        json_dict = self._download_json(
+        items_info = self._download_json(
             url,
             video_id=video_id,
             headers=headers,
@@ -46,30 +56,35 @@ class FBCIE(InfoExtractor):
             errnote=err_note,
         )
 
-        if fid:
-            return self._format_item(json_dict, f"{video_id}-{json_dict.get('id')}", "video", headers=headers)
+        if is_single := isinstance(items_info, dict):
+            items_info = [items_info]
 
-        _count: int = len(json_dict)
         playlist: list[dict] = [
             self._format_item(
                 video_data,
-                f"{video_id}-{video_data.get('id')}",
-                "url" if _count > 1 else "video",
+                video_id,
+                "video" if is_single or len(items_info) < 2 else "url",
                 headers=headers,
+                is_single=is_single,
             )
-            for video_data in json_dict
+            for video_data in items_info
+            if "completed" == video_data.get("status")
         ]
 
         if len(playlist) < 1:
             self.report_warning("Token contains no uploaded files.")
             return None
 
-        if len(playlist) == 1:
-            return playlist[0]
+        if len(playlist) == 1 or self.get_param("noplaylist"):
+            if self.get_param("noplaylist") and len(playlist) > 1:
+                self.to_screen(f"Downloading 1 video out of '{len(playlist)}' because of --no-playlist option")
+                playlist[0]["_type"] = "video"
+
+            return playlist.pop(0)
 
         return {"_type": "playlist", "id": video_id, "entries": playlist}
 
-    def extract_metadata(self, meta_data: dict, fields: list[str]) -> dict:
+    def _extract_metadata(self, meta_data: dict, fields: list[str]) -> dict:
         extracted = {}
         for key, field in fields.items():
             if isinstance(field, str):
@@ -121,18 +136,26 @@ class FBCIE(InfoExtractor):
 
         return dateformat.format(year=_dt.year, month=_dt.month, day=_dt.day)
 
-    def _format_item(self, video_data: dict, video_id: str, _type: str, headers: dict | None = None) -> dict:
+    def _format_item(self, video_data: dict, video_id: str, _type: str, headers: dict | None = None, is_single: bool = False) -> dict:
         dct = {
-            "id": video_id,
+            "id": f"{video_id}-{video_data.get('id')}" if not is_single else video_id,
             "_type": _type,
             "ext": video_data.get("ext"),
             "mimetype": video_data.get("mimetype"),
-            "url": video_data.get("download_url") if _type == "video" else video_data.get("info_url"),
+            "url": video_data.get("info_url"),
+            "webpage_url": video_data.get("info_url"),
+            "formats": [
+                {
+                    "url": video_data.get("download_url"),
+                    "ext": video_data.get("ext"),
+                    "filesize": int_or_none(video_data.get("size_bytes")),
+                }
+            ],
             "title": video_data.get("meta_data", {}).get("title") or video_data.get("filename", f"file_{video_data['id']}"),
             "filename": video_data.get("filename"),
             "filesize": int_or_none(video_data.get("size_bytes")),
             "upload_date": str_or_none(self._parse_date(video_data.get("created_at"))),
-            **self.extract_metadata(video_data.get("meta_data", {}), self._POSSIBLE_METADATA_FIELDS),
+            **self._extract_metadata(video_data.get("meta_data", {}), self._POSSIBLE_METADATA_FIELDS),
         }
 
         if headers:
