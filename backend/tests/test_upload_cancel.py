@@ -1,11 +1,13 @@
 """Tests for upload cancellation endpoint."""
 
 import pytest
+from fastapi import status
 from httpx import ASGITransport, AsyncClient
 
 from backend.app.config import settings
 from backend.app.main import app
 from backend.tests.conftest import seed_schema
+from backend.tests.utils import create_token, get_token_info, upload_file_via_tus
 
 
 @pytest.mark.asyncio
@@ -14,16 +16,9 @@ async def test_cancel_upload_restores_slot():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # Create token with 2 max uploads
-        create_url = app.url_path_for("create_token")
-        r = await client.post(
-            create_url,
-            json={"max_uploads": 2, "max_size_bytes": 1000},
-            headers={"Authorization": f"Bearer {settings.admin_api_key}"},
-        )
-        token = r.json()["token"]
+        token_data = await create_token(client, max_uploads=2, max_size_bytes=1000)
+        token = token_data["token"]
 
-        # Initiate first upload
         response = await client.post(
             app.url_path_for("initiate_upload"),
             params={"token": token},
@@ -34,26 +29,22 @@ async def test_cancel_upload_restores_slot():
                 "meta_data": {"broadcast_date": "2024-01-01", "title": "Test", "source": "youtube"},
             },
         )
-        assert response.status_code == 201
+        assert response.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
         data = response.json()
         upload_id_1 = data["upload_id"]
-        assert data["remaining_uploads"] == 1
+        assert data["remaining_uploads"] == 1, "Remaining uploads should decrease to 1"
 
-        # Cancel the upload
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_id_1),
             params={"token": token},
         )
-        assert response.status_code == 200
+        assert response.status_code == status.HTTP_200_OK, "Upload cancellation should return 200"
         data = response.json()
-        assert data["message"] == "Upload cancelled successfully"
-        assert data["remaining_uploads"] == 2
+        assert data["message"] == "Upload cancelled successfully", "Cancel response should contain success message"
+        assert data["remaining_uploads"] == 2, "Remaining uploads should be restored to 2"
 
-        # Verify we can now initiate 2 more uploads
-        info_url = app.url_path_for("get_public_token_info", token_value=token)
-        info = await client.get(info_url)
-        assert info.status_code == 200
-        assert info.json()["remaining_uploads"] == 2
+        info = await get_token_info(client, token)
+        assert info["remaining_uploads"] == 2, "Token info should confirm 2 remaining uploads"
 
 
 @pytest.mark.asyncio
@@ -62,23 +53,12 @@ async def test_cancel_upload_invalid_token():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # Create two tokens
-        create_url = app.url_path_for("create_token")
-        r1 = await client.post(
-            create_url,
-            json={"max_uploads": 1, "max_size_bytes": 1000},
-            headers={"Authorization": f"Bearer {settings.admin_api_key}"},
-        )
-        token1 = r1.json()["token"]
+        token_data1 = await create_token(client, max_uploads=1, max_size_bytes=1000)
+        token1 = token_data1["token"]
 
-        r2 = await client.post(
-            create_url,
-            json={"max_uploads": 1, "max_size_bytes": 1000},
-            headers={"Authorization": f"Bearer {settings.admin_api_key}"},
-        )
-        token2 = r2.json()["token"]
+        token_data2 = await create_token(client, max_uploads=1, max_size_bytes=1000)
+        token2 = token_data2["token"]
 
-        # Initiate upload with token1
         response = await client.post(
             app.url_path_for("initiate_upload"),
             params={"token": token1},
@@ -89,16 +69,15 @@ async def test_cancel_upload_invalid_token():
                 "meta_data": {"broadcast_date": "2024-01-01", "title": "Test", "source": "youtube"},
             },
         )
-        assert response.status_code == 201
+        assert response.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
         upload_id = response.json()["upload_id"]
 
-        # Try to cancel with token2 (wrong token)
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_id),
             params={"token": token2},
         )
-        assert response.status_code == 403
-        assert "does not belong to this token" in response.json()["detail"]
+        assert response.status_code == status.HTTP_403_FORBIDDEN, "Canceling with wrong token should return 403"
+        assert "does not belong to this token" in response.json()["detail"], "Error should indicate token mismatch"
 
 
 @pytest.mark.asyncio
@@ -107,7 +86,6 @@ async def test_cancel_upload_invalid_upload_id():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # Create a token
         create_url = app.url_path_for("create_token")
         r = await client.post(
             create_url,
@@ -116,13 +94,12 @@ async def test_cancel_upload_invalid_upload_id():
         )
         token = r.json()["token"]
 
-        # Try to cancel non-existent upload
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=999999),
             params={"token": token},
         )
-        assert response.status_code == 404
-        assert response.json()["detail"] == "Upload not found"
+        assert response.status_code == 404, "Canceling non-existent upload should return 404"
+        assert response.json()["detail"] == "Upload not found", "Error should indicate upload not found"
 
 
 @pytest.mark.asyncio
@@ -131,7 +108,6 @@ async def test_cancel_completed_upload_fails():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # Create token
         create_url = app.url_path_for("create_token")
         r = await client.post(
             create_url,
@@ -140,7 +116,6 @@ async def test_cancel_completed_upload_fails():
         )
         token = r.json()["token"]
 
-        # Initiate and complete upload via TUS
         init_response = await client.post(
             app.url_path_for("initiate_upload"),
             params={"token": token},
@@ -151,10 +126,9 @@ async def test_cancel_completed_upload_fails():
                 "meta_data": {"broadcast_date": "2024-01-01", "title": "Test", "source": "youtube"},
             },
         )
-        assert init_response.status_code == 201
+        assert init_response.status_code == 201, "Upload initiation should return 201"
         upload_id = init_response.json()["upload_id"]
 
-        # Upload the file via TUS PATCH
         tus_patch_url = app.url_path_for("tus_patch", upload_id=upload_id)
         patch_response = await client.patch(
             tus_patch_url,
@@ -165,15 +139,14 @@ async def test_cancel_completed_upload_fails():
             },
             content=b"hello",
         )
-        assert patch_response.status_code == 204
+        assert patch_response.status_code == 204, "TUS PATCH should return 204"
 
-        # Try to cancel completed upload
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_id),
             params={"token": token},
         )
-        assert response.status_code == 400
-        assert "Cannot cancel completed upload" in response.json()["detail"]
+        assert response.status_code == 400, "Canceling completed upload should return 400"
+        assert "Cannot cancel completed upload" in response.json()["detail"], "Error should indicate upload is completed"
 
 
 @pytest.mark.asyncio
@@ -182,7 +155,6 @@ async def test_cancel_multiple_uploads():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # Create token with 3 max uploads
         create_url = app.url_path_for("create_token")
         r = await client.post(
             create_url,
@@ -191,7 +163,6 @@ async def test_cancel_multiple_uploads():
         )
         token = r.json()["token"]
 
-        # Initiate 3 uploads
         upload_ids = []
         for i in range(3):
             response = await client.post(
@@ -204,33 +175,29 @@ async def test_cancel_multiple_uploads():
                     "meta_data": {"broadcast_date": "2024-01-01", "title": f"Test{i}", "source": "youtube"},
                 },
             )
-            assert response.status_code == 201
+            assert response.status_code == 201, f"Upload initiation {i} should return 201"
             upload_ids.append(response.json()["upload_id"])
 
-        # Verify all slots consumed
         info_url = app.url_path_for("get_public_token_info", token_value=token)
         info = await client.get(info_url)
-        assert info.json()["remaining_uploads"] == 0
+        assert info.json()["remaining_uploads"] == 0, "All upload slots should be used"
 
-        # Cancel first upload
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_ids[0]),
             params={"token": token},
         )
-        assert response.status_code == 200
-        assert response.json()["remaining_uploads"] == 1
+        assert response.status_code == 200, "First cancellation should return 200"
+        assert response.json()["remaining_uploads"] == 1, "First cancellation should restore one slot"
 
-        # Cancel second upload
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_ids[1]),
             params={"token": token},
         )
-        assert response.status_code == 200
-        assert response.json()["remaining_uploads"] == 2
+        assert response.status_code == 200, "Second cancellation should return 200"
+        assert response.json()["remaining_uploads"] == 2, "Second cancellation should restore another slot"
 
-        # Verify uploads_used is back to 1 (one upload still exists)
         info = await client.get(info_url)
-        assert info.json()["remaining_uploads"] == 2
+        assert info.json()["remaining_uploads"] == 2, "Token info should confirm 2 remaining uploads"
 
 
 @pytest.mark.asyncio
@@ -239,7 +206,6 @@ async def test_cancel_with_nonexistent_token():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # Create a real token
         create_url = app.url_path_for("create_token")
         r = await client.post(
             create_url,
@@ -248,7 +214,6 @@ async def test_cancel_with_nonexistent_token():
         )
         token = r.json()["token"]
 
-        # Initiate upload
         response = await client.post(
             app.url_path_for("initiate_upload"),
             params={"token": token},
@@ -259,13 +224,12 @@ async def test_cancel_with_nonexistent_token():
                 "meta_data": {"broadcast_date": "2024-01-01", "title": "Test", "source": "youtube"},
             },
         )
-        assert response.status_code == 201
+        assert response.status_code == 201, "Upload initiation should return 201"
         upload_id = response.json()["upload_id"]
 
-        # Try to cancel with non-existent token
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_id),
             params={"token": "fake_token"},
         )
-        assert response.status_code == 404
-        assert response.json()["detail"] == "Token not found"
+        assert response.status_code == 404, "Non-existent token should return 404"
+        assert response.json()["detail"] == "Token not found", "Error should indicate token not found"

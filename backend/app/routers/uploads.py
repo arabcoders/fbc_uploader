@@ -134,7 +134,7 @@ async def tus_head(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)])
     )
 
 
-@router.patch("/{upload_id}/tus")
+@router.patch("/{upload_id}/tus", name="tus_patch")
 async def tus_patch(  # noqa: PLR0915
     upload_id: int,
     request: Request,
@@ -238,7 +238,7 @@ async def tus_patch(  # noqa: PLR0915
     )
 
 
-@router.options("/tus")
+@router.options("/tus", name="tus_options")
 async def tus_options():
     return Response(
         status_code=204,
@@ -250,7 +250,7 @@ async def tus_options():
     )
 
 
-@router.delete("/{upload_id}/tus", status_code=204)
+@router.delete("/{upload_id}/tus", status_code=204, name="tus_delete")
 async def tus_delete(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     record = await _get_upload_record(db, upload_id)
     path = Path(record.storage_path or "")
@@ -262,7 +262,7 @@ async def tus_delete(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)
     return Response(status_code=204)
 
 
-@router.post("/{upload_id}/complete", response_model=schemas.UploadRecordResponse)
+@router.post("/{upload_id}/complete", response_model=schemas.UploadRecordResponse, name="mark_complete")
 async def mark_complete(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     stmt = select(models.UploadRecord).where(models.UploadRecord.id == upload_id)
     res = await db.execute(stmt)

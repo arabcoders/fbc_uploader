@@ -44,8 +44,8 @@ async def test_disable_expired_tokens_marks_disabled():
         res = await session.execute(select(models.UploadToken))
         tokens = {token.token: token for token in res.scalars().all()}
 
-    assert tokens["expired"].disabled is True
-    assert tokens["active"].disabled is False
+    assert tokens["expired"].disabled is True, "Expired token should be marked as disabled"
+    assert tokens["active"].disabled is False, "Active token should remain enabled"
 
 
 @pytest.mark.asyncio
@@ -86,8 +86,8 @@ async def test_remove_stale_uploads_deletes_files(monkeypatch):
         res = await session.execute(select(models.UploadRecord))
         remaining = res.scalars().all()
 
-    assert not remaining
-    assert not file_path.exists()
+    assert not remaining, "Stale upload record should be removed"
+    assert not file_path.exists(), "Stale upload file should be deleted"
 
 
 @pytest.mark.asyncio
@@ -160,10 +160,10 @@ async def test_remove_disabled_tokens_cleans_records_and_storage(monkeypatch):
         uploads_res = await session.execute(select(models.UploadRecord))
         uploads = uploads_res.scalars().all()
 
-    assert "old-token" not in tokens
-    assert "recent-token" in tokens
-    assert all(upload.token_id == tokens["recent-token"].id for upload in uploads)
-    assert not old_file.exists()
-    assert not old_token_dir.exists()
-    assert recent_file.exists()
-    assert recent_token_dir.exists()
+    assert "old-token" not in tokens, "Old disabled token should be removed"
+    assert "recent-token" in tokens, "Recent disabled token should be retained"
+    assert all(upload.token_id == tokens["recent-token"].id for upload in uploads), "Only recent token uploads should remain"
+    assert not old_file.exists(), "Old token file should be deleted"
+    assert not old_token_dir.exists(), "Old token directory should be deleted"
+    assert recent_file.exists(), "Recent token file should be retained"
+    assert recent_token_dir.exists(), "Recent token directory should be retained"
