@@ -7,12 +7,13 @@ import aiofiles
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
 
 from backend.app import models, schemas
 from backend.app.config import settings
 from backend.app.db import get_db
 from backend.app.metadata_schema import validate_metadata
-from backend.app.utils import detect_mimetype
+from backend.app.utils import detect_mimetype, extract_ffprobe_metadata, is_multimedia
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
@@ -134,7 +135,7 @@ async def tus_head(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)])
 
 
 @router.patch("/{upload_id}/tus")
-async def tus_patch(
+async def tus_patch(  # noqa: PLR0915
     upload_id: int,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -202,6 +203,18 @@ async def tus_patch(
                 )
 
             record.mimetype = actual_mimetype
+
+            # Extract ffprobe metadata for multimedia files
+            if is_multimedia(actual_mimetype):
+                ffprobe_data = await extract_ffprobe_metadata(path)
+                if ffprobe_data is not None:
+                    # Update meta_data with ffprobe results
+                    if record.meta_data is None:
+                        record.meta_data = {}
+                    record.meta_data["ffprobe"] = ffprobe_data
+                    # Mark the attribute as modified for SQLAlchemy to detect the change
+                    attributes.flag_modified(record, "meta_data")
+
             record.status = "completed"
             record.completed_at = datetime.now(UTC)
         else:
