@@ -5,7 +5,6 @@ import tempfile
 from importlib import reload
 from pathlib import Path
 
-
 TEST_CONFIG_DIR = tempfile.mkdtemp(prefix="fbc-test-config-")
 TEST_STORAGE_DIR = tempfile.mkdtemp(prefix="fbc-test-storage-")
 
@@ -26,7 +25,6 @@ if str(ROOT) not in sys.path:
 import backend.app.config as config_module
 from backend.app import metadata_schema
 from backend.app.config import Settings
-
 
 config_module.settings = Settings()
 
