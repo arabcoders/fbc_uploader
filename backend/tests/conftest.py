@@ -35,6 +35,22 @@ reload(metadata_schema)
 
 
 @pytest.fixture(autouse=True)
+async def reset_database():
+    """Clean database before and after each test by dropping and recreating all tables."""
+    from backend.app.db import Base, engine
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+
+
+@pytest.fixture(autouse=True)
 def reset_metadata_schema():
     """Reset metadata cache and remove any existing schema between tests."""
     cfg_dir = Path(os.environ["FBC_CONFIG_PATH"])
