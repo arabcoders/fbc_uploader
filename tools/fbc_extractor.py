@@ -136,7 +136,95 @@ class FBCIE(InfoExtractor):
 
         return dateformat.format(year=_dt.year, month=_dt.month, day=_dt.day)
 
+    def _expand_format(self, format_dict: dict, ffprobe_data: dict) -> dict:  # noqa: PLR0915
+        """Enrich format dictionary with data from ffprobe output."""
+        if not ffprobe_data:
+            return format_dict
+
+        format_info = ffprobe_data.get("format", {})
+
+        if format_name := str_or_none(format_info.get("format_name")):
+            format_dict["container"] = format_name.split(",")[0]  # Take first format if multiple
+
+        if not format_dict.get("filesize") and (size := format_info.get("size")):
+            format_dict["filesize"] = int_or_none(size)
+
+        if bit_rate := format_info.get("bit_rate"):
+            format_dict["tbr"] = int_or_none(bit_rate) / 1000 if isinstance(bit_rate, (int, str)) else None
+
+        if duration := format_info.get("duration"):
+            format_dict["duration"] = float(duration) if isinstance(duration, (int, float, str)) else None
+
+        streams = ffprobe_data.get("streams", [])
+
+        video_stream = None
+        audio_stream = None
+
+        for stream in streams:
+            codec_type = stream.get("codec_type")
+            if codec_type == "video" and not video_stream:
+                video_stream = stream
+            elif codec_type == "audio" and not audio_stream:
+                audio_stream = stream
+
+        if video_stream:
+            if codec_name := str_or_none(video_stream.get("codec_name")):
+                format_dict["vcodec"] = codec_name
+
+            if width := int_or_none(video_stream.get("width")):
+                format_dict["width"] = width
+            if height := int_or_none(video_stream.get("height")):
+                format_dict["height"] = height
+
+            if fps_str := str_or_none(video_stream.get("r_frame_rate")):
+                try:
+                    # Parse fps like "30/1" or "24000/1001"
+                    if "/" in fps_str:
+                        num, denom = fps_str.split("/")
+                        format_dict["fps"] = int(num) / int(denom)
+                    else:
+                        format_dict["fps"] = float(fps_str)
+                except (ValueError, ZeroDivisionError):
+                    pass
+
+            if bit_rate := video_stream.get("bit_rate"):
+                format_dict["vbr"] = int_or_none(bit_rate) / 1000 if isinstance(bit_rate, (int, str)) else None
+
+            if dar := str_or_none(video_stream.get("display_aspect_ratio")):
+                format_dict["aspect_ratio"] = dar
+
+        if audio_stream:
+            if codec_name := str_or_none(audio_stream.get("codec_name")):
+                format_dict["acodec"] = codec_name
+
+            if sample_rate := int_or_none(audio_stream.get("sample_rate")):
+                format_dict["asr"] = sample_rate
+
+            if channels := int_or_none(audio_stream.get("channels")):
+                format_dict["audio_channels"] = channels
+
+            if bit_rate := audio_stream.get("bit_rate"):
+                format_dict["abr"] = int_or_none(bit_rate) / 1000 if isinstance(bit_rate, (int, str)) else None
+
+        if not video_stream:
+            format_dict["vcodec"] = "none"
+
+        if not audio_stream:
+            format_dict["acodec"] = "none"
+
+        return format_dict
+
     def _format_item(self, video_data: dict, video_id: str, _type: str, headers: dict | None = None, is_single: bool = False) -> dict:
+        base_format = {
+            "url": video_data.get("download_url"),
+            "ext": video_data.get("ext"),
+            "filesize": int_or_none(video_data.get("size_bytes")),
+        }
+
+        meta_data = video_data.get("meta_data", {})
+        if ffprobe_data := meta_data.get("ffprobe"):
+            base_format = self._expand_format(base_format, ffprobe_data)
+
         dct = {
             "id": f"{video_id}-{video_data.get('id')}" if not is_single else video_id,
             "_type": _type,
@@ -144,19 +232,16 @@ class FBCIE(InfoExtractor):
             "mimetype": video_data.get("mimetype"),
             "url": video_data.get("info_url"),
             "webpage_url": video_data.get("info_url"),
-            "formats": [
-                {
-                    "url": video_data.get("download_url"),
-                    "ext": video_data.get("ext"),
-                    "filesize": int_or_none(video_data.get("size_bytes")),
-                }
-            ],
-            "title": video_data.get("meta_data", {}).get("title") or video_data.get("filename", f"file_{video_data['id']}"),
+            "formats": [base_format],
+            "title": meta_data.get("title") or video_data.get("filename", f"file_{video_data['id']}"),
             "filename": video_data.get("filename"),
             "filesize": int_or_none(video_data.get("size_bytes")),
             "upload_date": str_or_none(self._parse_date(video_data.get("created_at"))),
-            **self._extract_metadata(video_data.get("meta_data", {}), self._POSSIBLE_METADATA_FIELDS),
+            **self._extract_metadata(meta_data, self._POSSIBLE_METADATA_FIELDS),
         }
+
+        if base_format.get("duration") and not dct.get("duration"):
+            dct["duration"] = base_format["duration"]
 
         if headers:
             dct["http_headers"] = headers

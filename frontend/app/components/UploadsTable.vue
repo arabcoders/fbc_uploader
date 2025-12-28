@@ -27,8 +27,8 @@
               <template #content>
                 <div class="space-y-3 text-sm min-w-64 max-w-96">
                   <div class="font-semibold text-highlighted">Metadata</div>
-                  <div v-if="row.meta_data && Object.keys(row.meta_data).length" class="space-y-2">
-                    <div v-for="(val, key) in row.meta_data" :key="key" class="grid grid-cols-[auto_1fr] gap-2">
+                  <div v-if="filterMetadata(row.meta_data) && Object.keys(filterMetadata(row.meta_data)).length" class="space-y-2">
+                    <div v-for="(val, key) in filterMetadata(row.meta_data)" :key="key" class="grid grid-cols-[auto_1fr] gap-2">
                       <span class="text-muted font-medium capitalize">{{ formatKey(key) }}:</span>
                       <span class="wrap-break-word">{{ formatValue(val) }}</span>
                     </div>
@@ -124,5 +124,11 @@ function getStatusIcon(status: string): string {
     case 'pending': return 'i-heroicons-clock-20-solid';
     default: return 'i-heroicons-question-mark-circle-20-solid';
   }
+}
+
+function filterMetadata(meta_data: Record<string, any> | undefined): Record<string, any> {
+  if (!meta_data) return {};
+  const { ffprobe, ...filtered } = meta_data;
+  return filtered;
 }
 </script>
