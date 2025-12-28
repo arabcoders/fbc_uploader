@@ -5,11 +5,10 @@ import tempfile
 from importlib import reload
 from pathlib import Path
 
-# Create temp directories once and store them
 TEST_CONFIG_DIR = tempfile.mkdtemp(prefix="fbc-test-config-")
 TEST_STORAGE_DIR = tempfile.mkdtemp(prefix="fbc-test-storage-")
 
-# Set test environment variables BEFORE any backend imports
+
 os.environ["FBC_CONFIG_PATH"] = TEST_CONFIG_DIR
 os.environ["FBC_STORAGE_PATH"] = TEST_STORAGE_DIR
 os.environ["FBC_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
@@ -27,10 +26,9 @@ import backend.app.config as config_module
 from backend.app import metadata_schema
 from backend.app.config import Settings
 
-# Force reload settings with test environment
 config_module.settings = Settings()
 
-# Reload metadata_schema to pick up new settings
+
 reload(metadata_schema)
 
 

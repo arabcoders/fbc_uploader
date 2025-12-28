@@ -86,7 +86,7 @@ async def create_token(
     )
 
 
-@router.get("/{token_value}", response_model=schemas.TokenInfo)
+@router.get("/{token_value}", response_model=schemas.TokenInfo, name="get_token")
 async def get_token(
     token_value: str,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -186,7 +186,7 @@ async def delete_token(
     return Response(status_code=204)
 
 
-@router.get("/{token_value}/uploads", response_model=list[schemas.UploadRecordResponse])
+@router.get("/{token_value}/uploads", response_model=list[schemas.UploadRecordResponse], name="list_token_uploads")
 @router.get("/{token_value}/uploads/", response_model=list[schemas.UploadRecordResponse])
 async def list_token_uploads(
     request: Request,
@@ -218,7 +218,7 @@ async def list_token_uploads(
 
 
 @router.get("/{token_value}/info", response_model=schemas.TokenPublicInfo, name="get_public_token_info")
-@router.get("/{token_value}/info/", response_model=schemas.TokenPublicInfo)
+@router.get("/{token_value}/info/", response_model=schemas.TokenPublicInfo, name="token_info_trailing_slash")
 async def token_info(request: Request, token_value: str, db: Annotated[AsyncSession, Depends(get_db)]):
     stmt = select(models.UploadToken).where(models.UploadToken.token == token_value)
     res = await db.execute(stmt)
@@ -264,7 +264,7 @@ async def token_info(request: Request, token_value: str, db: Annotated[AsyncSess
 
 
 @router.get("/{download_token}/uploads/{upload_id}", name="get_file_info", summary="Get upload file info")
-@router.get("/{download_token}/uploads/{upload_id}/")
+@router.get("/{download_token}/uploads/{upload_id}/", name="get_file_info_trailing_slash")
 async def get_file_info(
     request: Request,
     download_token: str,
@@ -302,7 +302,7 @@ async def get_file_info(
 
 
 @router.get("/{download_token}/uploads/{upload_id}/download", name="download_file")
-@router.get("/{download_token}/uploads/{upload_id}/download/")
+@router.get("/{download_token}/uploads/{upload_id}/download/", name="download_file_trailing_slash")
 async def download_file(
     download_token: str,
     upload_id: int,

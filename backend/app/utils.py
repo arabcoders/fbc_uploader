@@ -61,11 +61,10 @@ async def extract_ffprobe_metadata(file_path: str | Path) -> dict | None:
     """
     path = Path(file_path)
     if not path.exists():
-        msg = f"File not found: {file_path}"
+        msg: str = f"File not found: {file_path}"
         raise FileNotFoundError(msg)
 
     try:
-        # Run ffprobe to extract metadata in JSON format
         proc = await asyncio.create_subprocess_exec(
             "ffprobe",
             "-v",
@@ -81,17 +80,12 @@ async def extract_ffprobe_metadata(file_path: str | Path) -> dict | None:
         stdout, _ = await proc.communicate()
 
         if proc.returncode != 0:
-            # ffprobe failed, return None
             return None
 
-        # Parse and return JSON output
-        return json.loads(stdout.decode())
-    except FileNotFoundError:
-        # ffprobe not installed
-        return None
-    except json.JSONDecodeError:
-        # Invalid JSON output
-        return None
+        dct = json.loads(stdout.decode())
+        if "format" in dct and "filename" in dct.get("format"):
+            dct["format"].pop("filename", None)
     except Exception:
-        # Any other error
         return None
+    else:
+        return dct
