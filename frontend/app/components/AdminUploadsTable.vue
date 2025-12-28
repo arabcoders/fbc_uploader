@@ -33,8 +33,8 @@
                 <template #content>
                   <div class="space-y-3 text-sm min-w-64 max-w-96">
                     <div class="font-semibold text-highlighted">Metadata</div>
-                    <div v-if="upload.meta_data && Object.keys(upload.meta_data).length" class="space-y-2">
-                      <div v-for="(val, key) in upload.meta_data" :key="key" class="grid grid-cols-[auto_1fr] gap-2">
+                    <div v-if="filterMetadata(upload.meta_data) && Object.keys(filterMetadata(upload.meta_data)).length" class="space-y-2">
+                      <div v-for="(val, key) in filterMetadata(upload.meta_data)" :key="key" class="grid grid-cols-[auto_1fr] gap-2">
                         <span class="text-muted font-medium capitalize">{{ formatKey(String(key)) }}:</span>
                         <span class="wrap-break-word">{{ formatValue(val) }}</span>
                       </div>
@@ -81,4 +81,10 @@ defineProps<{
 defineEmits<{
   delete: [upload: UploadRow];
 }>();
+
+function filterMetadata(meta_data: Record<string, any> | undefined): Record<string, any> {
+  if (!meta_data) return {};
+  const { ffprobe, ...filtered } = meta_data;
+  return filtered;
+}
 </script>
