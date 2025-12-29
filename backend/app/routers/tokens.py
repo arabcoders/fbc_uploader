@@ -92,7 +92,7 @@ async def get_token(
     db: Annotated[AsyncSession, Depends(get_db)],
     _: Annotated[bool, Depends(optional_admin_check)],
 ):
-    stmt = select(models.UploadToken).where((models.UploadToken.token == token_value) | (models.UploadToken.download_token == token_value))
+    stmt = select(models.UploadToken).where(models.UploadToken.token == token_value)
     res = await db.execute(stmt)
     record = res.scalar_one_or_none()
     if not record:
@@ -220,7 +220,7 @@ async def list_token_uploads(
 @router.get("/{token_value}/info", response_model=schemas.TokenPublicInfo, name="get_public_token_info")
 @router.get("/{token_value}/info/", response_model=schemas.TokenPublicInfo, name="token_info_trailing_slash")
 async def token_info(request: Request, token_value: str, db: Annotated[AsyncSession, Depends(get_db)]):
-    stmt = select(models.UploadToken).where(models.UploadToken.token == token_value)
+    stmt = select(models.UploadToken).where((models.UploadToken.token == token_value) | (models.UploadToken.download_token == token_value))
     res = await db.execute(stmt)
     token_row = res.scalar_one_or_none()
     if not token_row:
@@ -249,7 +249,7 @@ async def token_info(request: Request, token_value: str, db: Annotated[AsyncSess
         enriched_uploads.append(item)
 
     return schemas.TokenPublicInfo(
-        token=token_row.token,
+        token=token_row.token if token_value == token_row.token else "",
         download_token=token_row.download_token,
         remaining_uploads=token_row.remaining_uploads,
         max_uploads=token_row.max_uploads,
