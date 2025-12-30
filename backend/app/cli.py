@@ -2,6 +2,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import httpx
 import typer
@@ -13,33 +14,13 @@ if __package__ is None:
 from backend.app import version
 from backend.app.config import settings
 from backend.app.main import app as fastapi_app
+from backend.app.utils import parse_size
 
 app = typer.Typer(help=f"FBC Uploader {version.APP_VERSION} CLI", no_args_is_help=True)
 
 
 def _default_base_url() -> str:
     return settings.public_base_url or "http://127.0.0.1:8000"
-
-
-MULTIPLIERS: dict[str, int] = {
-    "k": 1024,
-    "m": 1024**2,
-    "g": 1024**3,
-    "t": 1024**4,
-}
-
-
-def parse_size(text: str) -> int:
-    """Parse human-readable sizes: 100, 10M, 1G, 500k."""
-    s = text.strip().lower()
-    if s[-1].isalpha():
-        num = float(s[:-1])
-        unit = s[-1]
-        if unit not in MULTIPLIERS:
-            msg = "Unknown size suffix; use K/M/G/T"
-            raise typer.BadParameter(msg)
-        return int(num * MULTIPLIERS[unit])
-    return int(s)
 
 
 @app.command("create-token")
@@ -54,22 +35,34 @@ def create_token(
     admin_key: str | None = typer.Option(None, envvar="FBC_ADMIN_API_KEY", help="Admin API key"),
     base_url: str = typer.Option(None, envvar="FBC_PUBLIC_BASE_URL", help="API base URL"),
 ) -> None:
-    """Create upload token."""
+    """
+    Create upload token.
+
+    Args:
+        max_uploads: Maximum number of uploads allowed with this token
+        max_size: Maximum size per upload (e.g., 1G, 500M
+        allowed_mime: Comma-separated MIME patterns (e.g., application/pdf,video/*). Omit to allow any.
+        admin_key: Admin API key for authentication
+        base_url: Base URL of the API
+
+    """
     key: str = admin_key or settings.admin_api_key
     url_base: str = base_url or _default_base_url()
-    max_size_bytes: int = parse_size(max_size)
-    mime_list: list[str] | None = [m.strip() for m in allowed_mime.split(",")] if allowed_mime else None
-    payload = {
+    try:
+        max_size_bytes: int = parse_size(max_size)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+
+    payload: dict[str, Any] = {
         "max_uploads": max_uploads,
         "max_size_bytes": max_size_bytes,
-        "allowed_mime": mime_list,
+        "allowed_mime": [m.strip() for m in allowed_mime.split(",")] if allowed_mime else None,
     }
 
     async def _run():
         async with httpx.AsyncClient(base_url=url_base) as client:
-            create_url = str(fastapi_app.url_path_for("create_token"))
-            r = await client.post(
-                create_url,
+            r: httpx.Response = await client.post(
+                str(fastapi_app.url_path_for("create_token")),
                 json=payload,
                 headers={"Authorization": f"Bearer {key}"},
                 timeout=30,
@@ -86,16 +79,23 @@ def view_token(
     admin_key: str | None = typer.Option(None, envvar="FBC_ADMIN_API_KEY", help="Admin API key"),
     base_url: str = typer.Option(None, envvar="FBC_PUBLIC_BASE_URL", help="API base URL"),
 ) -> None:
-    """View upload token."""
+    """
+    View upload token.
+
+    Args:
+        token: Token to inspect
+        admin_key: Admin API key for authentication
+        base_url: Base URL of the API
+
+    """
     key: str = admin_key or settings.admin_api_key
     url_base: str = base_url or _default_base_url()
 
     async def _run():
         try:
             async with httpx.AsyncClient(base_url=url_base) as client:
-                list_url = str(fastapi_app.url_path_for("get_token", token_value=token))
-                r = await client.get(
-                    list_url,
+                r: httpx.Response = await client.get(
+                    str(fastapi_app.url_path_for("get_token", token_value=token)),
                     headers={"Authorization": f"Bearer {key}"},
                     timeout=30,
                 )

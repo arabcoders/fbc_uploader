@@ -100,3 +100,12 @@ class UploadRequest(BaseModel):
 class TokenListResponse(BaseModel):
     tokens: list[TokenAdmin]
     total: int
+
+
+class InitiateUploadResponse(BaseModel):
+    upload_id: str
+    upload_url: str
+    download_url: str
+    meta_data: dict[str, Any]
+    allowed_mime: list[str] | None
+    remaining_uploads: int
