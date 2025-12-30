@@ -50,23 +50,8 @@ class TokenInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class TokenShareInfo(BaseModel):
-    """Token info for public share views - excludes upload token."""
-
-    download_token: str
-    expires_at: datetime
-    uploads_used: int
-    max_uploads: int
-    max_size_bytes: int
-    allowed_mime: list[str] | None = None
-    disabled: bool
-    allow_public_downloads: bool
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class UploadRecordResponse(BaseModel):
-    id: int
+    public_id: str
     filename: str | None
     ext: str | None
     mimetype: str | None
@@ -85,7 +70,7 @@ class UploadRecordResponse(BaseModel):
 
 
 class TokenPublicInfo(BaseModel):
-    token: str
+    token: str | None
     download_token: str
     remaining_uploads: int
     max_uploads: int
@@ -110,3 +95,8 @@ class UploadRequest(BaseModel):
     filename: str | None = None
     filetype: str | None = None
     size_bytes: int | None = Field(None, gt=0)
+
+
+class TokenListResponse(BaseModel):
+    tokens: list[TokenAdmin]
+    total: int

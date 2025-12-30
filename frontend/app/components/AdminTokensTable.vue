@@ -103,19 +103,12 @@ defineEmits<{
   delete: [token: AdminToken];
 }>();
 
-const copyUploadUrl = (token: string) => {
-  copyText(`${window.location.origin}/t/${token}`);
+const copyUrl = (path: string, token: string) => {
+  const url = `${window.location.origin}/${path}/${token}`;
+  console.log("Copying URL:", url);
+  copyText(url);
   toast.add({
-    title: 'Upload link copied to clipboard',
-    color: 'success',
-    icon: 'i-heroicons-check-circle-20-solid',
-  })
-}
-
-const copyShareUrl = (downloadToken: string) => {
-  copyText(`${window.location.origin}/f/${downloadToken}`);
-  toast.add({
-    title: 'Share link copied to clipboard',
+    title: 'link copied to clipboard.',
     color: 'success',
     icon: 'i-heroicons-check-circle-20-solid',
   })
@@ -125,12 +118,12 @@ const getCopyMenuItems = (token: AdminToken) => [
   [{
     label: 'Copy upload link',
     icon: 'i-heroicons-arrow-up-tray-20-solid',
-    onSelect: () => copyUploadUrl(token.token)
+    onSelect: () => copyUrl("t", token.token)
   }],
   [{
     label: 'Copy share link',
     icon: 'i-heroicons-share-20-solid',
-    onSelect: () => copyShareUrl(token.download_token)
+    onSelect: () => copyUrl("f", token.download_token)
   }]
 ]
 </script>

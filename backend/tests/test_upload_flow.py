@@ -30,7 +30,7 @@ async def test_token_info_and_initiate():
         body = init.json()
         print(f"init response: {body}")
         assert init.status_code == status.HTTP_201_CREATED, "Initiate upload should return 201"
-        assert body["upload_id"] > 0, "Upload ID should be a positive integer"
+        assert isinstance(body["upload_id"], str) and len(body["upload_id"]) > 0, "Upload ID should be a non-empty string"
 
         assert body["remaining_uploads"] == 0, "Remaining uploads should decrease to 0"
 

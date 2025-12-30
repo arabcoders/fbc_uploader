@@ -317,7 +317,7 @@ Get public token information including uploads.
   "allow_public_downloads": false,
   "uploads": [
     {
-      "id": 1,
+      "public_id": "rT72ZKGMPdldiEmA9eDI7kik",
       "filename": "document.pdf",
       "ext": "pdf",
       "mimetype": "application/pdf",
@@ -328,8 +328,8 @@ Get public token information including uploads.
       "status": "completed",
       "created_at": "2025-12-23T12:00:00Z",
       "completed_at": "2025-12-23T12:01:00Z",
-      "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/1",
-      "upload_url": "http://localhost:8000/api/uploads/1/tus"
+      "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik",
+      "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus"
     }
   ]
 }
@@ -364,7 +364,7 @@ List all uploads for a specific token.
 ```json
 [
   {
-    "id": 1,
+    "public_id": "rT72ZKGMPdldiEmA9eDI7kik",
     "filename": "document.pdf",
     "ext": "pdf",
     "mimetype": "application/pdf",
@@ -375,8 +375,8 @@ List all uploads for a specific token.
     "status": "completed",
     "created_at": "2025-12-23T12:00:00Z",
     "completed_at": "2025-12-23T12:01:00Z",
-    "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/1",
-    "upload_url": "http://localhost:8000/api/uploads/1/tus"
+    "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik",
+    "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus"
   }
 ]
 ```
@@ -399,7 +399,7 @@ Get metadata information about a completed upload.
 **Response (200):**
 ```json
 {
-  "id": 1,
+  "public_id": "rT72ZKGMPdldiEmA9eDI7kik",
   "filename": "document.pdf",
   "ext": "pdf",
   "mimetype": "application/pdf",
@@ -412,8 +412,8 @@ Get metadata information about a completed upload.
   "status": "completed",
   "created_at": "2025-01-01T12:00:00Z",
   "completed_at": "2025-01-01T12:05:00Z",
-  "upload_url": "http://localhost:8000/api/uploads/1/tus",
-  "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/1/download"
+  "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus",
+  "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/download"
 }
 ```
 
@@ -476,9 +476,9 @@ Initiate a new file upload.
 **Response (201):**
 ```json
 {
-  "upload_id": 1,
-  "upload_url": "http://localhost:8000/api/uploads/1/tus",
-  "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/1",
+  "upload_id": "rT72ZKGMPdldiEmA9eDI7kik",
+  "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus",
+  "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik",
   "meta_data": {
     "title": "My Document",
     "category": "reports"
@@ -545,7 +545,7 @@ Upload file chunk (TUS protocol).
 **Authentication:** None
 
 **Path Parameters:**
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Required Headers:**
 - `Upload-Offset` (integer): Current upload offset (must match server state)
@@ -588,7 +588,7 @@ Delete an upload and its associated file (TUS protocol).
 **Authentication:** None
 
 **Path Parameters:**
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (204):**
 No content
@@ -609,7 +609,7 @@ Cancel an in-progress upload and restore the token slot.
 **Authentication:** Required via query parameter
 
 **Path Parameters:**
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Query Parameters:**
 - `token` (string, required): The upload token
@@ -640,12 +640,12 @@ Manually mark an upload as complete.
 **Authentication:** None
 
 **Path Parameters:**
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 ```json
 {
-  "id": 1,
+  "public_id": "rT72ZKGMPdldiEmA9eDI7kik",
   "filename": "document.pdf",
   "ext": "pdf",
   "mimetype": "application/pdf",
@@ -819,7 +819,7 @@ Delete an upload record and its file (Admin only).
 **Authentication:** Required (Admin)
 
 **Path Parameters:**
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (204):**
 No content
@@ -897,10 +897,10 @@ Typical upload flow:
 4. **Upload File Chunks (TUS Protocol)**
    ```http
    # Check current offset
-   HEAD /api/uploads/1/tus
+   HEAD /api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus
    
    # Upload chunk
-   PATCH /api/uploads/1/tus
+   PATCH /api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus
    Upload-Offset: 0
    Tus-Resumable: 1.0.0
    Content-Type: application/offset+octet-stream
@@ -910,7 +910,7 @@ Typical upload flow:
 
 5. **Download File**
    ```http
-   GET /api/tokens/{download_token}/uploads/1
+   GET /api/tokens/{download_token}/uploads/rT72ZKGMPdldiEmA9eDI7kik
    Authorization: Bearer YOUR_API_KEY
    ```
 
@@ -941,6 +941,7 @@ Typical upload flow:
 - File paths are resolved and stored as absolute paths
 - Upload tokens are 18-character URL-safe strings
 - Download tokens are prefixed with `fbc_` followed by 16-character URL-safe strings
+- Upload IDs (`public_id`) are 18-character URL-safe random strings (not sequential integers for security)
 - Metadata is stored as JSON in the database (`meta_data` column)
 - TUS protocol is recommended for files larger than a few MB for reliability
 - Maximum chunk size is controlled by `FBC_MAX_CHUNK_BYTES` (default: 90MB)

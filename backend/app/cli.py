@@ -93,7 +93,7 @@ def view_token(
     async def _run():
         try:
             async with httpx.AsyncClient(base_url=url_base) as client:
-                list_url = str(fastapi_app.url_path_for("list_token_uploads", token_value=token))
+                list_url = str(fastapi_app.url_path_for("get_token", token_value=token))
                 r = await client.get(
                     list_url,
                     headers={"Authorization": f"Bearer {key}"},

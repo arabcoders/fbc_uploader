@@ -18,7 +18,7 @@ export function useTokenInfo(tokenValue: Ref<string>) {
         }
         tokenError.value = ''
         try {
-            const data = await $fetch('/api/tokens/' + tokenValue.value + '/info')
+            const data = await $fetch('/api/tokens/' + tokenValue.value)
             tokenInfo.value = data as any
             notFound.value = false
         } catch (err: any) {

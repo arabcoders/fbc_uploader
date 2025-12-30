@@ -73,4 +73,13 @@ function formatValue(val: any): string {
   return String(val);
 }
 
-export { copyText, formatBytes, formatDate, percent, formatKey, formatValue };
+/**
+ * Add admin API key to download URL if public downloads are disabled
+ */
+function addAdminKeyToUrl(url: string, allowPublicDownloads: boolean, apiKey: string | null): string {
+  if (allowPublicDownloads || !apiKey) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}api_key=${apiKey}`;
+}
+
+export { copyText, formatBytes, formatDate, percent, formatKey, formatValue, addAdminKeyToUrl };

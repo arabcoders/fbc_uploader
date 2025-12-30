@@ -57,29 +57,19 @@
       </template>
     </UModal>
 
-    <UModal v-model:open="editOpen" title="Edit token">
+    <UModal v-model:open="editOpen" :title="`Edit (${selectedToken?.token})`">
       <template #body>
         <div v-if="selectedToken" class="space-y-4">
-          <div class="text-sm">
-            <div class="font-semibold">Token</div>
-            <code
-              class="font-mono text-xs bg-elevated px-2 py-1 rounded mt-1 inline-block">{{ selectedToken.token }}</code>
-          </div>
           <AdminTokenForm mode="edit" :token="selectedToken" :loading="savingEdit" submit-label="Save changes"
             @submit="handleUpdate" />
         </div>
       </template>
     </UModal>
 
-    <UModal v-model:open="uploadsOpen" title="Uploads" scrollable :ui="{ content: 'max-w-5xl' }">
+    <UModal v-model:open="uploadsOpen" :title="`Uploads (${uploadsToken?.token})`" scrollable :ui="{ content: 'max-w-5xl' }">
       <template #body>
         <div class="space-y-3">
-          <div v-if="uploadsToken" class="text-sm">
-            <div class="font-semibold">Token</div>
-            <code
-              class="font-mono text-xs bg-elevated px-2 py-1 rounded mt-1 inline-block">{{ uploadsToken.token }}</code>
-          </div>
-          <AdminUploadsTable :uploads="uploads" :loading="loadingUploads" @delete="askDeleteUpload" />
+          <AdminUploadsTable :uploads="uploads" :loading="loadingUploads" :allow-public-downloads="allowPublicDownloads" :admin-token="adminToken" @delete="askDeleteUpload" />
         </div>
       </template>
     </UModal>
@@ -160,6 +150,7 @@ const editOpen = ref(false);
 const uploadsOpen = ref(false);
 const uploadsToken = ref<AdminToken | null>(null);
 const uploads = ref<UploadRow[]>([]);
+const allowPublicDownloads = ref(true);
 
 const deleteOpen = ref(false);
 const deleteTarget = ref<AdminToken | null>(null);
@@ -266,8 +257,14 @@ async function openUploads(token: AdminToken) {
   uploadsOpen.value = true;
   loadingUploads.value = true;
   try {
-    const res = await $apiFetch<UploadRow[]>(`/api/tokens/${token.token}/uploads`);
-    uploads.value = res;
+    const tokenValue = ref(token.token);
+    const { tokenInfo, fetchTokenInfo } = useTokenInfo(tokenValue);
+    await fetchTokenInfo();
+    
+    if (tokenInfo.value) {
+      allowPublicDownloads.value = tokenInfo.value.allow_public_downloads ?? true;
+      uploads.value = tokenInfo.value.uploads;
+    }
   } catch (err: any) {
     handleAuthError(err);
   } finally {

@@ -1,6 +1,7 @@
 import os
 import re
 import typing
+from urllib.parse import urlparse, urlunparse
 
 from yt_dlp.extractor.common import InfoExtractor  # type: ignore
 from yt_dlp.utils import int_or_none, str_or_none, traverse_obj  # type: ignore
@@ -9,8 +10,10 @@ from yt_dlp.utils import int_or_none, str_or_none, traverse_obj  # type: ignore
 class FBCIE(InfoExtractor):
     _APIKEY = None
     _NETRC_MACHINE = "fbc_uploader"
-    _VALID_URL = r"https?:\/\/.+\/api\/tokens\/(?P<id>fbc_[A-Za-z0-9_-]{22})\/?"
-    _VALID_FBC: re.Pattern[str] = re.compile(r"https?:\/\/.+\/api\/tokens\/(?P<id>fbc_[A-Za-z0-9_-]{22})\/uploads/?(?P<fid>\d+)?/?$")
+    _VALID_URL = r"https?:\/\/.+\/(?:api\/tokens|f)\/(?P<id>fbc_[A-Za-z0-9_-]{22})\/?"
+    _VALID_FBC: re.Pattern[str] = re.compile(
+        r"https?:\/\/.+?\/(?:api\/tokens|f)\/(?P<id>fbc_[A-Za-z0-9_-]{22})(?:\/uploads)?/?(?P<fid>\d+)?/?$"
+    )
     _POSSIBLE_METADATA_FIELDS: typing.ClassVar = {
         "title": "title",
         "description": "description",
@@ -36,6 +39,22 @@ class FBCIE(InfoExtractor):
     def _perform_login(self, _, password):
         FBCIE._APIKEY = password
 
+    def _convert_to_api_url(self, url: str) -> str:
+        """Convert share URL format to API URL format."""
+        mat = self._match_valid_url(url)
+        if not mat:
+            return url
+
+        parsed = urlparse(url)
+        token_id = mat.group("id")
+        file_id = mat.group("fid")
+
+        # Build the API path
+        new_path = f"/api/tokens/{token_id}/uploads/{file_id}" if file_id else f"/api/tokens/{token_id}/uploads"
+
+        # Reconstruct URL with new path
+        return urlunparse((parsed.scheme, parsed.netloc, new_path, "", "", ""))
+
     def _real_extract(self, url):
         video_id: str = self._match_id(url)
         headers: dict[str, str] = {}
@@ -47,8 +66,11 @@ class FBCIE(InfoExtractor):
         if not apikey:
             err_note += ", you may need to provide a valid API key --password or via FBC_API_KEY environment variable."
 
+        # Convert share URL (/f/token) to API URL (/api/tokens/token)
+        api_url = self._convert_to_api_url(url)
+
         items_info = self._download_json(
-            url,
+            api_url,
             video_id=video_id,
             headers=headers,
             note="Downloading token info",

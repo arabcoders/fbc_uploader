@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -47,7 +48,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         version=version.APP_VERSION,
         redirect_slashes=True,
-        docs_url=None,
+        docs_url="/docs" if bool(os.getenv("FBC_DEV_MODE", "0") == "1") else None,
         redoc_url=None,
     )
 

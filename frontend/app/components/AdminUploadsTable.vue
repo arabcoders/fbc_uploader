@@ -25,7 +25,7 @@
           <td class="px-4 py-3 text-sm">
             <div class="space-y-1">
               <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">
-                <NuxtLink v-if="upload.download_url" :href="upload.download_url" target="_blank"
+                <NuxtLink v-if="upload.download_url" :href="getDownloadUrl(upload)" target="_blank"
                   class="font-medium hover:underline break-all cursor-pointer" :aria-label="upload.filename">
                   {{ upload.filename || 'Unnamed file' }}
                 </NuxtLink>
@@ -71,11 +71,13 @@
 
 <script setup lang="ts">
 import type { UploadRow } from "~/types/uploads";
-import { formatBytes, formatDate, formatKey, formatValue } from "~/utils";
+import { formatBytes, formatDate, formatKey, formatValue, addAdminKeyToUrl } from "~/utils";
 
-defineProps<{
+const props = defineProps<{
   uploads: UploadRow[];
   loading?: boolean;
+  allowPublicDownloads: boolean;
+  adminToken: string | null;
 }>();
 
 defineEmits<{
@@ -86,5 +88,10 @@ function filterMetadata(meta_data: Record<string, any> | undefined): Record<stri
   if (!meta_data) return {};
   const { ffprobe, ...filtered } = meta_data;
   return filtered;
+}
+
+function getDownloadUrl(upload: UploadRow): string {
+  if (!upload.download_url) return '';
+  return addAdminKeyToUrl(upload.download_url, props.allowPublicDownloads, props.adminToken);
 }
 </script>

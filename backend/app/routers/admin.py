@@ -19,14 +19,14 @@ async def validate_api_key(_: Annotated[bool, Depends(verify_admin)]):
 
 @router.delete("/uploads/{upload_id}", name="delete_upload")
 async def delete_upload(
-    upload_id: int,
+    upload_id: str,
     _: Annotated[bool, Depends(verify_admin)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Delete an upload record and its associated file."""
     from pathlib import Path
 
-    stmt = select(UploadRecord).where(UploadRecord.id == upload_id)
+    stmt = select(UploadRecord).where(UploadRecord.public_id == upload_id)
     res = await db.execute(stmt)
     upload = res.scalar_one_or_none()
 
@@ -41,4 +41,4 @@ async def delete_upload(
     await db.delete(upload)
     await db.commit()
 
-    return {"status": "deleted", "id": upload_id}
+    return {"status": "deleted", "public_id": upload_id}

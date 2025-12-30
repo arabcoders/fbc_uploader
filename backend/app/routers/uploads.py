@@ -1,4 +1,5 @@
 import contextlib
+import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -48,7 +49,7 @@ def _mime_allowed(filetype: str | None, allowed: list[str] | None) -> bool:
     return False
 
 
-@router.post("/initiate", response_model=dict, status_code=201, name="initiate_upload")
+@router.post("/initiate", response_model=dict, status_code=status.HTTP_201_CREATED, name="initiate_upload")
 async def initiate_upload(
     request: Request,
     payload: schemas.UploadRequest,
@@ -72,7 +73,9 @@ async def initiate_upload(
     if payload.filename:
         ext = Path(payload.filename).suffix.lstrip(".")
 
+    public_id = secrets.token_urlsafe(18)
     record = models.UploadRecord(
+        public_id=public_id,
         token_id=token_row.id,
         filename=payload.filename,
         ext=ext,
@@ -97,11 +100,11 @@ async def initiate_upload(
     await db.refresh(record)
     await db.refresh(token_row)
 
-    upload_url = str(request.url_for("tus_head", upload_id=record.id))
-    download_url = str(request.url_for("download_file", download_token=token_row.download_token, upload_id=record.id))
+    upload_url = str(request.url_for("tus_head", upload_id=record.public_id))
+    download_url = str(request.url_for("download_file", download_token=token_row.download_token, upload_id=record.public_id))
 
     return {
-        "upload_id": record.id,
+        "upload_id": record.public_id,
         "upload_url": upload_url,
         "download_url": download_url,
         "meta_data": cleaned_metadata,
@@ -110,22 +113,22 @@ async def initiate_upload(
     }
 
 
-async def _get_upload_record(db: AsyncSession, upload_id: int) -> models.UploadRecord:
-    stmt = select(models.UploadRecord).where(models.UploadRecord.id == upload_id)
+async def _get_upload_record(db: AsyncSession, upload_id: str) -> models.UploadRecord:
+    stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
     res = await db.execute(stmt)
     record = res.scalar_one_or_none()
     if not record:
-        raise HTTPException(status_code=404, detail="Upload not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
     return record
 
 
 @router.head("/{upload_id}/tus", name="tus_head")
-async def tus_head(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+async def tus_head(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
     record = await _get_upload_record(db, upload_id)
     if record.upload_length is None:
-        raise HTTPException(status_code=409, detail="Upload length unknown")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload length unknown")
     return Response(
-        status_code=200,
+        status_code=status.HTTP_200_OK,
         headers={
             "Upload-Offset": str(record.upload_offset or 0),
             "Upload-Length": str(record.upload_length),
@@ -136,7 +139,7 @@ async def tus_head(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)])
 
 @router.patch("/{upload_id}/tus", name="tus_patch")
 async def tus_patch(  # noqa: PLR0915
-    upload_id: int,
+    upload_id: str,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     upload_offset: Annotated[int, Header(convert_underscores=False, alias="Upload-Offset")] = ...,
@@ -146,7 +149,7 @@ async def tus_patch(  # noqa: PLR0915
     from starlette.requests import ClientDisconnect
 
     if content_type != "application/offset+octet-stream":
-        raise HTTPException(status_code=415, detail="Invalid Content-Type")
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Invalid Content-Type")
     if content_length and content_length > settings.max_chunk_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
@@ -154,12 +157,12 @@ async def tus_patch(  # noqa: PLR0915
         )
     record = await _get_upload_record(db, upload_id)
     if record.upload_length is None:
-        raise HTTPException(status_code=409, detail="Upload length unknown")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload length unknown")
     if record.upload_offset != upload_offset:
-        raise HTTPException(status_code=409, detail="Mismatched Upload-Offset")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mismatched Upload-Offset")
 
     if record.status == "completed":
-        return Response(status_code=204, headers={"Upload-Offset": str(record.upload_offset)})
+        return Response(status_code=status.HTTP_204_NO_CONTENT, headers={"Upload-Offset": str(record.upload_offset)})
 
     path = Path(record.storage_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -176,7 +179,7 @@ async def tus_patch(  # noqa: PLR0915
     if bytes_written > 0:
         record.upload_offset += bytes_written
         if record.upload_offset > record.upload_length:
-            raise HTTPException(status_code=413, detail="Upload exceeds declared length")
+            raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Upload exceeds declared length")
 
         if record.upload_offset == record.upload_length:
             try:
@@ -229,7 +232,7 @@ async def tus_patch(  # noqa: PLR0915
             await db.refresh(record)
 
     return Response(
-        status_code=204,
+        status_code=status.HTTP_204_NO_CONTENT,
         headers={
             "Upload-Offset": str(record.upload_offset),
             "Tus-Resumable": "1.0.0",
@@ -241,7 +244,7 @@ async def tus_patch(  # noqa: PLR0915
 @router.options("/tus", name="tus_options")
 async def tus_options():
     return Response(
-        status_code=204,
+        status_code=status.HTTP_204_NO_CONTENT,
         headers={
             "Tus-Resumable": "1.0.0",
             "Tus-Version": "1.0.0",
@@ -250,8 +253,8 @@ async def tus_options():
     )
 
 
-@router.delete("/{upload_id}/tus", status_code=204, name="tus_delete")
-async def tus_delete(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+@router.delete("/{upload_id}/tus", status_code=status.HTTP_204_NO_CONTENT, name="tus_delete")
+async def tus_delete(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
     record = await _get_upload_record(db, upload_id)
     path = Path(record.storage_path or "")
     if path.exists():
@@ -259,16 +262,16 @@ async def tus_delete(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)
             path.unlink()
     await db.delete(record)
     await db.commit()
-    return Response(status_code=204)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{upload_id}/complete", response_model=schemas.UploadRecordResponse, name="mark_complete")
-async def mark_complete(upload_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
-    stmt = select(models.UploadRecord).where(models.UploadRecord.id == upload_id)
+async def mark_complete(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)]):
+    stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
     res = await db.execute(stmt)
     record = res.scalar_one_or_none()
     if not record:
-        raise HTTPException(status_code=404, detail="Upload not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
     record.status = "completed"
     record.completed_at = datetime.now(UTC)
     await db.commit()
@@ -278,7 +281,7 @@ async def mark_complete(upload_id: int, db: Annotated[AsyncSession, Depends(get_
 
 @router.delete("/{upload_id}/cancel", response_model=dict, name="cancel_upload")
 async def cancel_upload(
-    upload_id: int,
+    upload_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     token: Annotated[str, Query(description="Upload token")] = ...,
 ):
