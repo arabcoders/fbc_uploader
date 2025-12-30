@@ -271,7 +271,7 @@ async def test_ffprobe_not_run_for_non_multimedia():
                 "Upload-Offset": "0",
                 "Content-Length": str(len(text_content)),
             },
-        )           
+        )
         assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Text upload should complete successfully"
 
         async with SessionLocal() as session:
