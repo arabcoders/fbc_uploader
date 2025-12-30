@@ -28,27 +28,28 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="FBC_", extra="ignore")
 
-    def model_post_init(self, __context) -> None:
-        if not self.database_url:
-            cfg_dir = Path(self.config_path).expanduser().resolve()
-            default_db_path = cfg_dir / "fbc.db"
-            self.database_url = f"sqlite+aiosqlite:///{default_db_path}"
-
-        cfg_dir = Path(self.config_path).expanduser().resolve()
+    def model_post_init(self, _) -> None:
+        cfg_dir: Path = Path(self.config_path).expanduser().resolve()
         cfg_dir.mkdir(parents=True, exist_ok=True)
+
+        if not self.database_url:
+            default_db_path: Path = cfg_dir / "fbc.db"
+            self.database_url = f"sqlite+aiosqlite:///{default_db_path!s}"
 
         if self.admin_api_key == "change-me":
             api_path: Path = cfg_dir / "secret.key"
-            if api_path.exists():
-                self.admin_api_key = api_path.read_text().strip()
-            else:
+            if not api_path.exists():
                 from secrets import token_urlsafe
 
                 key: str = token_urlsafe(32)
                 api_path.write_text(key)
+
                 with contextlib.suppress(OSError):
                     api_path.chmod(0o600)
+
                 self.admin_api_key = key
+            else:
+                self.admin_api_key = api_path.read_text().strip()
 
 
 @lru_cache
@@ -56,4 +57,4 @@ def get_settings() -> Settings:
     return Settings()
 
 
-settings = get_settings()
+settings: Settings = get_settings()

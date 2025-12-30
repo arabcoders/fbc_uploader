@@ -2,6 +2,7 @@
 
 import shutil
 from pathlib import Path
+from fastapi import status
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -27,7 +28,7 @@ async def test_mimetype_spoofing_rejected():
             },
             headers={"Authorization": f"Bearer {settings.admin_api_key}"},
         )
-        assert resp.status_code == 201, "Token creation should return 201"
+        assert resp.status_code == status.HTTP_201_CREATED, "Token creation should return 201"
         token_data = resp.json()
         token_value = token_data["token"]
 
@@ -43,7 +44,7 @@ async def test_mimetype_spoofing_rejected():
             },
             params={"token": token_value},
         )
-        assert init_resp.status_code == 201, "Upload initiation should return 201"
+        assert init_resp.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
         upload_data = init_resp.json()
         upload_id = upload_data["upload_id"]
 
@@ -57,11 +58,11 @@ async def test_mimetype_spoofing_rejected():
             },
         )
 
-        assert patch_resp.status_code == 415, "Fake video file should be rejected with 415"
+        assert patch_resp.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Fake video file should be rejected with 415"
         assert "does not match allowed types" in patch_resp.json()["detail"], "Error should indicate type mismatch"
 
         head_resp = await client.head(app.url_path_for("tus_head", upload_id=upload_id))
-        assert head_resp.status_code == 404, "Rejected upload should be removed"
+        assert head_resp.status_code == status.HTTP_404_NOT_FOUND, "Rejected upload should be removed"
 
 
 @pytest.mark.asyncio
@@ -78,7 +79,7 @@ async def test_valid_mimetype_accepted():
             },
             headers={"Authorization": f"Bearer {settings.admin_api_key}"},
         )
-        assert resp.status_code == 201, "Token creation should return 201"
+        assert resp.status_code == status.HTTP_201_CREATED, "Token creation should return 201"
         token_data = resp.json()
         token_value = token_data["token"]
 
@@ -92,14 +93,14 @@ async def test_valid_mimetype_accepted():
             },
             params={"token": token_value},
         )
-        assert init_resp.status_code == 201, "Upload initiation should return 201"
+        assert init_resp.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
         upload_data = init_resp.json()
         upload_id = upload_data["upload_id"]
 
         text_content = b"This is a text file."
 
         head_resp = await client.head(app.url_path_for("tus_head", upload_id=upload_id))
-        assert head_resp.status_code == 200, "TUS HEAD should return 200"
+        assert head_resp.status_code == status.HTTP_200_OK, "TUS HEAD should return 200"
 
         patch_resp = await client.patch(
             app.url_path_for("tus_patch", upload_id=upload_id),
@@ -111,10 +112,10 @@ async def test_valid_mimetype_accepted():
             },
         )
 
-        assert patch_resp.status_code == 204, "Valid text file should be accepted"
+        assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Valid text file should be accepted"
 
         head_resp = await client.head(app.url_path_for("tus_head", upload_id=upload_id))
-        assert head_resp.status_code == 200, "Upload should still exist after completion"
+        assert head_resp.status_code == status.HTTP_200_OK, "Upload should still exist after completion"
 
 
 @pytest.mark.asyncio
@@ -130,7 +131,7 @@ async def test_mimetype_updated_on_completion():
             },
             headers={"Authorization": f"Bearer {settings.admin_api_key}"},
         )
-        assert resp.status_code == 201, "Token creation should return 201"
+        assert resp.status_code == status.HTTP_201_CREATED, "Token creation should return 201"
         token_data = resp.json()
         token_value = token_data["token"]
 
@@ -144,7 +145,7 @@ async def test_mimetype_updated_on_completion():
             },
             params={"token": token_value},
         )
-        assert init_resp.status_code == 201, "Upload initiation should return 201"
+        assert init_resp.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
         upload_data = init_resp.json()
         upload_id = upload_data["upload_id"]
 
@@ -159,10 +160,10 @@ async def test_mimetype_updated_on_completion():
                 "Content-Length": str(len(text_content)),
             },
         )
-        assert patch_resp.status_code == 204, "Upload completion should return 204"
+        assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Upload completion should return 204"
 
         async with SessionLocal() as session:
-            stmt = select(models.UploadRecord).where(models.UploadRecord.id == upload_id)
+            stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
             res = await session.execute(stmt)
             upload = res.scalar_one_or_none()
             assert upload is not None, "Upload record should exist"
@@ -184,7 +185,7 @@ async def test_ffprobe_extracts_metadata_for_video():
             },
             headers={"Authorization": f"Bearer {settings.admin_api_key}"},
         )
-        assert resp.status_code == 201, "Token creation should return 201"
+        assert resp.status_code == status.HTTP_201_CREATED, "Token creation should return 201"
         token_data = resp.json()
         token_value = token_data["token"]
 
@@ -200,7 +201,7 @@ async def test_ffprobe_extracts_metadata_for_video():
             },
             params={"token": token_value},
         )
-        assert init_resp.status_code == 201, "Upload initiation should return 201"
+        assert init_resp.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
         upload_data = init_resp.json()
         upload_id = upload_data["upload_id"]
 
@@ -213,10 +214,10 @@ async def test_ffprobe_extracts_metadata_for_video():
                 "Content-Length": str(file.stat().st_size),
             },
         )
-        assert patch_resp.status_code == 204, "Video upload should complete successfully"
+        assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Video upload should complete successfully"
 
         async with SessionLocal() as session:
-            stmt = select(models.UploadRecord).where(models.UploadRecord.id == upload_id)
+            stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
             res = await session.execute(stmt)
             upload = res.scalar_one_or_none()
             assert upload is not None, "Upload record should exist"
@@ -224,7 +225,9 @@ async def test_ffprobe_extracts_metadata_for_video():
             assert upload.meta_data is not None, "Metadata should be extracted"
             if "ffprobe" in upload.meta_data:
                 assert isinstance(upload.meta_data["ffprobe"], dict), "ffprobe data should be a dict"
-                assert "format" in upload.meta_data["ffprobe"] or "streams" in upload.meta_data["ffprobe"], "ffprobe should contain format or streams info"
+                assert "format" in upload.meta_data["ffprobe"] or "streams" in upload.meta_data["ffprobe"], (
+                    "ffprobe should contain format or streams info"
+                )
 
 
 @pytest.mark.asyncio
@@ -241,7 +244,7 @@ async def test_ffprobe_not_run_for_non_multimedia():
             },
             headers={"Authorization": f"Bearer {settings.admin_api_key}"},
         )
-        assert resp.status_code == 201, "Token creation should return 201"
+        assert resp.status_code == status.HTTP_201_CREATED, "Token creation should return 201"
         token_data = resp.json()
         token_value = token_data["token"]
 
@@ -256,7 +259,7 @@ async def test_ffprobe_not_run_for_non_multimedia():
             },
             params={"token": token_value},
         )
-        assert init_resp.status_code == 201, "Upload initiation should return 201"
+        assert init_resp.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
         upload_data = init_resp.json()
         upload_id = upload_data["upload_id"]
 
@@ -269,10 +272,10 @@ async def test_ffprobe_not_run_for_non_multimedia():
                 "Content-Length": str(len(text_content)),
             },
         )
-        assert patch_resp.status_code == 204, "Text file upload should complete successfully"
+        assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Text upload should complete successfully"
 
         async with SessionLocal() as session:
-            stmt = select(models.UploadRecord).where(models.UploadRecord.id == upload_id)
+            stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
             res = await session.execute(stmt)
             upload = res.scalar_one_or_none()
             assert upload is not None, "Upload record should exist"

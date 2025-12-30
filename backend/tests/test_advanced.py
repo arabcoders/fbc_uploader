@@ -59,7 +59,7 @@ async def test_reject_upload_with_disallowed_mime():
                 "meta_data": {"broadcast_date": "2025-01-01", "title": "Test", "source": "youtube"},
             },
         )
-        assert upload_resp.status_code in [status.HTTP_201_CREATED, status.HTTP_403_FORBIDDEN, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE], "Disallowed MIME type should be rejected or require special handling"
+        assert upload_resp.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Disallowed MIME type should be rejected"
 
 
 @pytest.mark.asyncio
@@ -81,7 +81,9 @@ async def test_reject_upload_exceeding_size():
                 "meta_data": {"broadcast_date": "2025-01-01", "title": "Test", "source": "youtube"},
             },
         )
-        assert upload_resp.status_code in [status.HTTP_403_FORBIDDEN, status.HTTP_413_CONTENT_TOO_LARGE], "Upload exceeding size limit should be rejected"
+        assert upload_resp.status_code in [status.HTTP_403_FORBIDDEN, status.HTTP_413_CONTENT_TOO_LARGE], (
+            "Upload exceeding size limit should be rejected"
+        )
         assert (
             "exceeds" in upload_resp.json()["detail"].lower()
             or "too large" in upload_resp.json()["detail"].lower()

@@ -8,7 +8,7 @@ export function useTokenInfo(tokenValue: Ref<string>) {
 
     const shareLinkText = computed(() => {
         if (!tokenInfo.value) return ''
-        return `${window.location.origin}/api/tokens/${tokenInfo.value.download_token}/uploads`
+        return `${window.location.origin}/f/${tokenInfo.value.download_token}`
     })
 
     async function fetchTokenInfo() {
@@ -18,7 +18,7 @@ export function useTokenInfo(tokenValue: Ref<string>) {
         }
         tokenError.value = ''
         try {
-            const data = await $fetch('/api/tokens/' + tokenValue.value + '/info')
+            const data = await $fetch('/api/tokens/' + tokenValue.value)
             tokenInfo.value = data as any
             notFound.value = false
         } catch (err: any) {

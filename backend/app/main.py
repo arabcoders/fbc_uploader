@@ -1,9 +1,10 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -17,29 +18,36 @@ from .db import engine
 from .migrate import run_migrations
 
 
-def _ensure_storage() -> None:
-    Path(settings.storage_path).mkdir(parents=True, exist_ok=True)
-    Path(settings.config_path).mkdir(parents=True, exist_ok=True)
-
-
 def create_app() -> FastAPI:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 
-    _ensure_storage()
+    Path(settings.storage_path).mkdir(parents=True, exist_ok=True)
+    Path(settings.config_path).mkdir(parents=True, exist_ok=True)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        """
+        Application lifespan context manager.
+
+        Args:
+            app (FastAPI): The FastAPI application instance.
+
+        """
         if not settings.skip_migrations:
             await run_in_threadpool(run_migrations)
+
         if not settings.skip_cleanup:
             app.state.cleanup_task = asyncio.create_task(start_cleanup_loop(), name="cleanup_loop")
+
         yield
+
         if not settings.skip_cleanup:
-            task = getattr(app.state, "cleanup_task", None)
+            task: asyncio.Task | None = getattr(app.state, "cleanup_task", None)
             if task:
                 task.cancel()
                 with suppress(asyncio.CancelledError):
                     await task
+
         await engine.dispose()
 
     app = FastAPI(
@@ -47,7 +55,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         version=version.APP_VERSION,
         redirect_slashes=True,
-        docs_url=None,
+        docs_url="/docs" if bool(os.getenv("FBC_DEV_MODE", "0") == "1") else None,
         redoc_url=None,
     )
 
@@ -55,6 +63,17 @@ def create_app() -> FastAPI:
 
         @app.middleware("http")
         async def proxy_headers_middleware(request: Request, call_next):
+            """
+            Middleware to trust proxy headers for scheme and host.
+
+            Args:
+                request (Request): The incoming HTTP request.
+                call_next: Function to call the next middleware or route handler.
+
+            Returns:
+                Response: The HTTP response.
+
+            """
             if forwarded_proto := request.headers.get("X-Forwarded-Proto"):
                 request.scope["scheme"] = forwarded_proto
 
@@ -84,15 +103,37 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def log_exceptions(request: Request, call_next):
+        """
+        Middleware to log unhandled exceptions.
+
+        Args:
+            request (Request): The incoming HTTP request.
+            call_next: Function to call the next middleware or route handler.
+
+        Returns:
+            Response: The HTTP response.
+
+        """
         try:
             return await call_next(request)
         except Exception as exc:
             logging.exception("Unhandled exception", exc_info=exc)
-            return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+            return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "Internal Server Error"})
 
     @app.get("/api/health", name="health")
-    def health():
+    def health() -> dict[str, str]:
+        """Health check endpoint."""
         return {"status": "ok"}
+
+    @app.get("/api/version", name="version")
+    def app_version() -> dict[str, str]:
+        """Get application version information."""
+        return {
+            "version": version.APP_VERSION,
+            "commit_sha": version.APP_COMMIT_SHA,
+            "build_date": version.APP_BUILD_DATE,
+            "branch": version.APP_BRANCH,
+        }
 
     for _route in routers.__all__:
         app.include_router(getattr(routers, _route).router)
@@ -100,27 +141,38 @@ def create_app() -> FastAPI:
     frontend_dir: Path = Path(settings.frontend_export_path).resolve()
     if frontend_dir.exists():
 
-        @app.get("/{full_path:path}")
-        async def spa_fallback(full_path: str):
+        @app.get("/{full_path:path}", name="static_frontend")
+        async def frontend(full_path: str) -> FileResponse:
+            """
+            Serve static frontend files.
+
+            Args:
+                full_path (str): The requested file path.
+
+            Returns:
+                FileResponse: The response containing the requested file.
+
+            """
             if full_path.startswith("api/"):
-                raise HTTPException(status_code=404)
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-            if not full_path or full_path == "/":
-                index_file = frontend_dir / "index.html"
+            if not full_path or "/" == full_path:
+                index_file: Path = frontend_dir / "index.html"
                 if index_file.exists():
-                    return FileResponse(index_file, status_code=200)
-                raise HTTPException(status_code=404)
+                    return FileResponse(index_file, status_code=status.HTTP_200_OK)
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-            requested_file = frontend_dir / full_path
+            requested_file: Path = frontend_dir / full_path
             if requested_file.is_file():
-                return FileResponse(requested_file, status_code=200)
+                return FileResponse(requested_file, status_code=status.HTTP_200_OK)
 
-            index_file = frontend_dir / "index.html"
+            index_file: Path = frontend_dir / "index.html"
             if index_file.exists():
-                return FileResponse(index_file, status_code=200)
-            raise HTTPException(status_code=404)
+                return FileResponse(index_file, status_code=status.HTTP_200_OK)
+
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
     return app
 
 
-app = create_app()
+app: FastAPI = create_app()

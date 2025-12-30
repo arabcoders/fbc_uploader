@@ -34,10 +34,6 @@
                 </template>
                 <template v-else>
                   <NuxtLink :to="`/t/${token.token}`">{{ token.token }}</NuxtLink>
-                  <UTooltip text="Copy Token URL" :arrow="true">
-                    <UButton size="xs" color="neutral" variant="ghost" icon="i-heroicons-clipboard-document-20-solid"
-                      aria-label="Copy upload token" @click="copyUrl(token.token)" />
-                  </UTooltip>
                 </template>
               </div>
             </div>
@@ -63,12 +59,25 @@
           </td>
           <td class="px-4 py-3 text-sm text-right">
             <div class="flex items-center gap-1 justify-end">
-              <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons-folder-open-20-solid"
-                @click="$emit('viewUploads', token)" />
-              <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons-pencil-square-20-solid"
-                @click="$emit('edit', token)" />
-              <UButton size="sm" color="error" variant="ghost" icon="i-heroicons-trash-20-solid"
-                @click="$emit('delete', token)" />
+              <UDropdownMenu :items="getCopyMenuItems(token)" :content="{ align: 'end' }">
+                <UTooltip text="Copy link" :arrow="true">
+                  <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons-clipboard-document-20-solid" />
+                </UTooltip>
+              </UDropdownMenu>
+              <UTooltip text="View Uploads" :arrow="true">
+                <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons-folder-open-20-solid"
+                  @click="$emit('viewUploads', token)" />
+              </UTooltip>
+
+              <UTooltip text="Edit token" :arrow="true">
+                <UButton size="sm" color="neutral" variant="ghost" icon="i-heroicons-pencil-square-20-solid"
+                  @click="$emit('edit', token)" />
+              </UTooltip>
+
+              <UTooltip text="Delete token" :arrow="true">
+                <UButton size="sm" color="error" variant="ghost" icon="i-heroicons-trash-20-solid"
+                  @click="$emit('delete', token)" />
+              </UTooltip>
             </div>
           </td>
         </tr>
@@ -81,6 +90,8 @@
 import type { AdminToken } from "~/types/token";
 import { copyText, formatBytes, formatDate } from "~/utils";
 
+const toast = useToast();
+
 defineProps<{
   tokens: AdminToken[];
   loading?: boolean;
@@ -92,8 +103,27 @@ defineEmits<{
   delete: [token: AdminToken];
 }>();
 
-const copyUrl = (token: string) => {
-  const url = `${window.location.origin}/t/${token}`;
+const copyUrl = (path: string, token: string) => {
+  const url = `${window.location.origin}/${path}/${token}`;
+  console.log("Copying URL:", url);
   copyText(url);
+  toast.add({
+    title: 'link copied to clipboard.',
+    color: 'success',
+    icon: 'i-heroicons-check-circle-20-solid',
+  })
 }
+
+const getCopyMenuItems = (token: AdminToken) => [
+  [{
+    label: 'Copy upload link',
+    icon: 'i-heroicons-arrow-up-tray-20-solid',
+    onSelect: () => copyUrl("t", token.token)
+  }],
+  [{
+    label: 'Copy share link',
+    icon: 'i-heroicons-share-20-solid',
+    onSelect: () => copyUrl("f", token.download_token)
+  }]
+]
 </script>

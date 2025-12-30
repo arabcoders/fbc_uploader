@@ -51,7 +51,7 @@ class TokenInfo(BaseModel):
 
 
 class UploadRecordResponse(BaseModel):
-    id: int
+    public_id: str
     filename: str | None
     ext: str | None
     mimetype: str | None
@@ -70,7 +70,7 @@ class UploadRecordResponse(BaseModel):
 
 
 class TokenPublicInfo(BaseModel):
-    token: str
+    token: str | None
     download_token: str
     remaining_uploads: int
     max_uploads: int
@@ -95,3 +95,17 @@ class UploadRequest(BaseModel):
     filename: str | None = None
     filetype: str | None = None
     size_bytes: int | None = Field(None, gt=0)
+
+
+class TokenListResponse(BaseModel):
+    tokens: list[TokenAdmin]
+    total: int
+
+
+class InitiateUploadResponse(BaseModel):
+    upload_id: str
+    upload_url: str
+    download_url: str
+    meta_data: dict[str, Any]
+    allowed_mime: list[str] | None
+    remaining_uploads: int

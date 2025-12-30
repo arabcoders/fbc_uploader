@@ -95,10 +95,10 @@ async def test_cancel_upload_invalid_upload_id():
         token = r.json()["token"]
 
         response = await client.delete(
-            app.url_path_for("cancel_upload", upload_id=999999),
+            app.url_path_for("cancel_upload", upload_id="nonexistent_upload_id"),
             params={"token": token},
         )
-        assert response.status_code == 404, "Canceling non-existent upload should return 404"
+        assert response.status_code == status.HTTP_404_NOT_FOUND, "Canceling non-existent upload should return 404"
         assert response.json()["detail"] == "Upload not found", "Error should indicate upload not found"
 
 
@@ -126,7 +126,7 @@ async def test_cancel_completed_upload_fails():
                 "meta_data": {"broadcast_date": "2024-01-01", "title": "Test", "source": "youtube"},
             },
         )
-        assert init_response.status_code == 201, "Upload initiation should return 201"
+        assert init_response.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
         upload_id = init_response.json()["upload_id"]
 
         tus_patch_url = app.url_path_for("tus_patch", upload_id=upload_id)
@@ -139,13 +139,13 @@ async def test_cancel_completed_upload_fails():
             },
             content=b"hello",
         )
-        assert patch_response.status_code == 204, "TUS PATCH should return 204"
+        assert patch_response.status_code == status.HTTP_204_NO_CONTENT, "TUS PATCH should return 204"
 
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_id),
             params={"token": token},
         )
-        assert response.status_code == 400, "Canceling completed upload should return 400"
+        assert response.status_code == status.HTTP_400_BAD_REQUEST, "Canceling completed upload should return 400"
         assert "Cannot cancel completed upload" in response.json()["detail"], "Error should indicate upload is completed"
 
 
@@ -175,10 +175,10 @@ async def test_cancel_multiple_uploads():
                     "meta_data": {"broadcast_date": "2024-01-01", "title": f"Test{i}", "source": "youtube"},
                 },
             )
-            assert response.status_code == 201, f"Upload initiation {i} should return 201"
+            assert response.status_code == status.HTTP_201_CREATED, f"Upload initiation {i} should return 201"
             upload_ids.append(response.json()["upload_id"])
 
-        info_url = app.url_path_for("get_public_token_info", token_value=token)
+        info_url = app.url_path_for("get_token", token_value=token)
         info = await client.get(info_url)
         assert info.json()["remaining_uploads"] == 0, "All upload slots should be used"
 
@@ -186,14 +186,14 @@ async def test_cancel_multiple_uploads():
             app.url_path_for("cancel_upload", upload_id=upload_ids[0]),
             params={"token": token},
         )
-        assert response.status_code == 200, "First cancellation should return 200"
+        assert response.status_code == status.HTTP_200_OK, "First cancellation should return 200"
         assert response.json()["remaining_uploads"] == 1, "First cancellation should restore one slot"
 
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_ids[1]),
             params={"token": token},
         )
-        assert response.status_code == 200, "Second cancellation should return 200"
+        assert response.status_code == status.HTTP_200_OK, "Second cancellation should return 200"
         assert response.json()["remaining_uploads"] == 2, "Second cancellation should restore another slot"
 
         info = await client.get(info_url)
@@ -224,12 +224,12 @@ async def test_cancel_with_nonexistent_token():
                 "meta_data": {"broadcast_date": "2024-01-01", "title": "Test", "source": "youtube"},
             },
         )
-        assert response.status_code == 201, "Upload initiation should return 201"
+        assert response.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
         upload_id = response.json()["upload_id"]
 
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_id),
             params={"token": "fake_token"},
         )
-        assert response.status_code == 404, "Non-existent token should return 404"
+        assert response.status_code == status.HTTP_404_NOT_FOUND, "Non-existent token should return 404"
         assert response.json()["detail"] == "Token not found", "Error should indicate token not found"

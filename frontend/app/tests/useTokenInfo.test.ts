@@ -22,10 +22,10 @@ describe('useTokenInfo', () => {
 
     await fetchTokenInfo()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/tokens/abc123/info')
+    expect(fetchMock).toHaveBeenCalledWith('/api/tokens/abc123')
     expect(notFound.value).toBe(false)
     expect(tokenInfo.value?.download_token).toBe('dl-token')
-    expect(shareLinkText.value).toBe(`${window.location.origin}/api/tokens/dl-token/uploads`)
+    expect(shareLinkText.value).toBe(`${window.location.origin}/f/dl-token`)
   })
 
   it('sets error state when fetch fails', async () => {

@@ -1,16 +1,19 @@
 import os
 import re
 import typing
+from urllib.parse import ParseResult, urlparse, urlunparse
 
 from yt_dlp.extractor.common import InfoExtractor  # type: ignore
 from yt_dlp.utils import int_or_none, str_or_none, traverse_obj  # type: ignore
 
 
 class FBCIE(InfoExtractor):
-    _APIKEY = None
-    _NETRC_MACHINE = "fbc_uploader"
-    _VALID_URL = r"https?:\/\/.+\/api\/tokens\/(?P<id>fbc_[A-Za-z0-9_-]{22})\/?"
-    _VALID_FBC: re.Pattern[str] = re.compile(r"https?:\/\/.+\/api\/tokens\/(?P<id>fbc_[A-Za-z0-9_-]{22})\/uploads/?(?P<fid>\d+)?/?$")
+    _APIKEY: str | None = None
+    _NETRC_MACHINE: str = "fbc_uploader"
+    _VALID_URL: str = r"https?:\/\/.+\/(?:api\/tokens|f)\/(?P<id>fbc_[A-Za-z0-9_-]{22})\/?"
+    _VALID_FBC: re.Pattern[str] = re.compile(
+        r"https?:\/\/.+?\/(?:api\/tokens|f)\/(?P<id>fbc_[A-Za-z0-9_-]{22})(?:\/uploads)?/?(?P<fid>[A-Za-z0-9_-]+)?/?$"
+    )
     _POSSIBLE_METADATA_FIELDS: typing.ClassVar = {
         "title": "title",
         "description": "description",
@@ -24,7 +27,7 @@ class FBCIE(InfoExtractor):
 
     @classmethod
     def _match_id(cls, url) -> None | str:
-        mat = cls._match_valid_url(url)
+        mat: re.Match[str] | None = cls._match_valid_url(url)
         if not mat:
             return None
 
@@ -34,7 +37,28 @@ class FBCIE(InfoExtractor):
         return mat.group("id")
 
     def _perform_login(self, _, password):
-        FBCIE._APIKEY = password
+        FBCIE._APIKEY: str = password
+
+    def _convert_to_api_url(self, url: str) -> str:
+        """Convert share URL format to API URL format."""
+        mat: re.Match[str] | None = self._match_valid_url(url)
+        if not mat:
+            return url
+
+        parsed: ParseResult = urlparse(url)
+        token_id: str | None = mat.group("id")
+        file_id: str | None = mat.group("fid")
+
+        return urlunparse(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                f"/api/tokens/{token_id}/uploads/{file_id}" if file_id else f"/api/tokens/{token_id}/uploads",
+                "",
+                "",
+                "",
+            )
+        )
 
     def _real_extract(self, url):
         video_id: str = self._match_id(url)
@@ -43,12 +67,12 @@ class FBCIE(InfoExtractor):
         if apikey := (FBCIE._APIKEY or os.environ.get("FBC_API_KEY")):
             headers["Authorization"] = f"Bearer {apikey!s}"
 
-        err_note = "Failed to download token info"
+        err_note = "Failed to download token info."
         if not apikey:
-            err_note += ", you may need to provide a valid API key --password or via FBC_API_KEY environment variable."
+            err_note += "You may need to provide a valid API key via --password or FBC_API_KEY environment variable."
 
         items_info = self._download_json(
-            url,
+            self._convert_to_api_url(url),
             video_id=video_id,
             headers=headers,
             note="Downloading token info",
@@ -62,10 +86,8 @@ class FBCIE(InfoExtractor):
         playlist: list[dict] = [
             self._format_item(
                 video_data,
-                video_id,
                 "video" if is_single or len(items_info) < 2 else "url",
                 headers=headers,
-                is_single=is_single,
             )
             for video_data in items_info
             if "completed" == video_data.get("status")
@@ -130,13 +152,13 @@ class FBCIE(InfoExtractor):
         from datetime import datetime as dt
 
         try:
-            _dt = dt.fromisoformat(date_str)
+            _dt: dt = dt.fromisoformat(date_str)
         except Exception:
             return None
 
         return dateformat.format(year=_dt.year, month=_dt.month, day=_dt.day)
 
-    def _expand_format(self, format_dict: dict, ffprobe_data: dict) -> dict:  # noqa: PLR0915
+    def _expand_format(self, format_dict: dict, ffprobe_data: dict) -> dict:
         """Enrich format dictionary with data from ffprobe output."""
         if not ffprobe_data:
             return format_dict
@@ -214,7 +236,7 @@ class FBCIE(InfoExtractor):
 
         return format_dict
 
-    def _format_item(self, video_data: dict, video_id: str, _type: str, headers: dict | None = None, is_single: bool = False) -> dict:
+    def _format_item(self, video_data: dict, _type: str, headers: dict | None = None) -> dict:
         base_format = {
             "url": video_data.get("download_url"),
             "ext": video_data.get("ext"),
@@ -226,7 +248,7 @@ class FBCIE(InfoExtractor):
             base_format = self._expand_format(base_format, ffprobe_data)
 
         dct = {
-            "id": f"{video_id}-{video_data.get('id')}" if not is_single else video_id,
+            "id": video_data.get("public_id", video_data.get("id")),
             "_type": _type,
             "ext": video_data.get("ext"),
             "mimetype": video_data.get("mimetype"),

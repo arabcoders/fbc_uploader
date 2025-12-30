@@ -134,7 +134,7 @@ async def get_token_info(
         Token info response JSON
 
     """
-    resp = await client.get(app.url_path_for("get_public_token_info", token_value=token))
+    resp = await client.get(app.url_path_for("get_token", token_value=token))
     return resp.json() if resp.status_code == status.HTTP_200_OK else {}
 
 

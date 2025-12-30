@@ -31,6 +31,7 @@ class UploadRecord(Base):
     __tablename__: str = "uploads"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    public_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     token_id: Mapped[int] = mapped_column(Integer, ForeignKey("upload_tokens.id"), nullable=False)
     filename: Mapped[str | None] = mapped_column(String(255))
     ext: Mapped[str | None] = mapped_column(String(32))

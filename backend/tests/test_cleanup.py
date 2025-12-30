@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+import secrets
 
 import pytest
 from sqlalchemy import select
@@ -69,6 +70,7 @@ async def test_remove_stale_uploads_deletes_files(monkeypatch):
         await session.refresh(token)
 
         stale_upload = models.UploadRecord(
+            public_id=secrets.token_urlsafe(18),
             token_id=token.id,
             filename="stale.bin",
             size_bytes=5,
@@ -131,6 +133,7 @@ async def test_remove_disabled_tokens_cleans_records_and_storage(monkeypatch):
         await session.refresh(recent_token)
 
         old_upload = models.UploadRecord(
+            public_id=secrets.token_urlsafe(18),
             token_id=old_token.id,
             filename="old.txt",
             size_bytes=9,
@@ -140,6 +143,7 @@ async def test_remove_disabled_tokens_cleans_records_and_storage(monkeypatch):
             completed_at=now - timedelta(days=2),
         )
         recent_upload = models.UploadRecord(
+            public_id=secrets.token_urlsafe(18),
             token_id=recent_token.id,
             filename="recent.txt",
             size_bytes=11,
