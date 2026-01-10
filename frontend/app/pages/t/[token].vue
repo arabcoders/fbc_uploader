@@ -1,59 +1,73 @@
 <template>
   <UContainer class="py-10">
     <div class="space-y-6">
-      <div v-if="notFound" class="max-w-2xl">
-        <UAlert color="error" variant="solid" :title="tokenError || 'Token not found or expired'"
-          icon="i-heroicons-exclamation-triangle-20-solid" />
-      </div>
-      <div v-else-if="tokenInfo" class="space-y-4">
-        <TokenSummary :token-info="tokenInfo" :share-link="shareLinkText" @copy="copyShareLink" @refresh="refreshAll" />
+      <div v-if="notFound && !tokenInfo">
+        <UAlert color="error" variant="solid" :title="tokenError || 'Token not found'"
+          icon="i-heroicons-exclamation-triangle-20-solid"
+          :ui="{ title: 'text-lg font-semibold', description: 'text-base' }" />
       </div>
 
-      <UCard v-if="!notFound && notice" variant="outline">
-        <template #header>
-          <UCollapsible v-model:open="showNotice">
-            <button class="group flex items-center gap-2 w-full cursor-pointer">
-              <UIcon name="i-heroicons-megaphone-20-solid" />
-              <span class="font-semibold">System Notice</span>
-              <UIcon name="i-heroicons-chevron-down-20-solid"
-                class="ml-auto group-data-[state=open]:rotate-180 transition-transform duration-200" />
-            </button>
+      <div v-else-if="tokenInfo && (isExpired || isDisabled)">
+        <UAlert v-if="isExpired" color="warning" variant="soft" title="Token has expired"
+          description="This upload token has expired and can no longer be used." icon="i-heroicons-clock-20-solid"
+          :ui="{ title: 'text-lg font-semibold', description: 'text-base' }" />
+        <UAlert v-else-if="isDisabled" color="warning" variant="soft" title="Token is disabled"
+          description="This token has been disabled and can no longer be used." icon="i-heroicons-lock-closed-20-solid"
+          :ui="{ title: 'text-lg font-semibold', description: 'text-base' }" />
+      </div>
 
-            <template #content>
-              <div class="px-4 sm:px-6 pb-4 sm:pb-6">
-                <Markdown :content="notice" class="prose dark:prose-invert max-w-7xl" />
-              </div>
-            </template>
-          </UCollapsible>
-        </template>
-      </UCard>
-
-      <div v-if="allRows.length > 0" class="space-y-3">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-heroicons-list-bullet-20-solid" />
-          <h2 class="text-lg font-semibold">Uploads</h2>
+      <template v-else-if="tokenInfo">
+        <div class="space-y-4">
+          <TokenSummary :token-info="tokenInfo" :share-link="shareLinkText" @copy="copyShareLink"
+            @refresh="refreshAll" />
         </div>
-        <UploadsTable :rows="allRows" :allow-downloads="tokenInfo?.allow_public_downloads ?? false"
-          @resume="handleResume" @pause="handlePause" @cancel="handleCancel" />
-      </div>
 
-      <div v-else-if="tokenInfo && !showForms" class="max-w-full">
-        <UAlert color="neutral" variant="outline" title="No uploads yet"
-          description="All upload slots for this token have been used. There are no files uploaded yet."
-          icon="i-heroicons-inbox-20-solid" />
-      </div>
+        <UCard v-if="notice" variant="outline">
+          <template #header>
+            <UCollapsible v-model:open="showNotice">
+              <button class="group flex items-center gap-2 w-full cursor-pointer">
+                <UIcon name="i-heroicons-megaphone-20-solid" />
+                <span class="font-semibold">System Notice</span>
+                <UIcon name="i-heroicons-chevron-down-20-solid"
+                  class="ml-auto group-data-[state=open]:rotate-180 transition-transform duration-200" />
+              </button>
 
-      <div v-if="showForms" class="space-y-4">
-        <div class="grid gap-4 md:grid-cols-2">
-          <UploadSlotCard v-for="(slot, idx) in unintiatedSlots" :key="idx" :index="idx" :upload-slot="slot"
-            :metadata-schema="metadataSchema" :accept-attr="acceptAttr" @file="(e: Event) => onFile(slot, e)"
-            @meta="(v) => onMetaChange(slot, v)" @start="start(slot, idx)" />
+              <template #content>
+                <div class="px-4 sm:px-6 pb-4 sm:pb-6">
+                  <Markdown :content="notice" class="prose dark:prose-invert max-w-7xl" />
+                </div>
+              </template>
+            </UCollapsible>
+          </template>
+        </UCard>
+
+        <div v-if="allRows.length > 0" class="space-y-3">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-heroicons-list-bullet-20-solid" />
+            <h2 class="text-lg font-semibold">Uploads</h2>
+          </div>
+          <UploadsTable :rows="allRows" :allow-downloads="tokenInfo?.allow_public_downloads ?? false"
+            @resume="handleResume" @pause="handlePause" @cancel="handleCancel" />
         </div>
-        <UButton v-if="canAddMoreSlots" color="neutral" variant="outline" icon="i-heroicons-plus-20-solid"
-          @click="addSlot">
-          Add another upload ({{ (tokenInfo?.remaining_uploads || 0) - unintiatedSlots.length }} remaining)
-        </UButton>
-      </div>
+
+        <div v-else-if="!showForms" class="max-w-full">
+          <UAlert color="neutral" variant="outline" title="No uploads yet"
+            description="All upload slots for this token have been used. There are no files uploaded yet."
+            icon="i-heroicons-inbox-20-solid" />
+        </div>
+
+        <div v-if="showForms" class="space-y-4">
+          <div class="grid gap-4 md:grid-cols-2">
+            <UploadSlotCard v-for="(slot, idx) in unintiatedSlots" :key="idx" :index="idx" :upload-slot="slot"
+              :metadata-schema="metadataSchema" :accept-attr="acceptAttr" @file="(e: Event) => onFile(slot, e)"
+              @meta="(v) => onMetaChange(slot, v)" @start="start(slot, idx)" />
+          </div>
+          <UButton v-if="canAddMoreSlots" color="neutral" variant="outline" icon="i-heroicons-plus-20-solid"
+            @click="addSlot">
+            Add another upload ({{ (tokenInfo?.remaining_uploads || 0) - unintiatedSlots.length }} remaining)
+          </UButton>
+        </div>
+      </template>
     </div>
     <input ref="resumeInput" type="file" class="hidden" @change="onResumeFile" />
   </UContainer>
@@ -75,7 +89,7 @@ const route = useRoute()
 const toast = useToast()
 const token = ref<string>((route.params.token as string) || '')
 
-const { tokenInfo, notFound, tokenError, shareLinkText, fetchTokenInfo } = useTokenInfo(token)
+const { tokenInfo, notFound, tokenError, isExpired, isDisabled, shareLinkText, fetchTokenInfo } = useTokenInfo(token)
 const { metadataSchema, fetchMetadata } = useMetadata()
 const { applyParsedMeta } = useMetadataParser()
 const { startTusUpload, pauseUpload, resumeUpload } = useTusUpload()
@@ -89,6 +103,7 @@ const resumeInput = ref<HTMLInputElement | null>(null)
 const showNotice = useStorage<boolean>('show_notice', true)
 
 const showForms = computed(() => tokenInfo.value &&
+  !isExpired.value && !isDisabled.value &&
   (tokenInfo.value.remaining_uploads > 0 || slots.value.some((s) => s.status && s.status !== 'completed'))
 )
 
