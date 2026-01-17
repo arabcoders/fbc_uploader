@@ -7,10 +7,12 @@ from pathlib import Path
 
 TEST_CONFIG_DIR = tempfile.mkdtemp(prefix="fbc-test-config-")
 TEST_STORAGE_DIR = tempfile.mkdtemp(prefix="fbc-test-storage-")
+TEST_FRONTEND_DIR = tempfile.mkdtemp(prefix="fbc-test-frontend-")
 
 
 os.environ["FBC_CONFIG_PATH"] = TEST_CONFIG_DIR
 os.environ["FBC_STORAGE_PATH"] = TEST_STORAGE_DIR
+os.environ["FBC_FRONTEND_EXPORT_PATH"] = TEST_FRONTEND_DIR
 os.environ["FBC_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["FBC_ADMIN_API_KEY"] = "test-admin"
 os.environ["FBC_SKIP_MIGRATIONS"] = "1"
@@ -68,6 +70,19 @@ async def setup_db():
     await init_db()
     yield
     await engine.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_frontend():
+    """Create minimal frontend structure for tests."""
+    frontend_dir = Path(TEST_FRONTEND_DIR)
+    frontend_dir.mkdir(parents=True, exist_ok=True)
+    index_html = frontend_dir / "index.html"
+    index_html.write_text("<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>")
+    yield
+    import shutil
+
+    shutil.rmtree(TEST_FRONTEND_DIR, ignore_errors=True)
 
 
 def seed_schema(fields: list[dict] | None = None) -> Path:

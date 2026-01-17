@@ -10,6 +10,7 @@ export type TokenInfo = {
   allowed_mime?: string[];
   download_token: string;
   expires_at?: string;
+  disabled?: boolean;
   allow_public_downloads?: boolean;
   uploads: UploadRow[];
 };

@@ -129,7 +129,13 @@ function handleSubmit() {
   };
 
   if (state.expiry) {
-    payload.expiry_datetime = new Date(state.expiry).toISOString();
+    const localDate = new Date(state.expiry);
+    const tzOffset = -localDate.getTimezoneOffset();
+    const offsetHours = Math.floor(Math.abs(tzOffset) / 60).toString().padStart(2, '0');
+    const offsetMins = (Math.abs(tzOffset) % 60).toString().padStart(2, '0');
+    const offsetSign = tzOffset >= 0 ? '+' : '-';
+    const isoWithTz = `${state.expiry}:00${offsetSign}${offsetHours}:${offsetMins}`;
+    payload.expiry_datetime = isoWithTz;
   }
 
   if (props.mode === "edit") {

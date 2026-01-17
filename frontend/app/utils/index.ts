@@ -35,13 +35,20 @@ function formatBytes(size: number): string {
 }
 
 /**
- * Format date to locale string
+ * Format date to locale string with timezone
  */
 function formatDate(d?: string) {
   if (!d) return "";
   try {
     const date = new Date(d);
-    return date.toLocaleString();
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    });
   } catch {
     return d;
   }

@@ -32,7 +32,7 @@ class FBCIE(InfoExtractor):
             return None
 
         if mat.group("fid"):
-            return f"{mat.group('id')}-{mat.group('fid')}"
+            return mat.group("fid")
 
         return mat.group("id")
 
@@ -97,7 +97,7 @@ class FBCIE(InfoExtractor):
             self.report_warning("Token contains no uploaded files.")
             return None
 
-        if len(playlist) == 1 or self.get_param("noplaylist"):
+        if is_single or self.get_param("noplaylist"):
             if self.get_param("noplaylist") and len(playlist) > 1:
                 self.to_screen(f"Downloading 1 video out of '{len(playlist)}' because of --no-playlist option")
                 playlist[0]["_type"] = "video"

@@ -1,11 +1,19 @@
 <template>
   <UContainer class="py-10">
     <div class="space-y-6">
-      <div v-if="notFound" class="max-w-2xl">
-        <UAlert color="error" variant="solid" :title="tokenError || 'Token not found or expired'"
+      <div v-if="notFound && !tokenInfo">
+        <UAlert color="error" variant="solid" :title="tokenError || 'Token not found'"
           icon="i-heroicons-exclamation-triangle-20-solid" />
       </div>
-      <div v-else-if="tokenInfo" class="space-y-4">
+
+      <div v-if="tokenInfo && (isExpired || isDisabled)">
+        <UAlert v-if="isExpired" color="warning" variant="soft" title="Token has expired"
+          icon="i-heroicons-clock-20-solid" />
+        <UAlert v-else-if="isDisabled" color="warning" variant="soft" title="Token is disabled"
+          icon="i-heroicons-lock-closed-20-solid" />
+      </div>
+
+      <div v-if="tokenInfo" class="space-y-4">
         <UCard>
           <div class="space-y-4">
             <div class="flex items-start justify-between gap-4">
@@ -165,7 +173,7 @@ const route = useRoute()
 const toast = useToast()
 const token = ref<string>((route.params.token as string) || '')
 
-const { tokenInfo, notFound, tokenError, fetchTokenInfo } = useTokenInfo(token)
+const { tokenInfo, notFound, tokenError, isExpired, isDisabled, fetchTokenInfo } = useTokenInfo(token)
 const loading = ref(true)
 const notice = ref<string>('')
 const showNotice = useStorage<boolean>('show_notice', true)
