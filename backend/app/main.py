@@ -158,9 +158,7 @@ def create_app() -> FastAPI:
 
         if is_bot and settings.allow_public_downloads:
             async for db in get_db():
-                stmt = select(models.UploadToken).where(
-                    (models.UploadToken.token == token) | (models.UploadToken.download_token == token)
-                )
+                stmt = select(models.UploadToken).where((models.UploadToken.token == token) | (models.UploadToken.download_token == token))
                 result = await db.execute(stmt)
                 token_row = result.scalar_one_or_none()
 
