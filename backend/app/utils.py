@@ -1,6 +1,7 @@
 """Utility functions for file handling and validation."""
 
 import asyncio
+import contextlib
 import json
 from pathlib import Path
 
@@ -151,3 +152,68 @@ def parse_size(text: str) -> int:
         return int(num * MULTIPLIERS[unit])
 
     return int(s)
+
+
+def extract_video_metadata(ffprobe_data: dict | None) -> dict:
+    """
+    Extract video metadata (width, height, duration) from ffprobe JSON output.
+
+    Args:
+        ffprobe_data: ffprobe JSON output dictionary
+
+    Returns:
+        Dictionary with width, height, duration keys (values may be None)
+
+    """
+    result = {"width": None, "height": None, "duration": None}
+
+    if not ffprobe_data:
+        return result
+
+    if "format" in ffprobe_data and "duration" in ffprobe_data["format"]:
+        with contextlib.suppress(ValueError, TypeError):
+            result["duration"] = int(float(ffprobe_data["format"]["duration"]))
+
+    if "streams" in ffprobe_data:
+        for stream in ffprobe_data["streams"]:
+            if stream.get("codec_type") == "video":
+                result["width"] = stream.get("width")
+                result["height"] = stream.get("height")
+                break
+
+    return result
+
+
+def format_file_size(size_bytes: int) -> str:
+    """
+    Format file size in bytes to human-readable string.
+
+    Args:
+        size_bytes: File size in bytes
+
+    Returns:
+        Formatted string like "1.5 MB", "500 KB", etc.
+
+    """
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} PB"
+
+
+def format_duration(seconds: int) -> str:
+    """
+    Format duration in seconds to HH:MM:SS or MM:SS string.
+
+    Args:
+        seconds: Duration in seconds
+
+    Returns:
+        Formatted time string
+
+    """
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}" if hours > 0 else f"{minutes:02d}:{secs:02d}"
