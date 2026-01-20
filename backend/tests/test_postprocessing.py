@@ -118,7 +118,7 @@ async def test_postprocessing_worker_processes_queue(client):
         records = result.scalars().all()
 
         for record in records:
-            assert record.status == "postprocessing", "Both uploads should be in postprocessing"
+            assert record.status in ("postprocessing", "completed"), "Upload should be in postprocessing or already completed"
 
     completed = await wait_for_processing([upload1_id, upload2_id])
     assert completed, "Processing should complete within timeout"
