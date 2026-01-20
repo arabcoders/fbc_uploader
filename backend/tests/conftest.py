@@ -5,10 +5,12 @@ import tempfile
 from importlib import reload
 from pathlib import Path
 
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 TEST_CONFIG_DIR = tempfile.mkdtemp(prefix="fbc-test-config-")
 TEST_STORAGE_DIR = tempfile.mkdtemp(prefix="fbc-test-storage-")
 TEST_FRONTEND_DIR = tempfile.mkdtemp(prefix="fbc-test-frontend-")
-
 
 os.environ["FBC_CONFIG_PATH"] = TEST_CONFIG_DIR
 os.environ["FBC_STORAGE_PATH"] = TEST_STORAGE_DIR
@@ -18,8 +20,6 @@ os.environ["FBC_ADMIN_API_KEY"] = "test-admin"
 os.environ["FBC_SKIP_MIGRATIONS"] = "1"
 os.environ["FBC_SKIP_CLEANUP"] = "1"
 
-import pytest
-
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
 import backend.app.config as config_module
 from backend.app import metadata_schema
 from backend.app.config import Settings
+from backend.app.postprocessing import ProcessingQueue
 
 config_module.settings = Settings()
 
@@ -83,6 +84,27 @@ def setup_frontend():
     import shutil
 
     shutil.rmtree(TEST_FRONTEND_DIR, ignore_errors=True)
+
+
+@pytest.fixture
+async def processing_queue():
+    """Create a fresh processing queue for each test."""
+    queue = ProcessingQueue()
+    queue.start_worker()
+    yield queue
+    await queue.stop_worker()
+
+
+@pytest.fixture
+async def client(processing_queue):
+    """Create an HTTP client with overridden dependencies."""
+    from backend.app.main import app
+
+    app.state.processing_queue = processing_queue
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client
 
 
 def seed_schema(fields: list[dict] | None = None) -> Path:

@@ -94,14 +94,10 @@ async def create_token(
     await db.commit()
     await db.refresh(record)
 
-    upload_url = str(request.url_for("health"))
-    if upload_token:
-        upload_url: str = upload_url.replace("/api/health", f"/t/{upload_token}")
-
     return schemas.TokenResponse(
         token=upload_token,
         download_token=download_token,
-        upload_url=upload_url,
+        upload_url=str(request.app.url_path_for("upload_page", token=upload_token)),
         expires_at=record.expires_at,
         max_uploads=record.max_uploads,
         max_size_bytes=record.max_size_bytes,
@@ -144,9 +140,9 @@ async def get_token(
     uploads_list: list[schemas.UploadRecordResponse] = []
     for u in uploads:
         item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(u, from_attributes=True)
-        item.upload_url = str(request.url_for("tus_head", upload_id=u.public_id))
-        item.download_url = str(request.url_for("download_file", download_token=token_row.download_token, upload_id=u.public_id))
-        item.info_url = str(request.url_for("get_file_info", download_token=token_row.download_token, upload_id=u.public_id))
+        item.upload_url = str(request.app.url_path_for("tus_head", upload_id=u.public_id))
+        item.download_url = str(request.app.url_path_for("download_file", download_token=token_row.download_token, upload_id=u.public_id))
+        item.info_url = str(request.app.url_path_for("get_file_info", download_token=token_row.download_token, upload_id=u.public_id))
         uploads_list.append(item)
 
     return schemas.TokenPublicInfo(
@@ -314,9 +310,9 @@ async def list_token_uploads(
     uploads_list: list[schemas.UploadRecordResponse] = []
     for u in uploads:
         item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(u, from_attributes=True)
-        item.download_url = str(request.url_for("download_file", download_token=token_row.download_token, upload_id=u.public_id))
-        item.upload_url = str(request.url_for("tus_head", upload_id=u.public_id))
-        item.info_url = str(request.url_for("get_file_info", download_token=token_row.download_token, upload_id=u.public_id))
+        item.download_url = str(request.app.url_path_for("download_file", download_token=token_row.download_token, upload_id=u.public_id))
+        item.upload_url = str(request.app.url_path_for("tus_head", upload_id=u.public_id))
+        item.info_url = str(request.app.url_path_for("get_file_info", download_token=token_row.download_token, upload_id=u.public_id))
         uploads_list.append(item)
 
     return uploads_list
@@ -380,9 +376,9 @@ async def get_file_info(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File missing")
 
     item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(record, from_attributes=True)
-    item.download_url = str(request.url_for("download_file", download_token=download_token, upload_id=upload_id))
-    item.upload_url = str(request.url_for("tus_head", upload_id=upload_id))
-    item.info_url = str(request.url_for("get_file_info", download_token=download_token, upload_id=upload_id))
+    item.download_url = str(request.app.url_path_for("download_file", download_token=download_token, upload_id=upload_id))
+    item.upload_url = str(request.app.url_path_for("tus_head", upload_id=upload_id))
+    item.info_url = str(request.app.url_path_for("get_file_info", download_token=download_token, upload_id=upload_id))
     return item
 
 

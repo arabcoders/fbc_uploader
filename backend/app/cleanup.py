@@ -76,7 +76,9 @@ async def _remove_stale_uploads(session: AsyncSession) -> int:
     total_removed = 0
 
     stmt: Select[tuple[models.UploadRecord]] = (
-        select(models.UploadRecord).where(models.UploadRecord.status != "completed").where(models.UploadRecord.created_at < cutoff_naive)
+        select(models.UploadRecord)
+        .where(models.UploadRecord.status.in_(["pending", "in_progress"]))
+        .where(models.UploadRecord.created_at < cutoff_naive)
     )
     res: Result[tuple[models.UploadRecord]] = await session.execute(stmt)
 

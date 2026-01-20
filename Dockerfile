@@ -60,6 +60,7 @@ COPY --chown=app:app ./alembic.ini /app/alembic.ini
 COPY --chown=app:app ./backend /app/backend
 COPY --chown=app:app --from=node_builder /app/exported /app/frontend/exported
 COPY --chown=app:app --from=python_builder /opt/python /opt/python
+COPY --from=ghcr.io/arabcoders/jellyfin-ffmpeg /usr/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=ghcr.io/arabcoders/jellyfin-ffmpeg /usr/bin/ffprobe /usr/bin/ffprobe
 
 # Install fbc CLI script

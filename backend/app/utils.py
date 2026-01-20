@@ -3,8 +3,11 @@
 import asyncio
 import contextlib
 import json
+import os
+import tempfile
 from pathlib import Path
 
+import aiofiles
 import magic
 
 MIME = magic.Magic(mime=True)
@@ -217,3 +220,120 @@ def format_duration(seconds: int) -> str:
     minutes, secs = divmod(remainder, 60)
 
     return f"{hours:02d}:{minutes:02d}:{secs:02d}" if hours > 0 else f"{minutes:02d}:{secs:02d}"
+
+
+async def _needs_faststart(path: str | Path, *, scan_bytes: int = 8 * 1024 * 1024) -> bool:
+    """
+    Check if an MP4 file needs 'faststart' (moov atom at the beginning).
+
+    Args:
+        path (str | Path): Path to the MP4 file to check
+        scan_bytes (int): Number of bytes to scan for moov/mdat atoms
+
+    Returns:
+        bool: True if faststart is needed, False otherwise
+
+    """
+    p = Path(path)
+
+    async with aiofiles.open(p, "rb") as f:
+        data = await f.read(scan_bytes)
+
+    moov = data.find(b"moov")
+    mdat = data.find(b"mdat")
+
+    if -1 == moov:
+        return True
+
+    if -1 == mdat:
+        return False
+
+    return moov > mdat
+
+
+async def ensure_faststart_mp4(
+    mp4_path: str | Path,
+    mimetype: str,
+    *,
+    ffmpeg_bin: str = "ffmpeg",
+    scan_bytes: int = 8 * 1024 * 1024,
+) -> bool:
+    """
+    Ensure that an MP4 file has 'faststart' enabled (moov atom at the beginning).
+
+    Args:
+        mp4_path (str | Path): Path to the MP4 file to process
+        mimetype (str): MIME type of the file
+        ffmpeg_bin (str): Path to the ffmpeg binary
+        scan_bytes (int): Number of bytes to scan for moov/mdat atoms
+
+    Returns:
+        bool: True if the file was modified to enable faststart, False otherwise
+
+    Raises:
+        FileNotFoundError: If the input file does not exist
+        RuntimeError: If ffmpeg fails to process the file
+
+    """
+    src = Path(mp4_path)
+    if not src.exists():
+        raise FileNotFoundError(src)
+
+    mime = mimetype.strip().lower()
+    if mime not in ("video/mp4", "video/quicktime"):
+        return False
+
+    if not await _needs_faststart(src, scan_bytes=scan_bytes):
+        return False
+
+    tmp_dir = src.parent
+    fd, tmp_out = tempfile.mkstemp(
+        prefix=src.name + ".",
+        suffix=".faststart.tmp",
+        dir=tmp_dir,
+    )
+    os.close(fd)
+    tmp_out_path = Path(tmp_out)
+
+    try:
+        cmd = [
+            ffmpeg_bin,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(src),
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            str(tmp_out_path),
+        ]
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await proc.communicate()
+
+        if proc.returncode != 0:
+            msg = (
+                f"ffmpeg faststart failed (rc={proc.returncode}).\n"
+                f"stdout:\n{out.decode(errors='replace')}\n"
+                f"stderr:\n{err.decode(errors='replace')}"
+            )
+            raise RuntimeError(msg)
+
+        if not tmp_out_path.exists() or tmp_out_path.stat().st_size == 0:
+            msg = "ffmpeg produced an empty output file"
+            raise RuntimeError(msg)
+
+        tmp_out_path.replace(src)
+        return True
+
+    finally:
+        with contextlib.suppress(Exception):
+            if tmp_out_path.exists():
+                tmp_out_path.unlink()

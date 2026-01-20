@@ -18,6 +18,7 @@ from .cleanup import start_cleanup_loop
 from .config import settings
 from .db import engine
 from .migrate import run_migrations
+from .postprocessing import ProcessingQueue
 
 
 def create_app() -> FastAPI:
@@ -40,10 +41,16 @@ def create_app() -> FastAPI:
         if not settings.skip_migrations:
             await run_in_threadpool(run_migrations)
 
+        queue = ProcessingQueue()
+        queue.start_worker()
+        app.state.processing_queue = queue
+
         if not settings.skip_cleanup:
             app.state.cleanup_task = asyncio.create_task(start_cleanup_loop(), name="cleanup_loop")
 
         yield
+
+        await queue.stop_worker()
 
         if not settings.skip_cleanup:
             task: asyncio.Task | None = getattr(app.state, "cleanup_task", None)
@@ -232,6 +239,19 @@ def create_app() -> FastAPI:
             if index_file.exists():
                 return FileResponse(index_file, status_code=status.HTTP_200_OK)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    @app.get("/t/{token}", name="upload_page")
+    @app.get("/t/{token}/")
+    async def upload_page(token: str, request: Request, user_agent: Annotated[str | None, Header()] = None):
+        """Handle /t/{token} with bot detection for embed preview."""
+        if not frontend_dir.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+        index_file = frontend_dir / "index.html"
+        if not index_file.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+        return FileResponse(index_file, status_code=status.HTTP_200_OK)
 
     @app.get("/{full_path:path}", name="static_frontend")
     async def frontend(full_path: str) -> FileResponse:
