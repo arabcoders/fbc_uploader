@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import type { TokenInfo } from '~/types/token'
+import type { ApiError } from '~/types/uploads'
 
 export function useTokenInfo(tokenValue: Ref<string>) {
     const tokenInfo = ref<TokenInfo | null>(null)
@@ -23,8 +24,8 @@ export function useTokenInfo(tokenValue: Ref<string>) {
         isDisabled.value = false
         try {
             const { $apiFetch } = useNuxtApp()
-            const data = await $apiFetch('/api/tokens/' + tokenValue.value)
-            tokenInfo.value = data as any
+            const data = await $apiFetch<TokenInfo>('/api/tokens/' + tokenValue.value)
+            tokenInfo.value = data
             notFound.value = false
             
             // Check token status based on returned data
@@ -36,10 +37,11 @@ export function useTokenInfo(tokenValue: Ref<string>) {
                 }
                 isDisabled.value = tokenInfo.value.disabled || false
             }
-        } catch (err: any) {
+        } catch (err) {
+            const error = err as ApiError
             tokenInfo.value = null
             notFound.value = true
-            tokenError.value = err?.data?.detail || err?.message || 'Failed to load token info.'
+            tokenError.value = error?.data?.detail || error?.message || 'Failed to load token info.'
         }
     }
 

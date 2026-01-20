@@ -26,15 +26,10 @@
           <td class="px-4 py-3 text-sm">
             <div class="space-y-1.5">
               <div class="flex items-center gap-2">
-                <template v-if="token.disabled">
-                  <span>{{ token.token }}</span>
-                  <UTooltip text="Token is disabled" :arrow="true">
-                    <UIcon name="i-heroicons-lock-closed-20-solid" class="size-4 text-muted" />
-                  </UTooltip>
-                </template>
-                <template v-else>
-                  <NuxtLink :to="`/t/${token.token}`">{{ token.token }}</NuxtLink>
-                </template>
+                <NuxtLink :to="`/${token.disabled ? 'f' : 't'}/${token.token}`">{{ token.token }}</NuxtLink>
+                <UTooltip text="Token is disabled" :arrow="true" v-if="token.disabled">
+                  <UIcon name="i-heroicons-lock-closed-20-solid" class="size-4 text-muted" />
+                </UTooltip>
               </div>
             </div>
           </td>

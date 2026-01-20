@@ -73,7 +73,7 @@ function formatKey(key: string): string {
 /**
  * Format metadata value for display
  */
-function formatValue(val: any): string {
+function formatValue(val: unknown): string {
   if (val === null || val === undefined) return '—';
   if (Array.isArray(val)) return val.join(', ');
   if (typeof val === 'object') return JSON.stringify(val);

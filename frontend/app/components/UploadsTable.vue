@@ -11,8 +11,8 @@
         </tr>
       </thead>
       <tbody class="bg-default divide-y divide-default">
-        <tr v-for="row in rows" :key="row.id" class="hover:bg-elevated/50 transition-colors">
-          <td class="px-4 py-3 text-sm">{{ row.id }}</td>
+        <tr v-for="(row, index) in rows" :key="row.public_id" class="hover:bg-elevated/50 transition-colors">
+          <td class="px-4 py-3 text-sm">{{ index+1 }}</td>
           <td class="px-4 py-3 text-sm">
             <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">
               <NuxtLink v-if="allowDownloads && row.download_url && row.status === 'completed'" :href="row.download_url" target="_blank"
@@ -43,11 +43,12 @@
               :color="getStatusColor(row.status)" 
               variant="soft"
               :icon="getStatusIcon(row.status)">
-              {{ row.status }}
+              <span v-if="row.status === 'postprocessing'">Processing</span>
+              <span v-else>{{ row.status }}</span>
             </UBadge>
           </td>
           <td class="px-4 py-3 text-sm">
-            <span v-if="row.status === 'completed'" class="font-medium">
+            <span v-if="row.status === 'completed' || row.status === 'postprocessing'" class="font-medium">
               {{ formatBytes(row.size_bytes ?? row.upload_length ?? 0) }}
             </span>
             <span v-else class="text-sm">
@@ -74,7 +75,7 @@
                 Resume
               </UButton>
               
-              <UButton v-if="row.status !== 'completed' && (row.upload_offset ?? 0) < (row.upload_length ?? 0)"
+              <UButton v-if="row.status !== 'completed' && (row.status === 'postprocessing' || (row.upload_offset ?? 0) < (row.upload_length ?? 0))"
                 color="error" variant="soft" size="xs" icon="i-heroicons-x-mark-20-solid" @click="$emit('cancel', row)">
                 Cancel
               </UButton>
@@ -107,6 +108,7 @@ function getStatusColor(status: string): 'success' | 'error' | 'warning' | 'prim
     case 'paused': return 'warning';
     case 'uploading':
     case 'in_progress':
+    case 'postprocessing':
     case 'initiating': return 'primary';
     default: return 'neutral';
   }
@@ -120,6 +122,7 @@ function getStatusIcon(status: string): string {
     case 'paused': return 'i-heroicons-pause-circle-20-solid';
     case 'uploading':
     case 'in_progress': return 'i-heroicons-arrow-path-20-solid';
+    case 'postprocessing': return 'i-heroicons-cog-6-tooth-20-solid';
     case 'initiating': return 'i-heroicons-arrow-up-tray-20-solid';
     case 'pending': return 'i-heroicons-clock-20-solid';
     default: return 'i-heroicons-question-mark-circle-20-solid';

@@ -126,7 +126,7 @@ import AdminTokenForm from "~/components/AdminTokenForm.vue";
 import AdminTokensTable from "~/components/AdminTokensTable.vue";
 import AdminUploadsTable from "~/components/AdminUploadsTable.vue";
 import type { AdminToken } from "~/types/token";
-import type { UploadRow } from "~/types/uploads";
+import type { UploadRow, ApiError } from "~/types/uploads";
 
 definePageMeta({ middleware: "admin" });
 
@@ -187,8 +187,8 @@ async function fetchTokens() {
     });
     tokens.value = res.tokens;
     totalTokens.value = res.total;
-  } catch (err: any) {
-    handleAuthError(err);
+  } catch (err) {
+    handleAuthError(err as ApiError);
   } finally {
     loadingTokens.value = false;
   }
@@ -201,8 +201,8 @@ async function handleCreate(payload: Record<string, any>) {
     toast.add({ title: "Token created", color: "success", icon: "i-heroicons-check-circle-20-solid" });
     createOpen.value = false;
     await fetchTokens();
-  } catch (err: any) {
-    handleAuthError(err);
+  } catch (err) {
+    handleAuthError(err as ApiError);
   } finally {
     creating.value = false;
   }
@@ -221,8 +221,8 @@ async function handleUpdate(payload: Record<string, any>) {
     toast.add({ title: "Token updated", color: "success", icon: "i-heroicons-check-circle-20-solid" });
     editOpen.value = false;
     await fetchTokens();
-  } catch (err: any) {
-    handleAuthError(err);
+  } catch (err) {
+    handleAuthError(err as ApiError);
   } finally {
     savingEdit.value = false;
   }
@@ -245,8 +245,8 @@ async function confirmDelete() {
     toast.add({ title: "Token deleted", color: "success", icon: "i-heroicons-check-circle-20-solid" });
     deleteOpen.value = false;
     await fetchTokens();
-  } catch (err: any) {
-    handleAuthError(err);
+  } catch (err) {
+    handleAuthError(err as ApiError);
   } finally {
     deleting.value = false;
   }
@@ -281,21 +281,21 @@ async function confirmDeleteUpload() {
   if (!deleteUploadTarget.value) return;
   deletingUpload.value = true;
   try {
-    await $apiFetch(`/api/admin/uploads/${deleteUploadTarget.value.id}`, { method: "DELETE" });
+    await $apiFetch(`/api/admin/uploads/${deleteUploadTarget.value.public_id}`, { method: "DELETE" });
     toast.add({ title: "Upload deleted", color: "success", icon: "i-heroicons-check-circle-20-solid" });
     deleteUploadOpen.value = false;
     // Refresh the uploads list
     if (uploadsToken.value) {
       await openUploads(uploadsToken.value);
     }
-  } catch (err: any) {
-    handleAuthError(err);
+  } catch (err) {
+    handleAuthError(err as ApiError);
   } finally {
     deletingUpload.value = false;
   }
 }
 
-function handleAuthError(err: any) {
+function handleAuthError(err: ApiError) {
   if (err?.response?.status === 401 || err?.status === 401) {
     adminToken.value = null;
     toast.add({

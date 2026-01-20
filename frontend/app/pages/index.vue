@@ -30,6 +30,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import type { ApiError } from "~/types/uploads";
 
 const route = useRoute();
 const toast = useToast();
@@ -58,9 +59,10 @@ const onSubmit = async () => {
     await $apiFetch("/api/admin/validate");
     toast.add({ title: "Signed in", color: "success", icon: "i-heroicons-check-circle-20-solid" });
     await navigateTo(redirectTo.value);
-  } catch (err: any) {
+  } catch (err) {
+    const apiError = err as ApiError;
     adminToken.value = null;
-    error.value = err?.data?.detail || err?.message || "Invalid api key";
+    error.value = apiError?.data?.detail || apiError?.message || "Invalid api key";
     console.log("Admin sign-in error:", err, error.value);
   } finally {
     loading.value = false;

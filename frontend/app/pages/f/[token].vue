@@ -92,7 +92,7 @@
               </tr>
             </thead>
             <tbody class="bg-default divide-y divide-default">
-              <tr v-for="upload in uploads" :key="upload.id" class="hover:bg-elevated/50 transition-colors">
+              <tr v-for="upload in uploads" :key="upload.public_id" class="hover:bg-elevated/50 transition-colors">
                 <td class="px-4 py-3 text-sm">
                   <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">
                     <div class="flex items-center gap-2">
@@ -114,7 +114,7 @@
                         <div class="space-y-2">
                           <div class="grid grid-cols-[auto_1fr] gap-2">
                             <span class="text-muted font-medium">ID:</span>
-                            <span>{{ upload.id }}</span>
+                            <span>{{ upload.public_id }}</span>
                           </div>
                           <div v-if="upload.mimetype" class="grid grid-cols-[auto_1fr] gap-2">
                             <span class="text-muted font-medium">Type:</span>
@@ -202,6 +202,7 @@ function getStatusColor(status: string): 'success' | 'error' | 'warning' | 'neut
     case 'error':
     case 'validation_failed': return 'error'
     case 'in_progress':
+    case 'postprocessing':
     case 'uploading': return 'warning'
     default: return 'neutral'
   }

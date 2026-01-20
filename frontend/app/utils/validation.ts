@@ -14,8 +14,10 @@ export function validateSlot(slot: Slot, schema: Field[], tokenInfo: TokenInfo |
       return
     }
     if (f.type === 'date' && val) {
-      const d = new Date(val)
-      if (Number.isNaN(d.getTime())) errs.push(`${f.label} must be a valid date`)
+      if (typeof val === 'string' || typeof val === 'number' || val instanceof Date) {
+        const d = new Date(val)
+        if (Number.isNaN(d.getTime())) errs.push(`${f.label} must be a valid date`)
+      }
     }
     if (f.type === 'number' || f.type === 'integer') {
       if (val !== null && val !== undefined && val !== '') {
@@ -29,7 +31,7 @@ export function validateSlot(slot: Slot, schema: Field[], tokenInfo: TokenInfo |
       if (f.minLength && val.length < f.minLength) errs.push(`${f.label} must be at least ${f.minLength} chars`)
       if (f.maxLength && val.length > f.maxLength) errs.push(`${f.label} must be at most ${f.maxLength} chars`)
     }
-    if (f.type === 'select' && f.options && val) {
+    if (f.type === 'select' && f.options && val && typeof val === 'string') {
       if (!f.allowCustom) {
         const opts = f.options.map((o) => (typeof o === 'string' ? o : o.value))
         if (!opts.includes(val)) errs.push(`${f.label} has invalid option`)
@@ -38,8 +40,8 @@ export function validateSlot(slot: Slot, schema: Field[], tokenInfo: TokenInfo |
     if (f.type === 'multiselect' && Array.isArray(val) && f.options) {
       if (!f.allowCustom) {
         const opts = f.options.map((o) => (typeof o === 'string' ? o : o.value))
-        val.forEach((v: any) => {
-          if (!opts.includes(v)) errs.push(`${f.label} has invalid option: ${v}`)
+        val.forEach((v: unknown) => {
+          if (typeof v === 'string' && !opts.includes(v)) errs.push(`${f.label} has invalid option: ${v}`)
         })
       }
     }
