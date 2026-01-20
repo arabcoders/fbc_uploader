@@ -21,7 +21,7 @@
             No uploads found
           </td>
         </tr>
-        <tr v-else v-for="upload in uploads" :key="upload.id" class="hover:bg-elevated/50 transition-colors">
+        <tr v-else v-for="upload in uploads" :key="upload.public_id" class="hover:bg-elevated/50 transition-colors">
           <td class="px-4 py-3 text-sm">
             <div class="space-y-1">
               <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">

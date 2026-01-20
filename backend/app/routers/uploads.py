@@ -9,14 +9,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 from sqlalchemy import select
 from sqlalchemy.engine.result import Result
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import attributes
 from sqlalchemy.sql.selectable import Select
 
 from backend.app import models, schemas
 from backend.app.config import settings
 from backend.app.db import get_db
 from backend.app.metadata_schema import validate_metadata
-from backend.app.utils import detect_mimetype, extract_ffprobe_metadata, is_multimedia, mime_allowed
+from backend.app.postprocessing import ProcessingQueue
+from backend.app.utils import detect_mimetype, is_multimedia, mime_allowed
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.result import Result
@@ -25,19 +25,38 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
 
-async def _ensure_token(db: AsyncSession, token_value: str) -> models.UploadToken:
+def get_processing_queue(request: Request) -> ProcessingQueue | None:
+    """Get the processing queue from app state (returns None if not available in tests)."""
+    return getattr(request.app.state, "processing_queue", None)
+
+
+async def _ensure_token(
+    db: AsyncSession,
+    token_value: str | None = None,
+    token_id: int | None = None,
+    check_remaining: bool = True,
+) -> models.UploadToken:
     """
-    Ensure the upload token is valid, not expired or disabled, and has remaining uploads.
+    Ensure the upload token is valid, not expired or disabled, and optionally has remaining uploads.
 
     Args:
         db (AsyncSession): Database session.
-        token_value (str): The upload token string.
+        token_value (str | None): The upload token string.
+        token_id (int | None): The upload token ID.
+        check_remaining (bool): Whether to check remaining uploads. Defaults to True.
 
     Returns:
         UploadToken: The valid upload token object.
 
     """
-    stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.token == token_value)
+    if token_value:
+        stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.token == token_value)
+    elif token_id:
+        stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.id == token_id)
+    else:
+        msg = "Either token_value or token_id must be provided"
+        raise ValueError(msg)
+
     res: Result[tuple[models.UploadToken]] = await db.execute(stmt)
     if not (token := res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
@@ -48,10 +67,12 @@ async def _ensure_token(db: AsyncSession, token_value: str) -> models.UploadToke
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
 
-    if token.disabled or expires_at < now:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token expired or disabled")
+    if expires_at < now:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token expired")
+    if token.disabled:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token disabled")
 
-    if token.remaining_uploads <= 0:
+    if check_remaining and token.remaining_uploads <= 0:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload limit reached")
 
     return token
@@ -144,8 +165,8 @@ async def initiate_upload(
 
     return schemas.InitiateUploadResponse(
         upload_id=record.public_id,
-        upload_url=str(request.url_for("tus_head", upload_id=record.public_id)),
-        download_url=str(request.url_for("download_file", download_token=token_row.download_token, upload_id=record.public_id)),
+        upload_url=str(request.app.url_path_for("tus_head", upload_id=record.public_id)),
+        download_url=str(request.app.url_path_for("download_file", download_token=token_row.download_token, upload_id=record.public_id)),
         meta_data=cleaned_metadata,
         allowed_mime=token_row.allowed_mime,
         remaining_uploads=token_row.remaining_uploads,
@@ -166,6 +187,7 @@ async def tus_head(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)])
 
     """
     record: models.UploadRecord = await _get_upload_record(db, upload_id)
+    await _ensure_token(db, token_id=record.token_id, check_remaining=False)
 
     if record.upload_length is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload length unknown")
@@ -185,6 +207,7 @@ async def tus_patch(
     upload_id: str,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    queue: Annotated[ProcessingQueue | None, Depends(get_processing_queue)],
     upload_offset: Annotated[int, Header(convert_underscores=False, alias="Upload-Offset")] = ...,
     content_length: Annotated[int | None, Header()] = None,
     content_type: Annotated[str, Header(convert_underscores=False, alias="Content-Type")] = ...,
@@ -196,6 +219,7 @@ async def tus_patch(
         upload_id (str): The public ID of the upload.
         request (Request): The incoming HTTP request.
         db (AsyncSession): Database session.
+        queue (ProcessingQueue | None): The processing queue for post-processing.
         upload_offset (int): The current upload offset from the client.
         content_length (int | None): The Content-Length header value.
         content_type (str): The Content-Type header value.
@@ -216,6 +240,7 @@ async def tus_patch(
         )
 
     record: models.UploadRecord = await _get_upload_record(db, upload_id)
+    await _ensure_token(db, token_id=record.token_id, check_remaining=False)
 
     if record.upload_length is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload length unknown")
@@ -270,25 +295,25 @@ async def tus_patch(
             record.mimetype = actual_mimetype
 
             if is_multimedia(actual_mimetype):
-                ffprobe_data: dict | None = await extract_ffprobe_metadata(path)
-                if ffprobe_data is not None:
-                    if record.meta_data is None:
-                        record.meta_data = {}
-
-                    record.meta_data["ffprobe"] = ffprobe_data
-                    attributes.flag_modified(record, "meta_data")
-
-            record.status = "completed"
-            record.completed_at = datetime.now(UTC)
+                record.status = "postprocessing"
+                await db.commit()
+                await db.refresh(record)
+                if queue:
+                    await queue.enqueue(record.public_id)
+            else:
+                record.status = "completed"
+                record.completed_at = datetime.now(UTC)
+                await db.commit()
+                await db.refresh(record)
         else:
             record.status = "in_progress"
 
-        try:
-            await db.commit()
-            await db.refresh(record)
-        except Exception:
-            await db.rollback()
-            await db.refresh(record)
+            try:
+                await db.commit()
+                await db.refresh(record)
+            except Exception:
+                await db.rollback()
+                await db.refresh(record)
 
     return Response(
         status_code=status.HTTP_204_NO_CONTENT,
@@ -327,6 +352,8 @@ async def tus_delete(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)
 
     """
     record: models.UploadRecord = await _get_upload_record(db, upload_id)
+    await _ensure_token(db, token_id=record.token_id, check_remaining=False)
+
     path = Path(record.storage_path or "")
 
     if path.exists():
@@ -351,11 +378,8 @@ async def mark_complete(upload_id: str, db: Annotated[AsyncSession, Depends(get_
         UploadRecord: The updated upload record.
 
     """
-    stmt: Select[tuple[models.UploadRecord]] = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
-    res: Result[tuple[models.UploadRecord]] = await db.execute(stmt)
-
-    if not (record := res.scalar_one_or_none()):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
+    record: models.UploadRecord = await _get_upload_record(db, upload_id)
+    await _ensure_token(db, token_id=record.token_id, check_remaining=False)
 
     record.status = "completed"
     record.completed_at = datetime.now(UTC)
@@ -383,12 +407,7 @@ async def cancel_upload(
 
     """
     record: models.UploadRecord = await _get_upload_record(db, upload_id)
-
-    stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.token == token)
-    res: Result[tuple[models.UploadToken]] = await db.execute(stmt)
-
-    if not (token_row := res.scalar_one_or_none()):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
+    token_row: models.UploadToken = await _ensure_token(db, token_value=token, check_remaining=False)
 
     if record.token_id != token_row.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload does not belong to this token")

@@ -1,11 +1,19 @@
 <template>
   <UContainer class="py-10">
     <div class="space-y-6">
-      <div v-if="notFound" class="max-w-2xl">
-        <UAlert color="error" variant="solid" :title="tokenError || 'Token not found or expired'"
+      <div v-if="notFound && !tokenInfo">
+        <UAlert color="error" variant="solid" :title="tokenError || 'Token not found'"
           icon="i-heroicons-exclamation-triangle-20-solid" />
       </div>
-      <div v-else-if="tokenInfo" class="space-y-4">
+
+      <div v-if="tokenInfo && (isExpired || isDisabled)">
+        <UAlert v-if="isExpired" color="warning" variant="soft" title="Token has expired"
+          icon="i-heroicons-clock-20-solid" />
+        <UAlert v-else-if="isDisabled" color="warning" variant="soft" title="Token is disabled"
+          icon="i-heroicons-lock-closed-20-solid" />
+      </div>
+
+      <div v-if="tokenInfo" class="space-y-4">
         <UCard>
           <div class="space-y-4">
             <div class="flex items-start justify-between gap-4">
@@ -84,7 +92,7 @@
               </tr>
             </thead>
             <tbody class="bg-default divide-y divide-default">
-              <tr v-for="upload in uploads" :key="upload.id" class="hover:bg-elevated/50 transition-colors">
+              <tr v-for="upload in uploads" :key="upload.public_id" class="hover:bg-elevated/50 transition-colors">
                 <td class="px-4 py-3 text-sm">
                   <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">
                     <div class="flex items-center gap-2">
@@ -106,7 +114,7 @@
                         <div class="space-y-2">
                           <div class="grid grid-cols-[auto_1fr] gap-2">
                             <span class="text-muted font-medium">ID:</span>
-                            <span>{{ upload.id }}</span>
+                            <span>{{ upload.public_id }}</span>
                           </div>
                           <div v-if="upload.mimetype" class="grid grid-cols-[auto_1fr] gap-2">
                             <span class="text-muted font-medium">Type:</span>
@@ -165,7 +173,7 @@ const route = useRoute()
 const toast = useToast()
 const token = ref<string>((route.params.token as string) || '')
 
-const { tokenInfo, notFound, tokenError, fetchTokenInfo } = useTokenInfo(token)
+const { tokenInfo, notFound, tokenError, isExpired, isDisabled, fetchTokenInfo } = useTokenInfo(token)
 const loading = ref(true)
 const notice = ref<string>('')
 const showNotice = useStorage<boolean>('show_notice', true)
@@ -194,6 +202,7 @@ function getStatusColor(status: string): 'success' | 'error' | 'warning' | 'neut
     case 'error':
     case 'validation_failed': return 'error'
     case 'in_progress':
+    case 'postprocessing':
     case 'uploading': return 'warning'
     default: return 'neutral'
   }

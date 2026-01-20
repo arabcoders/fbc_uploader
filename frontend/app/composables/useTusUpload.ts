@@ -3,7 +3,13 @@ import type { Slot } from '~/types/uploads'
 import type { TokenInfo } from '~/types/token'
 
 export function useTusUpload() {
-    async function startTusUpload(slot: Slot, uploadUrl: string, file: File, tokenInfo: TokenInfo | null) {
+    async function startTusUpload(
+        slot: Slot,
+        uploadUrl: string,
+        file: File,
+        tokenInfo: TokenInfo | null,
+        onUploadComplete?: (slot: Slot) => void
+    ) {
         slot.status = 'uploading'
         slot.paused = false
         return new Promise<void>((resolve, reject) => {
@@ -17,7 +23,7 @@ export function useTusUpload() {
                     filename: file.name,
                     filetype: file.type,
                 },
-                onError(error: any) {
+                onError(error: Error) {
                     slot.error = error.message
                     slot.status = 'error'
                     slot.tusUpload = undefined
@@ -29,9 +35,14 @@ export function useTusUpload() {
                     slot.status = 'uploading'
                 },
                 onSuccess() {
-                    slot.status = 'completed'
+                    slot.status = 'postprocessing'
                     slot.progress = 100
                     slot.tusUpload = undefined
+                    
+                    if (onUploadComplete) {
+                        onUploadComplete(slot)
+                    }
+                    
                     resolve()
                 },
             })

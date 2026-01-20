@@ -11,7 +11,7 @@ const makeSlot = (): Slot => ({
   errors: [],
   paused: false,
   initiated: false,
-  uploadId: 1,
+  uploadId: 'test-upload-id',
 })
 
 // Create a configurable mock Upload class
@@ -58,7 +58,7 @@ describe('useTusUpload', () => {
 
     await startTusUpload(slot, 'http://upload', file, { max_chunk_bytes: 50 } as any)
 
-    expect(slot.status).toBe('completed')
+    expect(slot.status).toBe('postprocessing')
     expect(slot.progress).toBe(100)
     expect(slot.tusUpload).toBeUndefined()
   })

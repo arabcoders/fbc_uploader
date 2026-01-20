@@ -18,7 +18,7 @@ class UploadToken(Base):
     uploads_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     allowed_mime: Mapped[list | None] = mapped_column("allowed_mime", JSON, nullable=True)
     disabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
 
     uploads: Mapped[list["UploadRecord"]] = relationship("UploadRecord", back_populates="token", cascade="all, delete-orphan")
 
@@ -42,7 +42,7 @@ class UploadRecord(Base):
     upload_length: Mapped[int | None] = mapped_column(BigInteger)
     upload_offset: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     token: Mapped[UploadToken] = relationship("UploadToken", back_populates="uploads")

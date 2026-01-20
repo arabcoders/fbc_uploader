@@ -4,7 +4,7 @@ import { useTokenInfo } from '~/composables/useTokenInfo'
 
 afterEach(() => {
   vi.restoreAllMocks()
-    ; (vi as any).unstubAllGlobals?.()
+  vi.unstubAllGlobals()
 })
 
 describe('useTokenInfo', () => {
@@ -15,8 +15,12 @@ describe('useTokenInfo', () => {
       remaining_uploads: 2,
       max_uploads: 5,
       expires_at: '2024-12-01T00:00:00Z',
+      disabled: false,
     })
-    vi.stubGlobal('$fetch', fetchMock)
+    
+    vi.stubGlobal('useNuxtApp', () => ({
+      $apiFetch: fetchMock
+    }))
 
     const { tokenInfo, notFound, shareLinkText, fetchTokenInfo } = useTokenInfo(tokenValue)
 
@@ -31,7 +35,10 @@ describe('useTokenInfo', () => {
   it('sets error state when fetch fails', async () => {
     const tokenValue = ref('missing')
     const fetchMock = vi.fn().mockRejectedValue({ data: { detail: 'No token' } })
-    vi.stubGlobal('$fetch', fetchMock)
+    
+    vi.stubGlobal('useNuxtApp', () => ({
+      $apiFetch: fetchMock
+    }))
 
     const { tokenInfo, notFound, tokenError, fetchTokenInfo } = useTokenInfo(tokenValue)
 

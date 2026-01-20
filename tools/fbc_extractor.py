@@ -32,7 +32,7 @@ class FBCIE(InfoExtractor):
             return None
 
         if mat.group("fid"):
-            return f"{mat.group('id')}-{mat.group('fid')}"
+            return mat.group("fid")
 
         return mat.group("id")
 
@@ -64,6 +64,10 @@ class FBCIE(InfoExtractor):
         video_id: str = self._match_id(url)
         headers: dict[str, str] = {}
 
+        parsed: ParseResult = urlparse(url)
+        path_prefix = re.sub(r"/(api/tokens|f)/.*$", "", parsed.path)
+        base_url: str = f"{parsed.scheme}://{parsed.netloc}{path_prefix}"
+
         if apikey := (FBCIE._APIKEY or os.environ.get("FBC_API_KEY")):
             headers["Authorization"] = f"Bearer {apikey!s}"
 
@@ -88,6 +92,7 @@ class FBCIE(InfoExtractor):
                 video_data,
                 "video" if is_single or len(items_info) < 2 else "url",
                 headers=headers,
+                base_url=base_url,
             )
             for video_data in items_info
             if "completed" == video_data.get("status")
@@ -97,7 +102,7 @@ class FBCIE(InfoExtractor):
             self.report_warning("Token contains no uploaded files.")
             return None
 
-        if len(playlist) == 1 or self.get_param("noplaylist"):
+        if is_single or self.get_param("noplaylist"):
             if self.get_param("noplaylist") and len(playlist) > 1:
                 self.to_screen(f"Downloading 1 video out of '{len(playlist)}' because of --no-playlist option")
                 playlist[0]["_type"] = "video"
@@ -236,9 +241,13 @@ class FBCIE(InfoExtractor):
 
         return format_dict
 
-    def _format_item(self, video_data: dict, _type: str, headers: dict | None = None) -> dict:
+    def _format_item(self, video_data: dict, _type: str, headers: dict | None = None, base_url: str | None = None) -> dict:
+        download_url = video_data.get("download_url")
+        if download_url and base_url and not download_url.startswith(("http://", "https://")):
+            download_url = f"{base_url}{download_url}"
+
         base_format = {
-            "url": video_data.get("download_url"),
+            "url": download_url,
             "ext": video_data.get("ext"),
             "filesize": int_or_none(video_data.get("size_bytes")),
         }
@@ -247,13 +256,17 @@ class FBCIE(InfoExtractor):
         if ffprobe_data := meta_data.get("ffprobe"):
             base_format = self._expand_format(base_format, ffprobe_data)
 
+        info_url = video_data.get("info_url")
+        if info_url and base_url and not info_url.startswith(("http://", "https://")):
+            info_url = f"{base_url}{info_url}"
+
         dct = {
             "id": video_data.get("public_id", video_data.get("id")),
             "_type": _type,
             "ext": video_data.get("ext"),
             "mimetype": video_data.get("mimetype"),
-            "url": video_data.get("info_url"),
-            "webpage_url": video_data.get("info_url"),
+            "url": info_url,
+            "webpage_url": info_url,
             "formats": [base_format],
             "title": meta_data.get("title") or video_data.get("filename", f"file_{video_data['id']}"),
             "filename": video_data.get("filename"),
