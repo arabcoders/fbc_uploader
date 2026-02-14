@@ -81,7 +81,83 @@
           <h2 class="text-lg font-semibold">Files</h2>
         </div>
 
-        <div class="overflow-x-auto rounded-lg ring ring-default">
+        <div class="block md:hidden space-y-3">
+          <UCard v-for="upload in uploads" :key="upload.public_id">
+            <template #header>
+              <div class="flex items-start gap-3">
+                <UIcon :name="getFileIcon(upload.filename || '')" class="size-6 text-primary shrink-0 mt-0.5" />
+                <div class="min-w-0 flex-1">
+                  <NuxtLink
+                    v-if="tokenInfo?.allow_public_downloads && upload.status === 'completed' && upload.download_url"
+                    :to="upload.download_url"
+                    class="font-medium hover:underline break-all">
+                    {{ upload.filename }}
+                  </NuxtLink>
+                  <span v-else class="font-medium break-all">
+                    {{ upload.filename }}
+                  </span>
+                  <div class="flex items-center gap-2 mt-2">
+                    <UBadge :color="getStatusColor(upload.status)" variant="soft" size="xs">
+                      {{ upload.status }}
+                    </UBadge>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <div class="space-y-3">
+              <div class="space-y-2 text-sm">
+                <div class="flex items-center justify-between">
+                  <span class="text-muted">Size</span>
+                  <span class="font-medium">{{ formatBytes(upload.size_bytes || 0) }}</span>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <span class="text-muted">Uploaded</span>
+                  <span>{{ formatDate(upload.created_at) }}</span>
+                </div>
+
+                <div v-if="upload.mimetype" class="flex items-center justify-between">
+                  <span class="text-muted">Type</span>
+                  <span class="text-xs">{{ upload.mimetype }}</span>
+                </div>
+              </div>
+
+              <div class="flex gap-2 pt-2 border-t border-default">
+                <UPopover :ui="{ content: 'p-3' }">
+                  <UButton size="xs" color="neutral" variant="soft" icon="i-heroicons-information-circle-20-solid">
+                    Details
+                  </UButton>
+                  <template #content>
+                    <div class="space-y-3 text-sm min-w-64 max-w-96">
+                      <div class="font-semibold text-highlighted">File Details</div>
+                      <div class="space-y-2">
+                        <div class="grid grid-cols-[auto_1fr] gap-2">
+                          <span class="text-muted font-medium">ID:</span>
+                          <span>{{ upload.public_id }}</span>
+                        </div>
+                        <div v-if="upload.mimetype" class="grid grid-cols-[auto_1fr] gap-2">
+                          <span class="text-muted font-medium">Type:</span>
+                          <span>{{ upload.mimetype }}</span>
+                        </div>
+                      </div>
+                      <div v-if="hasMetadata(upload.meta_data)" class="space-y-2 pt-2 border-t border-default">
+                        <div class="font-semibold text-highlighted">Metadata</div>
+                        <div v-for="(val, key) in filterMetadata(upload.meta_data)" :key="key"
+                          class="grid grid-cols-[auto_1fr] gap-2">
+                          <span class="text-muted font-medium capitalize">{{ formatKey(key) }}:</span>
+                          <span class="wrap-break-word">{{ formatValue(val) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                </UPopover>
+              </div>
+            </div>
+          </UCard>
+        </div>
+
+        <div class="hidden md:block overflow-x-auto rounded-lg ring ring-default">
           <table class="w-full divide-y divide-default">
             <thead class="bg-elevated">
               <tr>

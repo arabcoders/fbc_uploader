@@ -289,7 +289,7 @@ async def ensure_faststart_mp4(
     tmp_dir = src.parent
     fd, tmp_out = tempfile.mkstemp(
         prefix=src.name + ".",
-        suffix=".faststart.tmp",
+        suffix=".part",
         dir=tmp_dir,
     )
     os.close(fd)
@@ -308,6 +308,8 @@ async def ensure_faststart_mp4(
             "copy",
             "-movflags",
             "+faststart",
+            "-f",
+            "mp4",
             str(tmp_out_path),
         ]
 
