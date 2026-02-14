@@ -19,6 +19,7 @@ os.environ["FBC_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["FBC_ADMIN_API_KEY"] = "test-admin"
 os.environ["FBC_SKIP_MIGRATIONS"] = "1"
 os.environ["FBC_SKIP_CLEANUP"] = "1"
+os.environ["FBC_ALLOW_PUBLIC_DOWNLOADS"] = "0"
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:

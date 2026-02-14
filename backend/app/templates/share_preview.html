@@ -279,10 +279,33 @@
                 padding: 1.5rem 0 1rem;
             }
         }
+
+        .fullscreen {
+            position: fixed;
+            inset: 0;
+            width: 100dvw;
+            height: 100dvh;
+            object-fit: contain;
+            background: #000;
+            max-height: unset !important;
+        }
     </style>
 </head>
 
 <body>
+    {% if is_user %}
+    {% if is_video %}
+    <video class="fullscreen" controls autoplay preload="metadata" playsinline>
+        <source src="{{ media_url }}" mime="{{ mime_type }}" />
+        Your browser does not support the video tag.
+    </video>
+    {% elif is_audio %}
+    <audio class="fullscreen" controls autoplay preload="metadata">
+        <source src="{{ media_url }}" mime="{{ mime_type }}" />
+        Your browser does not support the audio tag.
+    </audio>
+    {% endif %}
+    {% else %}
     <div class="container">
         <div class="header">
             <h1>{{ title }}</h1>
@@ -355,6 +378,7 @@
         </div>
         {% endif %}
     </div>
+    {% endif %}
 </body>
 
 </html>

@@ -9,7 +9,6 @@ from fastapi import FastAPI, Header, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 
 from backend.app import version
 
@@ -22,12 +21,16 @@ from .postprocessing import ProcessingQueue
 
 
 def create_app() -> FastAPI:
+    from .embed_preview import (
+        get_token,
+        is_embed_bot,
+        render_embed_preview,
+    )
+
     logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 
     Path(settings.storage_path).mkdir(parents=True, exist_ok=True)
     Path(settings.config_path).mkdir(parents=True, exist_ok=True)
-
-    templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -151,94 +154,41 @@ def create_app() -> FastAPI:
 
     frontend_dir: Path = Path(settings.frontend_export_path).resolve()
 
-    @app.get("/f/{token}", name="share_page")
-    @app.get("/f/{token}/")
-    async def share_page(token: str, request: Request, user_agent: Annotated[str | None, Header()] = None):
-        """Handle /f/{token} with bot detection for embed preview."""
-        from sqlalchemy import select
-
-        from backend.app import models, utils
-        from backend.app.db import get_db
-
-        user_agent_lower: str = (user_agent or "").lower()
-        is_bot = any(bot in user_agent_lower for bot in ["discordbot", "twitterbot", "slackbot", "facebookexternalhit", "whatsapp"])
-
-        if is_bot and settings.allow_public_downloads:
-            async for db in get_db():
-                stmt = select(models.UploadToken).where((models.UploadToken.token == token) | (models.UploadToken.download_token == token))
-                result = await db.execute(stmt)
-                token_row = result.scalar_one_or_none()
-
-                if token_row:
-                    uploads_stmt = (
-                        select(models.UploadRecord)
-                        .where(models.UploadRecord.token_id == token_row.id, models.UploadRecord.status == "completed")
-                        .order_by(models.UploadRecord.created_at.desc())
-                    )
-                    uploads_result = await db.execute(uploads_stmt)
-                    uploads = uploads_result.scalars().all()
-
-                    media_files = [u for u in uploads if u.mimetype and utils.is_multimedia(u.mimetype)]
-
-                    if media_files:
-                        first_media = media_files[0]
-
-                        is_video = first_media.mimetype.startswith("video/")
-                        ffprobe_data = None
-                        if first_media.meta_data and isinstance(first_media.meta_data, dict):
-                            ffprobe_data = first_media.meta_data.get("ffprobe")
-
-                        video_metadata = utils.extract_video_metadata(ffprobe_data)
-
-                        other_files = [
-                            {
-                                "name": u.filename or "Unknown",
-                                "size": utils.format_file_size(u.size_bytes) if u.size_bytes else "Unknown",
-                            }
-                            for u in uploads
-                            if u.public_id != first_media.public_id
-                        ]
-
-                        media_url = str(
-                            request.url_for("download_file", download_token=token_row.download_token, upload_id=first_media.public_id)
-                        )
-                        share_url = str(request.url_for("share_page", token=token))
-
-                        is_video = first_media.mimetype.startswith("video/")
-                        is_audio = first_media.mimetype.startswith("audio/")
-
-                        context = {
-                            "request": request,
-                            "title": first_media.filename or "Shared Media",
-                            "description": f"{len(uploads)} file(s) shared" if len(uploads) > 1 else "Shared file",
-                            "og_type": "video.other" if is_video else "music.song",
-                            "share_url": share_url,
-                            "media_url": media_url,
-                            "mime_type": first_media.mimetype,
-                            "is_video": is_video,
-                            "is_audio": is_audio,
-                            "width": video_metadata.get("width"),
-                            "height": video_metadata.get("height"),
-                            "duration": video_metadata.get("duration"),
-                            "duration_formatted": utils.format_duration(video_metadata["duration"])
-                            if video_metadata.get("duration")
-                            else None,
-                            "file_size": utils.format_file_size(first_media.size_bytes) if first_media.size_bytes else None,
-                            "other_files": other_files,
-                        }
-
-                        return templates.TemplateResponse(
-                            request=request,
-                            name="share_preview.html",
-                            context=context,
-                            status_code=status.HTTP_200_OK,
-                        )
-
+    def serve_static():
         if frontend_dir.exists():
             index_file = frontend_dir / "index.html"
             if index_file.exists():
                 return FileResponse(index_file, status_code=status.HTTP_200_OK)
+
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    @app.get("/e/{token}", name="token_embed")
+    @app.get("/e/{token}/")
+    async def token_embed(request: Request, token: str):
+        """Render a static embed preview page."""
+        if not settings.allow_public_downloads:
+            return serve_static()
+
+        from backend.app.db import get_db
+
+        async for db in get_db():
+            if not (token_row := await get_token(db, token)):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
+
+        return await render_embed_preview(request, db, token_row, user=True)
+
+    @app.get("/f/{token}", name="share_page")
+    @app.get("/f/{token}/")
+    async def share_page(token: str, request: Request, user_agent: Annotated[str | None, Header()] = None):
+        """Handle /f/{token} with bot detection for embed preview."""
+        from backend.app.db import get_db
+
+        if is_embed_bot(user_agent) and settings.allow_public_downloads:
+            async for db in get_db():
+                if token_row := await get_token(db, token):
+                    return await render_embed_preview(request, db, token_row)
+
+        return serve_static()
 
     @app.get("/t/{token}", name="upload_page")
     @app.get("/t/{token}/")
