@@ -295,12 +295,12 @@
 <body>
     {% if is_user %}
     {% if is_video %}
-    <video class="fullscreen" controls autoplay preload="metadata" playsinline>
+    <video class="fullscreen" controls autoplay preload="auto" playsinline>
         <source src="{{ media_url }}" mime="{{ mime_type }}" />
         Your browser does not support the video tag.
     </video>
     {% elif is_audio %}
-    <audio class="fullscreen" controls autoplay preload="metadata">
+    <audio class="fullscreen" controls autoplay preload="auto" playsinline>
         <source src="{{ media_url }}" mime="{{ mime_type }}" />
         Your browser does not support the audio tag.
     </audio>
@@ -322,7 +322,7 @@
                     Your browser does not support the video tag.
                 </video>
                 {% elif is_audio %}
-                <audio controls preload="metadata">
+                <audio controls autoplay preload="metadata" playsinline>
                     <source src="{{ media_url }}" mime="{{ mime_type }}" />
                     Your browser does not support the audio tag.
                 </audio>

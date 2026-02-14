@@ -178,4 +178,3 @@ async def test_token_embed_page_renders_preview_for_public_token(client):
         html_content = response.text
         assert "og:video" in html_content or "og:type" in html_content, "Embed page should include OpenGraph video metadata"
         assert "sample.mp4" in html_content, "Embed page should include video filename"
-
