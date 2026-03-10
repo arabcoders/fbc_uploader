@@ -8,7 +8,7 @@ from fastapi import status
 from unittest.mock import patch
 
 from backend.app.main import app
-from backend.tests.utils import create_token
+from backend.tests.utils import complete_upload, create_token
 from backend.tests.test_postprocessing import wait_for_processing
 
 
@@ -120,6 +120,10 @@ async def test_share_page_bot_preview_with_video(client):
         )
         assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Video upload should complete"
 
+        complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+        assert complete_status == status.HTTP_200_OK, "Completion endpoint should accept uploaded video files"
+        assert complete_data["status"] == "postprocessing", "Video should enter postprocessing after explicit completion"
+
         completed = await wait_for_processing([upload_id], timeout=10.0)
         assert completed, "Video processing should complete within timeout"
 
@@ -168,6 +172,10 @@ async def test_token_embed_page_renders_preview_for_public_token(client):
             },
         )
         assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Video upload should complete"
+
+        complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+        assert complete_status == status.HTTP_200_OK, "Completion endpoint should accept uploaded video files"
+        assert complete_data["status"] == "postprocessing", "Video should enter postprocessing after explicit completion"
 
         completed = await wait_for_processing([upload_id], timeout=10.0)
         assert completed, "Video processing should complete within timeout"

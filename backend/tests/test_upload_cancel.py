@@ -7,7 +7,7 @@ from httpx import ASGITransport, AsyncClient
 from backend.app.config import settings
 from backend.app.main import app
 from backend.tests.conftest import seed_schema
-from backend.tests.utils import create_token, get_token_info, upload_file_via_tus
+from backend.tests.utils import complete_upload, create_token, get_token_info
 
 
 @pytest.mark.asyncio
@@ -140,6 +140,10 @@ async def test_cancel_completed_upload_fails():
             content=b"hello",
         )
         assert patch_response.status_code == status.HTTP_204_NO_CONTENT, "TUS PATCH should return 204"
+
+        complete_status, complete_data = await complete_upload(client, upload_id, token)
+        assert complete_status == status.HTTP_200_OK, "Completion endpoint should succeed for fully uploaded files"
+        assert complete_data["status"] == "completed", "Text upload should be completed after explicit completion"
 
         response = await client.delete(
             app.url_path_for("cancel_upload", upload_id=upload_id),

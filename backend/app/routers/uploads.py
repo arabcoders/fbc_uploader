@@ -98,6 +98,66 @@ async def _get_upload_record(db: AsyncSession, upload_id: str) -> models.UploadR
     return record
 
 
+async def _finalize_upload(
+    db: AsyncSession,
+    record: models.UploadRecord,
+    queue: ProcessingQueue | None,
+) -> models.UploadRecord:
+    """Validate and finalize an uploaded file after all bytes have been received."""
+    if record.upload_length is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload length unknown")
+
+    if record.upload_offset < record.upload_length:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload not finished")
+
+    if record.status in {"completed", "postprocessing"}:
+        return record
+
+    path = Path(record.storage_path)
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Uploaded file not found")
+
+    try:
+        actual_mimetype: str = detect_mimetype(path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to detect file type: {e}",
+        ) from e
+
+    stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.id == record.token_id)
+    res: Result[tuple[models.UploadToken]] = await db.execute(stmt)
+
+    if not (token := res.scalar_one_or_none()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
+
+    if not mime_allowed(actual_mimetype, token.allowed_mime):
+        path.unlink(missing_ok=True)
+        await db.delete(record)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Actual file type '{actual_mimetype}' does not match allowed types",
+        )
+
+    record.mimetype = actual_mimetype
+
+    if is_multimedia(actual_mimetype):
+        record.status = "postprocessing"
+        record.completed_at = None
+        await db.commit()
+        await db.refresh(record)
+        if queue:
+            await queue.enqueue(record.public_id)
+        return record
+
+    record.status = "completed"
+    record.completed_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
 @router.post("/initiate", response_model=schemas.InitiateUploadResponse, status_code=status.HTTP_201_CREATED, name="initiate_upload")
 async def initiate_upload(
     request: Request,
@@ -207,7 +267,6 @@ async def tus_patch(
     upload_id: str,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
-    queue: Annotated[ProcessingQueue | None, Depends(get_processing_queue)],
     upload_offset: Annotated[int, Header(convert_underscores=False, alias="Upload-Offset")] = ...,
     content_length: Annotated[int | None, Header()] = None,
     content_type: Annotated[str, Header(convert_underscores=False, alias="Content-Type")] = ...,
@@ -219,7 +278,6 @@ async def tus_patch(
         upload_id (str): The public ID of the upload.
         request (Request): The incoming HTTP request.
         db (AsyncSession): Database session.
-        queue (ProcessingQueue | None): The processing queue for post-processing.
         upload_offset (int): The current upload offset from the client.
         content_length (int | None): The Content-Length header value.
         content_type (str): The Content-Type header value.
@@ -268,52 +326,14 @@ async def tus_patch(
         if record.upload_offset > record.upload_length:
             raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Upload exceeds declared length")
 
-        if record.upload_offset == record.upload_length:
-            try:
-                actual_mimetype: str = detect_mimetype(path)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to detect file type: {e}",
-                )
+        record.status = "in_progress"
 
-            stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.id == record.token_id)
-            res: Result[tuple[models.UploadToken]] = await db.execute(stmt)
-
-            if not (token := res.scalar_one_or_none()):
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
-
-            if not mime_allowed(actual_mimetype, token.allowed_mime):
-                path.unlink(missing_ok=True)
-                await db.delete(record)
-                await db.commit()
-                raise HTTPException(
-                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                    detail=f"Actual file type '{actual_mimetype}' does not match allowed types",
-                )
-
-            record.mimetype = actual_mimetype
-
-            if is_multimedia(actual_mimetype):
-                record.status = "postprocessing"
-                await db.commit()
-                await db.refresh(record)
-                if queue:
-                    await queue.enqueue(record.public_id)
-            else:
-                record.status = "completed"
-                record.completed_at = datetime.now(UTC)
-                await db.commit()
-                await db.refresh(record)
-        else:
-            record.status = "in_progress"
-
-            try:
-                await db.commit()
-                await db.refresh(record)
-            except Exception:
-                await db.rollback()
-                await db.refresh(record)
+        try:
+            await db.commit()
+            await db.refresh(record)
+        except Exception:
+            await db.rollback()
+            await db.refresh(record)
 
     return Response(
         status_code=status.HTTP_204_NO_CONTENT,
@@ -366,26 +386,32 @@ async def tus_delete(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)
 
 
 @router.post("/{upload_id}/complete", response_model=schemas.UploadRecordResponse, name="mark_complete")
-async def mark_complete(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)]) -> models.UploadRecord:
+async def mark_complete(
+    upload_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    queue: Annotated[ProcessingQueue | None, Depends(get_processing_queue)],
+    token: Annotated[str, Query(description="Upload token")] = ...,
+) -> models.UploadRecord:
     """
     Mark an upload as complete.
 
     Args:
         upload_id (str): The public ID of the upload.
         db (AsyncSession): Database session.
+        queue (ProcessingQueue | None): The processing queue for post-processing.
+        token (str): The upload token string.
 
     Returns:
         UploadRecord: The updated upload record.
 
     """
     record: models.UploadRecord = await _get_upload_record(db, upload_id)
-    await _ensure_token(db, token_id=record.token_id, check_remaining=False)
+    token_row: models.UploadToken = await _ensure_token(db, token_value=token, check_remaining=False)
 
-    record.status = "completed"
-    record.completed_at = datetime.now(UTC)
-    await db.commit()
-    await db.refresh(record)
-    return record
+    if record.token_id != token_row.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload does not belong to this token")
+
+    return await _finalize_upload(db, record, queue)
 
 
 @router.delete("/{upload_id}/cancel", response_model=dict, name="cancel_upload")

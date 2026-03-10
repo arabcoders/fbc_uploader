@@ -20,7 +20,7 @@ async def test_download_blocked_for_disabled_token(client):
 
         upload_data = await initiate_upload(client, upload_token, "test.txt", 12)
         upload_id = upload_data["upload_id"]
-        await upload_file_via_tus(client, upload_id, b"test content")
+        await upload_file_via_tus(client, upload_id, b"test content", upload_token)
 
         await client.patch(
             app.url_path_for("update_token", token_value=upload_token),
@@ -45,7 +45,7 @@ async def test_download_blocked_for_expired_token(client):
 
         upload_data = await initiate_upload(client, upload_token, "test.txt", 12)
         upload_id = upload_data["upload_id"]
-        await upload_file_via_tus(client, upload_id, b"test content")
+        await upload_file_via_tus(client, upload_id, b"test content", upload_token)
 
         expired_time = datetime.now(UTC) - timedelta(hours=1)
         await client.patch(
@@ -70,7 +70,7 @@ async def test_download_allowed_for_disabled_token_with_admin_key(client):
 
     upload_data = await initiate_upload(client, upload_token, "test.txt", 12)
     upload_id = upload_data["upload_id"]
-    await upload_file_via_tus(client, upload_id, b"test content")
+    await upload_file_via_tus(client, upload_id, b"test content", upload_token)
 
     await client.patch(
         app.url_path_for("update_token", token_value=upload_token),
@@ -94,7 +94,7 @@ async def test_get_file_info_blocked_for_disabled_token(client):
 
         upload_data = await initiate_upload(client, upload_token, "test.txt", 12)
         upload_id = upload_data["upload_id"]
-        await upload_file_via_tus(client, upload_id, b"test content")
+        await upload_file_via_tus(client, upload_id, b"test content", upload_token)
 
         await client.patch(
             app.url_path_for("update_token", token_value=upload_token),
@@ -118,7 +118,7 @@ async def test_get_file_info_allowed_for_disabled_token_with_admin_key(client):
 
     upload_data = await initiate_upload(client, upload_token, "test.txt", 12)
     upload_id = upload_data["upload_id"]
-    await upload_file_via_tus(client, upload_id, b"test content")
+    await upload_file_via_tus(client, upload_id, b"test content", upload_token)
 
     await client.patch(
         app.url_path_for("update_token", token_value=upload_token),
