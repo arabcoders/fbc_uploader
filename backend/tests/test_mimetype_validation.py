@@ -11,6 +11,7 @@ from backend.app import models
 from backend.app.config import settings
 from backend.app.db import SessionLocal
 from backend.app.main import app
+from backend.tests.utils import complete_upload
 
 
 @pytest.mark.asyncio
@@ -56,8 +57,11 @@ async def test_mimetype_spoofing_rejected(client):
         },
     )
 
-    assert patch_resp.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Fake video file should be rejected with 415"
-    assert "does not match allowed types" in patch_resp.json()["detail"], "Error should indicate type mismatch"
+    assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "TUS PATCH should accept bytes before explicit completion"
+
+    complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+    assert complete_status == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Fake video file should be rejected during explicit completion"
+    assert "does not match allowed types" in complete_data["detail"], "Error should indicate type mismatch"
 
     head_resp = await client.head(app.url_path_for("tus_head", upload_id=upload_id))
     assert head_resp.status_code == status.HTTP_404_NOT_FOUND, "Rejected upload should be removed"
@@ -111,6 +115,10 @@ async def test_valid_mimetype_accepted(client):
 
     assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Valid text file should be accepted"
 
+    complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+    assert complete_status == status.HTTP_200_OK, "Completion endpoint should finalize valid text uploads"
+    assert complete_data["status"] == "completed", "Text upload should be marked completed after explicit completion"
+
     head_resp = await client.head(app.url_path_for("tus_head", upload_id=upload_id))
     assert head_resp.status_code == status.HTTP_200_OK, "Upload should still exist after completion"
 
@@ -157,6 +165,9 @@ async def test_mimetype_updated_on_completion(client):
         },
     )
     assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Upload completion should return 204"
+
+    complete_status, _ = await complete_upload(client, upload_id, token_value)
+    assert complete_status == status.HTTP_200_OK, "Completion endpoint should succeed for uploaded text files"
 
     async with SessionLocal() as session:
         stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
@@ -210,6 +221,10 @@ async def test_ffprobe_extracts_metadata_for_video(client):
         },
     )
     assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Video upload should complete successfully"
+
+    complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+    assert complete_status == status.HTTP_200_OK, "Completion endpoint should accept uploaded video files"
+    assert complete_data["status"] == "postprocessing", "Video upload should enter postprocessing after explicit completion"
 
     from backend.tests.test_postprocessing import wait_for_processing
 
@@ -271,6 +286,10 @@ async def test_ffprobe_not_run_for_non_multimedia(client):
         },
     )
     assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Text upload should complete successfully"
+
+    complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+    assert complete_status == status.HTTP_200_OK, "Completion endpoint should succeed for text uploads"
+    assert complete_data["status"] == "completed", "Text upload should complete immediately after explicit completion"
 
     async with SessionLocal() as session:
         stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)

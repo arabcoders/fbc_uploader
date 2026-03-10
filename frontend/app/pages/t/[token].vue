@@ -18,8 +18,8 @@
 
       <template v-else-if="tokenInfo">
         <div class="space-y-4">
-          <TokenSummary :token-info="tokenInfo" :share-link="shareLinkText" @copy="copyShareLink"
-            @refresh="refreshAll" />
+          <TokenSummary :token-info="tokenInfo" :share-link="shareLinkText" :share-disabled="!canShare"
+            @copy="copyShareLink" @refresh="refreshAll" />
         </div>
 
         <UCard v-if="notice" variant="outline">
@@ -108,6 +108,7 @@ const showForms = computed(() => tokenInfo.value &&
   !isExpired.value && !isDisabled.value &&
   (tokenInfo.value.remaining_uploads > 0 || slots.value.some((s) => s.status && s.status !== 'completed'))
 )
+const canShare = computed(() => Boolean(tokenInfo.value?.uploads?.some((upload) => upload.status === 'completed')))
 
 const canAddMoreSlots = computed(() => tokenInfo.value && unintiatedSlots.value.length < (tokenInfo.value.remaining_uploads || 0))
 
@@ -162,7 +163,7 @@ function onMetaChange(slot: Slot, values: Record<string, any>) {
 }
 
 async function copyShareLink() {
-  if (!shareLinkText.value) return
+  if (!shareLinkText.value || !canShare.value) return
   copyText(shareLinkText.value)
   toast.add({
     title: 'Share link copied to clipboard',
@@ -206,7 +207,7 @@ async function start(slot: Slot, idx: number) {
     }
 
     if (slot.file) {
-      await startTusUpload(slot, res.upload_url, slot.file, tokenInfo.value, (completedSlot) => {
+      await startTusUpload(slot, res.upload_url, slot.file, token.value, tokenInfo.value, (completedSlot) => {
         if (completedSlot.status === 'postprocessing' && completedSlot.uploadId) {
           pollUploadStatus(completedSlot.uploadId, token.value, completedSlot, refreshAll)
         }
@@ -330,7 +331,7 @@ async function onResumeFile(e: Event) {
   slots.value.push(resumeSlot)
 
   try {
-    await startTusUpload(resumeSlot, resumeTarget.value.upload_url, file, tokenInfo.value, (completedSlot) => {
+    await startTusUpload(resumeSlot, resumeTarget.value.upload_url, file, token.value, tokenInfo.value, (completedSlot) => {
       if (completedSlot.status === 'postprocessing' && completedSlot.uploadId) {
         pollUploadStatus(completedSlot.uploadId, token.value, completedSlot, refreshAll)
       }

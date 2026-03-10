@@ -19,7 +19,7 @@
     </div>
     <div class="flex items-center gap-2">
       <UButton v-if="shareLink" size="xs" color="primary" variant="outline" icon="i-heroicons-clipboard"
-        @click="$emit('copy')">
+        :disabled="shareDisabled" @click="$emit('copy')">
         Copy share link
       </UButton>
       <UButton size="xs" color="neutral" variant="ghost" icon="i-heroicons-arrow-path" @click="$emit('refresh')">
@@ -36,6 +36,7 @@ import { formatBytes, formatDate } from "../utils";
 defineProps<{
   tokenInfo: TokenInfo | null;
   shareLink: string;
+  shareDisabled: boolean;
 }>();
 
 defineEmits<{

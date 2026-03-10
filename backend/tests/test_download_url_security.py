@@ -21,7 +21,7 @@ async def test_list_token_uploads_does_not_expose_api_key():
         upload_data = await initiate_upload(
             client, token_data["token"], filename="test.txt", size_bytes=11, filetype="text/plain", meta_data={}
         )
-        await upload_file_via_tus(client, upload_data["upload_id"], b"hello world")
+        await upload_file_via_tus(client, upload_data["upload_id"], b"hello world", token_data["token"])
 
         # Get uploads list as admin
         response = await client.get(
@@ -48,7 +48,7 @@ async def test_get_file_info_does_not_expose_api_key():
         upload_data = await initiate_upload(
             client, token_data["token"], filename="test.txt", size_bytes=11, filetype="text/plain", meta_data={}
         )
-        await upload_file_via_tus(client, upload_data["upload_id"], b"hello world")
+        await upload_file_via_tus(client, upload_data["upload_id"], b"hello world", token_data["token"])
 
         response = await client.get(
             app.url_path_for(

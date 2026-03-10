@@ -36,14 +36,18 @@ vi.mock('tus-js-client', () => ({
 
 beforeEach(() => {
   MockUpload.implementation = null
+  vi.stubGlobal('useNuxtApp', () => ({
+    $apiFetch: vi.fn().mockResolvedValue({ status: 'completed' }),
+  }))
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('useTusUpload', () => {
-  it('starts upload and marks completion', async () => {
+  it('starts upload and finalizes through the completion endpoint', async () => {
     MockUpload.implementation = (_file: any, opts: any) => ({
       start: () => {
         opts.onProgress(5, 10)
@@ -56,10 +60,11 @@ describe('useTusUpload', () => {
     const slot = makeSlot()
     const file = { name: 'a.bin', size: 10, type: 'application/octet-stream' } as File
 
-    await startTusUpload(slot, 'http://upload', file, { max_chunk_bytes: 50 } as any)
+    await startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 50 } as any)
 
-    expect(slot.status).toBe('postprocessing')
+    expect(slot.status).toBe('completed')
     expect(slot.progress).toBe(100)
+    expect(slot.bytesUploaded).toBe(10)
     expect(slot.tusUpload).toBeUndefined()
   })
 
