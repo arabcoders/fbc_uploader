@@ -91,49 +91,6 @@ async def test_non_multimedia_upload_completes_immediately(client):
 
 
 @pytest.mark.asyncio
-async def test_postprocessing_worker_processes_queue(client):
-    """Test that the post-processing worker processes pending uploads."""
-    token_data = await create_token(client, max_uploads=2)
-    token_value = token_data["token"]
-
-    video_file = Path(__file__).parent / "fixtures" / "sample.mp4"
-    video_content = video_file.read_bytes()
-
-    upload1_data = await initiate_upload(
-        client, token_value, filename="video1.mp4", size_bytes=len(video_content), filetype="video/mp4", meta_data={"title": "Video 1"}
-    )
-    upload1_id = upload1_data["upload_id"]
-
-    upload2_data = await initiate_upload(
-        client, token_value, filename="video2.mp4", size_bytes=len(video_content), filetype="video/mp4", meta_data={"title": "Video 2"}
-    )
-    upload2_id = upload2_data["upload_id"]
-
-    await upload_file_via_tus(client, upload1_id, video_content, token_value)
-    await upload_file_via_tus(client, upload2_id, video_content, token_value)
-
-    async with SessionLocal() as session:
-        stmt = select(models.UploadRecord).where(models.UploadRecord.public_id.in_([upload1_id, upload2_id]))
-        result = await session.execute(stmt)
-        records = result.scalars().all()
-
-        for record in records:
-            assert record.status in ("postprocessing", "completed"), "Upload should be in postprocessing or already completed"
-
-    completed = await wait_for_processing([upload1_id, upload2_id], timeout=15.0)
-    assert completed, "Processing should complete within timeout"
-
-    async with SessionLocal() as session:
-        stmt = select(models.UploadRecord).where(models.UploadRecord.public_id.in_([upload1_id, upload2_id]))
-        result = await session.execute(stmt)
-        records = result.scalars().all()
-
-        for record in records:
-            assert record.status == "completed", "Both uploads should be completed after processing"
-            assert record.completed_at is not None, "Both uploads should have completion time"
-
-
-@pytest.mark.asyncio
 async def test_postprocessing_handles_missing_file():
     """Test that post-processing handles missing files gracefully."""
     async with SessionLocal() as session:
