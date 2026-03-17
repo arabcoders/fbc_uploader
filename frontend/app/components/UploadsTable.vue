@@ -16,10 +16,10 @@
                   <span v-else>{{ row.status }}</span>
                 </UBadge>
               </div>
-              <NuxtLink v-if="allowDownloads && row.download_url && row.status === 'completed'" :href="row.download_url" target="_blank"
+              <a v-if="allowDownloads && row.download_url && row.status === 'completed'" :href="row.download_url" target="_blank" rel="noopener noreferrer"
                 class="font-medium hover:underline break-all" :aria-label="row.filename">
                 {{ row.filename }}
-              </NuxtLink>
+              </a>
               <span v-else class="font-medium break-all">{{ row.filename }}</span>
             </div>
           </div>
@@ -105,11 +105,11 @@
             <td class="px-4 py-3 text-sm">{{ index+1 }}</td>
             <td class="px-4 py-3 text-sm">
               <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">
-                <NuxtLink v-if="allowDownloads && row.download_url && row.status === 'completed'" :href="row.download_url" target="_blank"
+                <a v-if="allowDownloads && row.download_url && row.status === 'completed'" :href="row.download_url" target="_blank" rel="noopener noreferrer"
                   class="font-medium hover:underline break-all cursor-pointer px-2 py-1 rounded hover:bg-elevated/50 inline-block"
                   :aria-label="row.filename">
                   {{ row.filename }}
-                </NuxtLink>
+                </a>
                 <UButton v-else variant="ghost" color="neutral" size="xs" class="w-full justify-start break-all"
                   :aria-label="row.filename">
                   <span class="break-all text-left">{{ row.filename }}</span>

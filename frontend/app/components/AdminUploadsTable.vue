@@ -14,10 +14,10 @@
           <template #header>
             <div class="flex items-center justify-between gap-2">
               <div class="min-w-0 flex-1">
-                <NuxtLink v-if="upload.download_url" :href="getDownloadUrl(upload)" target="_blank"
+                <a v-if="upload.download_url" :href="getDownloadUrl(upload)" target="_blank" rel="noopener noreferrer"
                   class="font-medium hover:underline break-all" :aria-label="upload.filename">
                   {{ upload.filename || 'Unnamed file' }}
-                </NuxtLink>
+                </a>
                 <span v-else class="font-medium break-all">{{ upload.filename || 'Unnamed file' }}</span>
                 <div class="text-xs text-muted mt-1">{{ upload.mimetype || 'Unknown type' }}</div>
               </div>
@@ -86,10 +86,10 @@
               <td class="px-4 py-3 text-sm">
                 <div class="space-y-1">
                   <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">
-                    <NuxtLink v-if="upload.download_url" :href="getDownloadUrl(upload)" target="_blank"
+                    <a v-if="upload.download_url" :href="getDownloadUrl(upload)" target="_blank" rel="noopener noreferrer"
                       class="font-medium hover:underline break-all cursor-pointer" :aria-label="upload.filename">
                       {{ upload.filename || 'Unnamed file' }}
-                    </NuxtLink>
+                    </a>
                     <span v-else class="font-medium break-all cursor-default">{{ upload.filename || 'Unnamed file' }}</span>
                     <template #content>
                       <div class="space-y-3 text-sm min-w-64 max-w-96">

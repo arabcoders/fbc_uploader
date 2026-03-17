@@ -87,12 +87,12 @@
               <div class="flex items-start gap-3">
                 <UIcon :name="getFileIcon(upload.filename || '')" class="size-6 text-primary shrink-0 mt-0.5" />
                 <div class="min-w-0 flex-1">
-                  <NuxtLink
+                  <a
                     v-if="tokenInfo?.allow_public_downloads && upload.status === 'completed' && upload.download_url"
-                    :to="upload.download_url"
+                    :href="upload.download_url"
                     class="font-medium hover:underline break-all">
                     {{ upload.filename }}
-                  </NuxtLink>
+                  </a>
                   <span v-else class="font-medium break-all">
                     {{ upload.filename }}
                   </span>
@@ -174,11 +174,11 @@
                     <div class="flex items-center gap-2">
                       <UIcon :name="getFileIcon(upload.filename || '')" class="size-5 text-primary shrink-0" />
                       <span class="font-medium break-all">
-                        <NuxtLink
+                        <a
                           v-if="tokenInfo?.allow_public_downloads && upload.status === 'completed' && upload.download_url"
-                          :to="upload.download_url">
+                          :href="upload.download_url">
                           {{ upload.filename }}
-                        </NuxtLink>
+                        </a>
                         <span v-else>
                           {{ upload.filename }}
                         </span>
