@@ -65,6 +65,12 @@ async def test_multimedia_upload_enters_postprocessing(client):
 
         assert record.status == "postprocessing", "Multimedia upload should enter postprocessing status"
         assert record.completed_at is None, "Upload should not be marked complete yet"
+        assert record.meta_data["upload_checksums"]["file"]["algorithm"] == "sha256", (
+            "Multimedia uploads should retain the digest of the uploaded bytes before post-processing"
+        )
+        assert isinstance(record.meta_data["upload_checksums"]["file"]["digest"], str), (
+            "Multimedia uploads should store the uploaded file digest before post-processing"
+        )
 
 
 @pytest.mark.asyncio
@@ -123,3 +129,54 @@ async def test_postprocessing_handles_missing_file():
         await session.refresh(record)
         assert record.status == "failed", "Upload should be marked as failed"
         assert "error" in record.meta_data, "Error should be recorded in metadata"
+
+
+@pytest.mark.asyncio
+async def test_postprocessing_preserves_uploaded_checksum():
+    """Test that post-processing does not overwrite the original upload digest."""
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as temp_file:
+        temp_file.write(b"not a real mp4 but enough for this test")
+        temp_path = Path(temp_file.name)
+
+    try:
+        async with SessionLocal() as session:
+            expires_at = datetime.now(UTC) + timedelta(days=1)
+
+            token = models.UploadToken(
+                token="test_token_checksum",
+                download_token="test_download_checksum",
+                max_uploads=1,
+                max_size_bytes=1000000,
+                expires_at=expires_at,
+            )
+            session.add(token)
+            await session.flush()
+
+            record = models.UploadRecord(
+                public_id="postprocess_checksum_test",
+                token_id=token.id,
+                filename="sample.mp4",
+                mimetype="video/mp4",
+                status="postprocessing",
+                storage_path=str(temp_path),
+                meta_data={
+                    "upload_checksums": {
+                        "patch_algorithm": "sha256",
+                        "file": {"algorithm": "sha256", "digest": "original-upload-digest"},
+                    }
+                },
+            )
+            session.add(record)
+            await session.commit()
+
+            success = await process_upload(session, record)
+
+            assert success is True, "Processing should complete even when ffprobe cannot extract metadata"
+
+            await session.refresh(record)
+            assert record.status == "completed", "Upload should be marked complete after post-processing"
+            assert record.meta_data["upload_checksums"]["file"]["digest"] == "original-upload-digest", (
+                "Post-processing should preserve the digest of the uploaded bytes"
+            )
+    finally:
+        temp_path.unlink(missing_ok=True)

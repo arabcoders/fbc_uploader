@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import tempfile
@@ -55,6 +56,18 @@ def is_multimedia(mimetype: str) -> bool:
 
     """
     return mimetype.startswith(("video/", "audio/"))
+
+
+async def compute_file_digest(file_path: str | Path, algorithm: str = "sha256", chunk_size: int = 1024 * 1024) -> str:
+    """Compute a digest for a file by streaming it from disk."""
+    path = Path(file_path)
+    digest = hashlib.new(algorithm)
+
+    async with aiofiles.open(path, "rb") as file_obj:
+        while chunk := await file_obj.read(chunk_size):
+            digest.update(chunk)
+
+    return digest.hexdigest()
 
 
 async def extract_ffprobe_metadata(file_path: str | Path) -> dict | None:

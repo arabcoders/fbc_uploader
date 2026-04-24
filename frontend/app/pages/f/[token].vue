@@ -311,7 +311,7 @@ function getFileIcon(filename: string): string {
 
 function filterMetadata(meta_data: Record<string, any> | undefined): Record<string, any> {
   if (!meta_data) return {}
-  const { ffprobe, ...filtered } = meta_data
+  const { ffprobe, upload_checksums, ...filtered } = meta_data
   return filtered
 }
 
