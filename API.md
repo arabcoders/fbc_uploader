@@ -509,7 +509,8 @@ Headers:
 ```http
 Tus-Resumable: 1.0.0
 Tus-Version: 1.0.0
-Tus-Extension: creation,termination
+Tus-Extension: creation,termination,checksum
+Tus-Checksum-Algorithm: sha1,sha256
 ```
 
 ---
@@ -553,6 +554,9 @@ Upload file chunk (TUS protocol).
 - `Content-Type`: Must be `application/offset+octet-stream`
 - `Content-Length` (integer, optional): Chunk size
 
+**Optional Headers:**
+- `Upload-Checksum` (string): Per-chunk checksum in the form `<algorithm> <base64-digest>`
+
 **Request Body:**
 Binary data (file chunk)
 
@@ -570,11 +574,13 @@ Upload-Length: 1024000
 **Error Responses:**
 - `404 Not Found` - Upload not found
 - `409 Conflict` - Upload length unknown or mismatched Upload-Offset
+- `460 Checksum Mismatch` - Uploaded chunk checksum did not match `Upload-Checksum`
 - `413 Content Too Large` - Chunk too large or upload exceeds declared length
 - `415 Unsupported Media Type` - Invalid Content-Type or actual file mimetype doesn't match allowed types
 
 **Notes:**
-- When `upload_offset` equals `upload_length`, the upload is automatically marked as `completed`
+- The upload is only finalized after `POST /api/uploads/{upload_id}/complete`
+- When `Upload-Checksum` is supplied, the chunk is verified before it is appended to the upload file
 - **Server-side MIME type validation**: Upon completion, the server detects the actual file type using libmagic and validates it against the token's `allowed_mime` restrictions. If validation fails, the upload is rejected and deleted (HTTP 415)
 - The detected MIME type replaces the client-provided value in the database
 - The `uploads_used` counter on the token is incremented upon initiation, not completion

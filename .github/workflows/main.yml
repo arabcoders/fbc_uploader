@@ -23,8 +23,8 @@ env:
   BUILD_ARM64: ${{ vars.BUILD_ARM64 != 'false' && 'true' || 'false' }}
   DOCKERHUB_SLUG: arabcoders/fbc_uploader
   GHCR_SLUG: ghcr.io/arabcoders/fbc_uploader
-  PNPM_VERSION: 10
-  NODE_VERSION: 20
+  BUN_VERSION: latest
+  NODE_VERSION: 22
   PYTHON_VERSION: "3.13"
 
 jobs:
@@ -72,53 +72,60 @@ jobs:
       - name: Run Python tests
         run: uv run pytest backend/tests/ -v --tb=short
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - name: Cache bun installation
+        id: cache-bun
+        uses: actions/cache@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
 
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: "frontend/pnpm-lock.yaml"
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install frontend dependencies
         working-directory: frontend
         env:
           NODE_ENV: development
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Prepare frontend (nuxt prepare)
         working-directory: frontend
         env:
           NODE_ENV: development
-        run: pnpm nuxt prepare
+        run: bun nuxt prepare
 
       - name: Run frontend linting
         working-directory: frontend
-        run: pnpm run lint
+        run: bun run lint
 
       - name: Run frontend type checking
         working-directory: frontend
-        run: pnpm run typecheck
+        run: bun run typecheck
 
       - name: Run frontend tests
         working-directory: frontend
-        run: pnpm run test:ci
+        run: bun run test:ci
 
       - name: Remove dev dependencies
         working-directory: frontend
         env:
           NODE_ENV: production
-        run: pnpm install --frozen-lockfile --prod --ignore-scripts
+        run: bun install --frozen-lockfile --production --ignore-scripts
 
       - name: Build frontend
         working-directory: frontend
         env:
           NODE_ENV: production
-        run: pnpm run generate
+        run: bun run generate
 
       - name: Upload frontend build
         uses: actions/upload-artifact@v4

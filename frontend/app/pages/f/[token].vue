@@ -68,7 +68,7 @@
 
             <template #content>
               <div class="px-4 sm:px-6 pb-4 sm:pb-6">
-                <Markdown :content="notice" class="prose dark:prose-invert max-w-7xl" />
+                <Markdown :content="notice" class="max-w-7xl" />
               </div>
             </template>
           </UCollapsible>
@@ -311,7 +311,7 @@ function getFileIcon(filename: string): string {
 
 function filterMetadata(meta_data: Record<string, any> | undefined): Record<string, any> {
   if (!meta_data) return {}
-  const { ffprobe, ...filtered } = meta_data
+  const { ffprobe, upload_checksums, ...filtered } = meta_data
   return filtered
 }
 

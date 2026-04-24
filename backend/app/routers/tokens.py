@@ -23,6 +23,15 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/api/tokens", tags=["tokens"])
 
 
+def _generate_token_value(num_bytes: int, prefix: str = "") -> str:
+    while True:
+        token = secrets.token_urlsafe(num_bytes)
+        if token.startswith("-") or token.endswith("-"):
+            continue
+
+        return f"{prefix}{token}"
+
+
 @router.get("/", response_model=schemas.TokenListResponse, name="list_tokens")
 async def list_tokens(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -79,8 +88,8 @@ async def create_token(
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
 
-    upload_token: str = secrets.token_urlsafe(18)
-    download_token: str = "fbc_" + secrets.token_urlsafe(16)
+    upload_token: str = _generate_token_value(18)
+    download_token: str = _generate_token_value(16, prefix="fbc_")
 
     record = models.UploadToken(
         token=upload_token,

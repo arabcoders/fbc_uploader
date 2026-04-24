@@ -1,17 +1,17 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { copyText, formatBytes, formatKey, formatValue, percent } from '~/utils'
 
 const originalNavigator = global.navigator
 
 afterEach(() => {
   ; (globalThis as any).navigator = originalNavigator
-  vi.restoreAllMocks()
+  delete (document as any).execCommand
 })
 
 describe('copyText', () => {
   it('uses navigator.clipboard when available', () => {
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    const writeText = mock(() => Promise.resolve(undefined))
+    ; (globalThis as any).navigator = { clipboard: { writeText } }
 
     copyText('hello')
 
@@ -19,8 +19,8 @@ describe('copyText', () => {
   })
 
   it('falls back to execCommand when clipboard API is missing', () => {
-    vi.stubGlobal('navigator', {})
-    const execSpy = vi.fn()
+    ; (globalThis as any).navigator = {}
+    const execSpy = mock(() => true)
       ; (document as any).execCommand = execSpy
     const initialTextareas = document.querySelectorAll('textarea').length
 

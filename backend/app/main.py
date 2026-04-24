@@ -108,6 +108,7 @@ def create_app() -> FastAPI:
             "Tus-Resumable",
             "Tus-Version",
             "Tus-Extension",
+            "Tus-Checksum-Algorithm",
             "Upload-Metadata",
             "Upload-Defer-Length",
             "Upload-Concat",

@@ -1,17 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { useUploadPolling } from '../composables/useUploadPolling'
 import { reactive } from 'vue'
 
 describe('useUploadPolling', () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.useRealTimers()
-  })
-
   it('should provide polling functions', () => {
     const { pollUploadStatus, stopPolling, stopAllPolling } = useUploadPolling()
     

@@ -56,7 +56,7 @@
 </style>
 
 <template>
-    <div v-html="transformedContent">
+    <div v-html="transformedContent" class="docs-markdown">
     </div>
 </template>
 

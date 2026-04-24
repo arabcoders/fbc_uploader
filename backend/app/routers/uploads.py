@@ -1,4 +1,7 @@
+import base64
+import binascii
 import contextlib
+import hashlib
 import secrets
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,13 +19,18 @@ from backend.app.config import settings
 from backend.app.db import get_db
 from backend.app.metadata_schema import validate_metadata
 from backend.app.postprocessing import ProcessingQueue
-from backend.app.utils import detect_mimetype, is_multimedia, mime_allowed
+from backend.app.utils import compute_file_digest, detect_mimetype, is_multimedia, mime_allowed
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.result import Result
     from sqlalchemy.sql.selectable import Select
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
+
+CHECKSUM_ALGORITHMS: tuple[str, ...] = ("sha1", "sha256")
+FILE_DIGEST_ALGORITHM = "sha256"
+FILE_COPY_CHUNK_BYTES = 1024 * 1024
+HTTP_460_CHECKSUM_MISMATCH = 460
 
 
 def get_processing_queue(request: Request) -> ProcessingQueue | None:
@@ -98,6 +106,67 @@ async def _get_upload_record(db: AsyncSession, upload_id: str) -> models.UploadR
     return record
 
 
+def _parse_upload_checksum(upload_checksum: str | None) -> tuple[str, bytes] | None:
+    """Parse and validate the TUS Upload-Checksum header."""
+    if upload_checksum is None:
+        return None
+
+    try:
+        algorithm, encoded_digest = upload_checksum.strip().split(" ", 1)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Upload-Checksum header") from e
+
+    if algorithm not in CHECKSUM_ALGORITHMS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported checksum algorithm '{algorithm}'",
+        )
+
+    try:
+        expected_digest = base64.b64decode(encoded_digest, validate=True)
+    except (binascii.Error, ValueError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Upload-Checksum header") from e
+
+    return algorithm, expected_digest
+
+
+async def _buffer_request_body(request: Request, destination: Path, checksum_algorithm: str | None = None) -> tuple[int, bytes | None]:
+    """Stream the request body into a temporary file and optionally hash it."""
+    from starlette.requests import ClientDisconnect
+
+    digest = hashlib.new(checksum_algorithm) if checksum_algorithm else None
+    bytes_written = 0
+
+    try:
+        async with aiofiles.open(destination, "wb") as file_obj:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+
+                await file_obj.write(chunk)
+                bytes_written += len(chunk)
+
+                if digest:
+                    digest.update(chunk)
+    except ClientDisconnect as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload interrupted") from e
+
+    return bytes_written, digest.digest() if digest else None
+
+
+async def _append_file(source: Path, destination: Path, rollback_offset: int) -> None:
+    """Append a verified temporary chunk file onto the upload file."""
+    try:
+        async with aiofiles.open(source, "rb") as source_obj, aiofiles.open(destination, "ab") as destination_obj:
+            while chunk := await source_obj.read(FILE_COPY_CHUNK_BYTES):
+                await destination_obj.write(chunk)
+    except Exception:
+        if destination.exists():
+            async with aiofiles.open(destination, "rb+") as destination_obj:
+                await destination_obj.truncate(rollback_offset)
+        raise
+
+
 async def _finalize_upload(
     db: AsyncSession,
     record: models.UploadRecord,
@@ -141,6 +210,15 @@ async def _finalize_upload(
         )
 
     record.mimetype = actual_mimetype
+    checksum_metadata = dict(record.meta_data.get("upload_checksums") or {})
+    checksum_metadata["file"] = {
+        "algorithm": FILE_DIGEST_ALGORITHM,
+        "digest": await compute_file_digest(path, FILE_DIGEST_ALGORITHM, FILE_COPY_CHUNK_BYTES),
+    }
+    record.meta_data = {
+        **record.meta_data,
+        "upload_checksums": checksum_metadata,
+    }
 
     if is_multimedia(actual_mimetype):
         record.status = "postprocessing"
@@ -268,6 +346,7 @@ async def tus_patch(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     upload_offset: Annotated[int, Header(convert_underscores=False, alias="Upload-Offset")] = ...,
+    upload_checksum: Annotated[str | None, Header(convert_underscores=False, alias="Upload-Checksum")] = None,
     content_length: Annotated[int | None, Header()] = None,
     content_type: Annotated[str, Header(convert_underscores=False, alias="Content-Type")] = ...,
 ) -> Response:
@@ -279,6 +358,7 @@ async def tus_patch(
         request (Request): The incoming HTTP request.
         db (AsyncSession): Database session.
         upload_offset (int): The current upload offset from the client.
+        upload_checksum (str | None): Optional TUS checksum for the current PATCH body.
         content_length (int | None): The Content-Length header value.
         content_type (str): The Content-Type header value.
 
@@ -286,8 +366,6 @@ async def tus_patch(
         Response: HTTP response with updated upload offset.
 
     """
-    from starlette.requests import ClientDisconnect
-
     if content_type != "application/offset+octet-stream":
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Invalid Content-Type")
 
@@ -311,15 +389,35 @@ async def tus_patch(
 
     path = Path(record.storage_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    bytes_written: int = 0
+    checksum_info = _parse_upload_checksum(upload_checksum)
+    bytes_written = 0
 
-    try:
-        async with aiofiles.open(path, "ab") as f:
-            async for chunk in request.stream():
-                await f.write(chunk)
-                bytes_written += len(chunk)
-    except ClientDisconnect:
-        pass
+    if checksum_info:
+        algorithm, expected_digest = checksum_info
+        temp_path = path.parent / f".{path.name}.{secrets.token_hex(8)}.part"
+
+        try:
+            bytes_written, actual_digest = await _buffer_request_body(request, temp_path, algorithm)
+
+            if record.upload_offset + bytes_written > record.upload_length:
+                raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Upload exceeds declared length")
+
+            if actual_digest != expected_digest:
+                raise HTTPException(status_code=HTTP_460_CHECKSUM_MISMATCH, detail="Checksum mismatch")
+
+            await _append_file(temp_path, path, record.upload_offset)
+        finally:
+            temp_path.unlink(missing_ok=True)
+    else:
+        from starlette.requests import ClientDisconnect
+
+        try:
+            async with aiofiles.open(path, "ab") as f:
+                async for chunk in request.stream():
+                    await f.write(chunk)
+                    bytes_written += len(chunk)
+        except ClientDisconnect:
+            pass
 
     if bytes_written > 0:
         record.upload_offset += bytes_written
@@ -327,6 +425,15 @@ async def tus_patch(
             raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Upload exceeds declared length")
 
         record.status = "in_progress"
+
+        if checksum_info:
+            algorithm, _ = checksum_info
+            checksum_metadata = dict(record.meta_data.get("upload_checksums") or {})
+            checksum_metadata["patch_algorithm"] = algorithm
+            record.meta_data = {
+                **record.meta_data,
+                "upload_checksums": checksum_metadata,
+            }
 
         try:
             await db.commit()
@@ -353,7 +460,8 @@ async def tus_options() -> Response:
         headers={
             "Tus-Resumable": "1.0.0",
             "Tus-Version": "1.0.0",
-            "Tus-Extension": "creation,termination",
+            "Tus-Extension": "creation,termination,checksum",
+            "Tus-Checksum-Algorithm": ",".join(CHECKSUM_ALGORITHMS),
         },
     )
 

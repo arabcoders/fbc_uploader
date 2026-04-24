@@ -1,5 +1,5 @@
 {
-  "name": "nuxt-app",
+  "name": "fbc-uploader-ui",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,50 +12,44 @@
     "lint": "eslint .",
     "lint:ci": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:ci": "vitest run --silent --reporter=dot",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:ci": "bun test --ci --dots",
     "lint:tsc": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@iconify-json/lucide": "^1.2.82",
-    "@internationalized/date": "^3.10.1",
-    "@nuxt/ui": "4.3.0",
-    "@pinia/nuxt": "^0.11.3",
-    "@tailwindcss/postcss": "^4.1.18",
-    "@tailwindcss/vite": "^4.1.18",
-    "@tailwindcss/typography": "^0.5.19",
-    "@vueuse/core": "^14.1.0",
-    "@vueuse/nuxt": "^14.1.0",
-    "marked": "^17.0.1",
+    "@iconify-json/heroicons": "^1.2.3",
+    "@internationalized/date": "^3.12.1",
+    "@nuxt/eslint": "^1.15.2",
+    "@nuxt/eslint-config": "^1.15.2",
+    "@nuxt/ui": "4.6.1",
+    "@vueuse/core": "^14.2.1",
+    "@vueuse/nuxt": "^14.2.1",
+    "marked": "^18.0.2",
     "marked-alert": "^2.1.2",
-    "marked-base-url": "^1.1.8",
-    "marked-gfm-heading-id": "^4.1.3",
+    "marked-base-url": "^1.1.9",
+    "marked-gfm-heading-id": "^4.1.4",
     "moment": "^2.30.1",
-    "nuxt": "^4.2.2",
-    "pinia": "^3.0.4",
-    "tailwindcss": "^4.1.18",
+    "nuxt": "^4.4.2",
     "tus-js-client": "^4.3.1",
-    "vue": "^3.5.26",
-    "vue-router": "^4.6.4"
+    "vue": "^3.5.32",
+    "vue-router": "^5.0.4",
+    "whatwg-url": "^16.0.1"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "esbuild",
-      "vue-demi"
-    ]
-  },
+  "trustedDependencies": [
+    "@parcel/watcher",
+    "esbuild",
+    "vue-demi"
+  ],
   "devDependencies": {
-    "@nuxt/eslint": "^1.12.1",
-    "@nuxt/eslint-config": "^1.12.1",
-    "@types/node": "^25.0.3",
-    "@typescript-eslint/parser": "^8.50.0",
-    "eslint": "^9.39.2",
-    "jsdom": "^27.3.0",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.16",
-    "vue-eslint-parser": "^10.2.0",
-    "vue-tsc": "^3.2.1"
+    "@types/bun": "^1.3.12",
+    "@types/jsdom": "^28.0.1",
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/parser": "^8.59.0",
+    "eslint": "^10.2.1",
+    "jsdom": "^29.0.2",
+    "typescript": "^6.0.3",
+    "vue-eslint-parser": "^10.4.0",
+    "vue-tsc": "^3.2.7"
   }
 }
