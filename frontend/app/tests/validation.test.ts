@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { validateSlot } from '~/utils/validation'
 import type { Slot } from '~/types/uploads'
 import type { Field } from '~/types/metadata'

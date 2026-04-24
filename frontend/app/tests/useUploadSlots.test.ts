@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { ref } from 'vue'
 import { useUploadSlots } from '~/composables/useUploadSlots'
 import type { Field } from '~/types/metadata'

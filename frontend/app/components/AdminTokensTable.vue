@@ -17,7 +17,7 @@
                 <NuxtLink :to="`/${token.disabled ? 'f' : 't'}/${token.token}`" class="font-medium truncate">
                   {{ token.token }}
                 </NuxtLink>
-                <UIcon v-if="token.disabled" name="i-heroicons-lock-closed-20-solid" class="size-4 text-muted flex-shrink-0" />
+                <UIcon v-if="token.disabled" name="i-heroicons-lock-closed-20-solid" class="size-4 text-muted shrink-0" />
               </div>
               <UBadge :color="token.disabled ? 'neutral' : 'success'" variant="subtle" size="xs">
                 {{ token.disabled ? 'Disabled' : 'Active' }}

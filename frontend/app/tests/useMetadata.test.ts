@@ -1,18 +1,19 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { useMetadata } from '~/composables/useMetadata'
 import type { Field } from '~/types/metadata'
 
+const testGlobals = globalThis as any
+
 afterEach(() => {
-  vi.restoreAllMocks()
-    ; (vi as any).unstubAllGlobals?.()
+  delete testGlobals.$fetch
 })
 
 describe('useMetadata', () => {
   const sampleFields: Field[] = [{ key: 'title', label: 'Title', type: 'string' }]
 
   it('fetches and stores metadata schema', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ fields: sampleFields })
-    vi.stubGlobal('$fetch', fetchMock)
+    const fetchMock = mock(async () => ({ fields: sampleFields }))
+    testGlobals.$fetch = fetchMock
     const { metadataSchema, isLoading, fetchMetadata } = useMetadata()
 
     const fetchPromise = fetchMetadata()
@@ -26,8 +27,8 @@ describe('useMetadata', () => {
   })
 
   it('skips fetching when schema is already loaded unless forced', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ fields: sampleFields })
-    vi.stubGlobal('$fetch', fetchMock)
+    const fetchMock = mock(async () => ({ fields: sampleFields }))
+    testGlobals.$fetch = fetchMock
     const { fetchMetadata } = useMetadata()
 
     await fetchMetadata()
@@ -38,8 +39,10 @@ describe('useMetadata', () => {
   })
 
   it('handles fetch errors by clearing schema', async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new Error('network'))
-    vi.stubGlobal('$fetch', fetchMock)
+    const fetchMock = mock(async () => {
+      throw new Error('network')
+    })
+    testGlobals.$fetch = fetchMock
     const { metadataSchema, fetchMetadata } = useMetadata()
 
     await fetchMetadata()

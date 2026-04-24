@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { Slot } from '~/types/uploads'
 
 const TUS_CHECKSUM_MAX_CHUNK_BYTES = 16 * 1024 * 1024
@@ -87,21 +87,25 @@ class MockDefaultHttpStack {
   }
 }
 
-vi.mock('tus-js-client', () => ({
+mock.module('tus-js-client', () => ({
   Upload: MockUpload,
   DefaultHttpStack: MockDefaultHttpStack,
 }))
 
+const testGlobals = globalThis as typeof globalThis & {
+  useNuxtApp?: () => { $apiFetch: ReturnType<typeof mock> }
+}
+
+let apiFetchMock = mock(async () => ({ status: 'completed' }))
+
 beforeEach(() => {
   MockUpload.implementation = null
-  vi.stubGlobal('useNuxtApp', () => ({
-    $apiFetch: vi.fn().mockResolvedValue({ status: 'completed' }),
-  }))
+  apiFetchMock = mock(async () => ({ status: 'completed' }))
+  testGlobals.useNuxtApp = () => ({ $apiFetch: apiFetchMock })
 })
 
 afterEach(() => {
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
+  delete testGlobals.useNuxtApp
 })
 
 describe('useTusUpload', () => {
@@ -160,8 +164,8 @@ describe('useTusUpload', () => {
   })
 
   it('pauses and resumes existing upload', () => {
-    const abort = vi.fn()
-    const start = vi.fn()
+    const abort = mock(() => {})
+    const start = mock(() => {})
     const slot = makeSlot()
     slot.tusUpload = { abort, start } as any
     slot.paused = false

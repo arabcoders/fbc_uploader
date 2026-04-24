@@ -34,7 +34,7 @@
 
               <template #content>
                 <div class="px-4 sm:px-6 pb-4 sm:pb-6">
-                  <Markdown :content="notice" class="prose dark:prose-invert max-w-7xl" />
+                  <Markdown :content="notice" class="max-w-7xl" />
                 </div>
               </template>
             </UCollapsible>
