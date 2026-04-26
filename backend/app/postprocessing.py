@@ -74,18 +74,15 @@ class ProcessingQueue:
     async def _process_upload_by_id(self, upload_id: str) -> None:
         """Process a single upload by ID."""
         async with SessionLocal() as session:
-            try:
-                stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
-                result = await session.execute(stmt)
-                record = result.scalar_one_or_none()
+            stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
+            result = await session.execute(stmt)
+            record = result.scalar_one_or_none()
 
-                if record is None:
-                    logger.warning("Upload %s not found for processing", upload_id)
-                    return
+            if record is None:
+                logger.warning("Upload %s not found for processing", upload_id)
+                return
 
-                await process_upload(session, record)
-            finally:
-                await session.close()
+            await process_upload(session, record)
 
 
 async def process_upload(session: AsyncSession, record: models.UploadRecord) -> bool:

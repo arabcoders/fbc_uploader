@@ -186,3 +186,55 @@ async def test_token_embed_page_renders_preview_for_public_token(client):
         html_content = response.text
         assert "og:video" in html_content or "og:type" in html_content, "Embed page should include OpenGraph video metadata"
         assert "sample.mp4" in html_content, "Embed page should include video filename"
+
+
+@pytest.mark.asyncio
+async def test_share_embed_routes_can_be_requested_repeatedly(client):
+    """Repeated embed requests should succeed without leaking database sessions."""
+    with patch("backend.app.security.settings.allow_public_downloads", True):
+        token_data = await create_token(client, max_uploads=1)
+        token_value = token_data["token"]
+        public_token = token_data["download_token"]
+
+        video_file = Path(__file__).parent / "fixtures" / "sample.mp4"
+        file_size = video_file.stat().st_size
+
+        init_resp = await client.post(
+            app.url_path_for("initiate_upload"),
+            json={
+                "filename": "sample.mp4",
+                "filetype": "video/mp4",
+                "size_bytes": file_size,
+                "meta_data": {},
+            },
+            params={"token": token_value},
+        )
+        assert init_resp.status_code == status.HTTP_201_CREATED, "Upload initiation should succeed"
+        upload_id = init_resp.json()["upload_id"]
+
+        patch_resp = await client.patch(
+            app.url_path_for("tus_patch", upload_id=upload_id),
+            content=video_file.read_bytes(),
+            headers={
+                "Content-Type": "application/offset+octet-stream",
+                "Upload-Offset": "0",
+                "Content-Length": str(file_size),
+            },
+        )
+        assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Video upload should complete"
+
+        complete_status, _ = await complete_upload(client, upload_id, token_value)
+        assert complete_status == status.HTTP_200_OK, "Completion endpoint should accept uploaded video files"
+
+        completed = await wait_for_processing([upload_id], timeout=10.0)
+        assert completed, "Video processing should complete within timeout"
+
+        for _ in range(5):
+            bot_response = await client.get(
+                f"/f/{token_value}",
+                headers={"User-Agent": "Mozilla/5.0 (compatible; Discordbot/2.0)"},
+            )
+            assert bot_response.status_code == status.HTTP_200_OK, "Bot share preview should keep succeeding"
+
+            embed_response = await client.get(app.url_path_for("token_embed", token=public_token))
+            assert embed_response.status_code == status.HTTP_200_OK, "Embed preview should keep succeeding"
