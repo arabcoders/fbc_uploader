@@ -24,6 +24,9 @@ export default defineNuxtConfig({
     port: 8082,
     host: "0.0.0.0",
   },
+  colorMode: {
+    preference: "system",
+  },
   css: ['~/assets/css/tailwind.css'],
   runtimeConfig: {
     public: {
