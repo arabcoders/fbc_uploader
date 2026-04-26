@@ -13,7 +13,7 @@ from sqlalchemy.sql.selectable import Select
 
 from backend.app import models, schemas
 from backend.app.config import settings
-from backend.app.db import get_db
+from backend.app.db import SessionLocal, get_db
 from backend.app.security import optional_admin_check, verify_admin
 
 if TYPE_CHECKING:
@@ -408,16 +408,18 @@ async def get_file_info(
 async def stream_file(
     download_token: str,
     upload_id: str,
-    db: Annotated[AsyncSession, Depends(get_db)],
     is_admin: Annotated[bool, Depends(optional_admin_check)],
 ) -> FileResponse:
     """Stream a completed file inline for media playback."""
-    _, record, path = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+    async with SessionLocal() as db:
+        _, record, path = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+        filename = record.filename or path.name
+        media_type = record.mimetype or "application/octet-stream"
 
     return FileResponse(
         path,
-        filename=record.filename or path.name,
-        media_type=record.mimetype or "application/octet-stream",
+        filename=filename,
+        media_type=media_type,
         content_disposition_type="inline",
     )
 
@@ -427,7 +429,6 @@ async def stream_file(
 async def download_file(
     download_token: str,
     upload_id: str,
-    db: Annotated[AsyncSession, Depends(get_db)],
     is_admin: Annotated[bool, Depends(optional_admin_check)],
 ) -> FileResponse:
     """
@@ -443,6 +444,9 @@ async def download_file(
         FileResponse: The file response for downloading the file.
 
     """
-    _, record, path = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+    async with SessionLocal() as db:
+        _, record, path = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+        filename = record.filename or path.name
+        media_type = record.mimetype or "application/octet-stream"
 
-    return FileResponse(path, filename=record.filename or path.name, media_type=record.mimetype or "application/octet-stream")
+    return FileResponse(path, filename=filename, media_type=media_type)

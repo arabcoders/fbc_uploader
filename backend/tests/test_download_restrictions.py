@@ -85,6 +85,34 @@ async def test_download_allowed_for_disabled_token_with_admin_key(client):
 
 
 @pytest.mark.asyncio
+async def test_download_file_does_not_depend_on_request_scoped_db_session(client):
+    """Download endpoint should resolve metadata before returning FileResponse."""
+    from backend.app.db import get_db
+
+    token_data = await create_token(client, max_uploads=1)
+    upload_token = token_data["token"]
+    download_token = token_data["download_token"]
+
+    upload_data = await initiate_upload(client, upload_token, "test.txt", 12)
+    upload_id = upload_data["upload_id"]
+    await upload_file_via_tus(client, upload_id, b"test content", upload_token)
+
+    async def fail_get_db():
+        raise AssertionError("download_file should not use request-scoped get_db")
+        yield
+
+    app.dependency_overrides[get_db] = fail_get_db
+    try:
+        download_url = app.url_path_for("download_file", download_token=download_token, upload_id=upload_id)
+        response = await client.get(download_url, headers={"Authorization": f"Bearer {settings.admin_api_key}"})
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == status.HTTP_200_OK, "Download should still work without request-scoped DB dependency"
+    assert response.content == b"test content", "Downloaded content should match"
+
+
+@pytest.mark.asyncio
 async def test_get_file_info_blocked_for_disabled_token(client):
     """Test that file info is blocked when token is disabled and public downloads are off."""
     with patch("backend.app.security.settings.allow_public_downloads", False):

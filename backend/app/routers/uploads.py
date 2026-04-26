@@ -16,7 +16,7 @@ from sqlalchemy.sql.selectable import Select
 
 from backend.app import models, schemas
 from backend.app.config import settings
-from backend.app.db import get_db
+from backend.app.db import SessionLocal, get_db
 from backend.app.metadata_schema import validate_metadata
 from backend.app.postprocessing import ProcessingQueue
 from backend.app.utils import compute_file_digest, detect_mimetype, is_multimedia, mime_allowed
@@ -152,6 +152,26 @@ async def _buffer_request_body(request: Request, destination: Path, checksum_alg
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload interrupted") from e
 
     return bytes_written, digest.digest() if digest else None
+
+
+async def _buffer_request_body_partial(request: Request, destination: Path) -> int:
+    """Stream the request body into a temporary file and keep any partial bytes on disconnect."""
+    from starlette.requests import ClientDisconnect
+
+    bytes_written = 0
+
+    try:
+        async with aiofiles.open(destination, "wb") as file_obj:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+
+                await file_obj.write(chunk)
+                bytes_written += len(chunk)
+    except ClientDisconnect:
+        pass
+
+    return bytes_written
 
 
 async def _append_file(source: Path, destination: Path, rollback_offset: int) -> None:
@@ -344,7 +364,6 @@ async def tus_head(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)])
 async def tus_patch(
     upload_id: str,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
     upload_offset: Annotated[int, Header(convert_underscores=False, alias="Upload-Offset")] = ...,
     upload_checksum: Annotated[str | None, Header(convert_underscores=False, alias="Upload-Checksum")] = None,
     content_length: Annotated[int | None, Header()] = None,
@@ -375,81 +394,86 @@ async def tus_patch(
             detail=f"Chunk too large. Max {settings.max_chunk_bytes} bytes",
         )
 
-    record: models.UploadRecord = await _get_upload_record(db, upload_id)
-    await _ensure_token(db, token_id=record.token_id, check_remaining=False)
+    async with SessionLocal() as db:
+        record: models.UploadRecord = await _get_upload_record(db, upload_id)
+        await _ensure_token(db, token_id=record.token_id, check_remaining=False)
 
-    if record.upload_length is None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload length unknown")
+        if record.upload_length is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload length unknown")
 
-    if record.upload_offset != upload_offset:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mismatched Upload-Offset")
+        if record.upload_offset != upload_offset:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mismatched Upload-Offset")
 
-    if "completed" == record.status:
-        return Response(status_code=status.HTTP_204_NO_CONTENT, headers={"Upload-Offset": str(record.upload_offset)})
+        if "completed" == record.status:
+            return Response(status_code=status.HTTP_204_NO_CONTENT, headers={"Upload-Offset": str(record.upload_offset)})
 
-    path = Path(record.storage_path)
+        path = Path(record.storage_path)
+
     path.parent.mkdir(parents=True, exist_ok=True)
     checksum_info = _parse_upload_checksum(upload_checksum)
+    temp_path = path.parent / f".{path.name}.{secrets.token_hex(8)}.part"
     bytes_written = 0
+    actual_digest: bytes | None = None
 
-    if checksum_info:
-        algorithm, expected_digest = checksum_info
-        temp_path = path.parent / f".{path.name}.{secrets.token_hex(8)}.part"
-
-        try:
+    try:
+        if checksum_info:
+            algorithm, expected_digest = checksum_info
             bytes_written, actual_digest = await _buffer_request_body(request, temp_path, algorithm)
+        else:
+            bytes_written = await _buffer_request_body_partial(request, temp_path)
+
+        async with SessionLocal() as db:
+            record = await _get_upload_record(db, upload_id)
+            await _ensure_token(db, token_id=record.token_id, check_remaining=False)
+
+            if record.upload_length is None:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload length unknown")
+
+            if record.upload_offset != upload_offset:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Mismatched Upload-Offset")
+
+            if "completed" == record.status:
+                return Response(status_code=status.HTTP_204_NO_CONTENT, headers={"Upload-Offset": str(record.upload_offset)})
 
             if record.upload_offset + bytes_written > record.upload_length:
                 raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Upload exceeds declared length")
 
-            if actual_digest != expected_digest:
+            if checksum_info and actual_digest != expected_digest:
                 raise HTTPException(status_code=HTTP_460_CHECKSUM_MISMATCH, detail="Checksum mismatch")
 
-            await _append_file(temp_path, path, record.upload_offset)
-        finally:
-            temp_path.unlink(missing_ok=True)
-    else:
-        from starlette.requests import ClientDisconnect
+            if bytes_written > 0:
+                await _append_file(temp_path, path, record.upload_offset)
+                record.upload_offset += bytes_written
+                record.status = "in_progress"
 
-        try:
-            async with aiofiles.open(path, "ab") as f:
-                async for chunk in request.stream():
-                    await f.write(chunk)
-                    bytes_written += len(chunk)
-        except ClientDisconnect:
-            pass
+                if checksum_info:
+                    algorithm, _ = checksum_info
+                    checksum_metadata = dict(record.meta_data.get("upload_checksums") or {})
+                    record.meta_data = {
+                        **record.meta_data,
+                        "upload_checksums": {
+                            **checksum_metadata,
+                            "patch_algorithm": algorithm,
+                        },
+                    }
 
-    if bytes_written > 0:
-        record.upload_offset += bytes_written
-        if record.upload_offset > record.upload_length:
-            raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Upload exceeds declared length")
+                try:
+                    await db.commit()
+                    await db.refresh(record)
+                except Exception:
+                    await db.rollback()
+                    await db.refresh(record)
 
-        record.status = "in_progress"
-
-        if checksum_info:
-            algorithm, _ = checksum_info
-            checksum_metadata = dict(record.meta_data.get("upload_checksums") or {})
-            checksum_metadata["patch_algorithm"] = algorithm
-            record.meta_data = {
-                **record.meta_data,
-                "upload_checksums": checksum_metadata,
-            }
-
-        try:
-            await db.commit()
-            await db.refresh(record)
-        except Exception:
-            await db.rollback()
-            await db.refresh(record)
-
-    return Response(
-        status_code=status.HTTP_204_NO_CONTENT,
-        headers={
-            "Upload-Offset": str(record.upload_offset),
-            "Tus-Resumable": "1.0.0",
-            "Upload-Length": str(record.upload_length),
-        },
-    )
+            return Response(
+                status_code=status.HTTP_204_NO_CONTENT,
+                headers={
+                    "Upload-Offset": str(record.upload_offset),
+                    "Tus-Resumable": "1.0.0",
+                    "Upload-Length": str(record.upload_length),
+                },
+            )
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 @router.options("/tus", name="tus_options")

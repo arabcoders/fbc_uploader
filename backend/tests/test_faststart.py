@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.app.utils import _needs_faststart, ensure_faststart_mp4
+from backend.app.utils import _needs_faststart, ensure_faststart_mp4, is_web_safe_webm, should_remux_to_mp4
 
 
 @pytest.mark.asyncio
@@ -91,3 +91,44 @@ async def test_ensure_faststart_file_not_found():
     nonexistent = Path("/tmp/does_not_exist_12345.mp4")
     with pytest.raises(FileNotFoundError):
         await ensure_faststart_mp4(nonexistent, "video/mp4")
+
+
+def test_should_remux_mkv_with_h264_aac_to_mp4():
+    """H.264/AAC in a non-MP4 container should be remuxed to MP4."""
+    ffprobe_data = {
+        "format": {"format_name": "matroska,webm"},
+        "streams": [
+            {"codec_type": "video", "codec_name": "h264"},
+            {"codec_type": "audio", "codec_name": "aac"},
+        ],
+    }
+
+    assert should_remux_to_mp4("video/x-matroska", ffprobe_data) is True, "MKV with H.264/AAC should be remuxed"
+
+
+def test_should_not_remux_web_safe_webm():
+    """Browser-safe WebM should stay in WebM instead of being remuxed."""
+    ffprobe_data = {
+        "format": {"format_name": "matroska,webm"},
+        "streams": [
+            {"codec_type": "video", "codec_name": "vp9"},
+            {"codec_type": "audio", "codec_name": "opus"},
+        ],
+    }
+
+    assert is_web_safe_webm(ffprobe_data) is True, "VP9/Opus WebM should be treated as web safe"
+    assert should_remux_to_mp4("video/webm", ffprobe_data) is False, "Web-safe WebM should not be remuxed"
+
+
+def test_should_not_remux_streams_with_non_web_tracks():
+    """Files with subtitle or data streams should be left unchanged in v1."""
+    ffprobe_data = {
+        "format": {"format_name": "matroska,webm"},
+        "streams": [
+            {"codec_type": "video", "codec_name": "h264"},
+            {"codec_type": "audio", "codec_name": "aac"},
+            {"codec_type": "subtitle", "codec_name": "subrip"},
+        ],
+    }
+
+    assert should_remux_to_mp4("video/x-matroska", ffprobe_data) is False, "Subtitle streams should prevent copy-remux to MP4"

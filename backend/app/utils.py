@@ -20,6 +20,12 @@ MULTIPLIERS: dict[str, int] = {
     "t": 1024**4,
 }
 
+SUPPORTED_WEB_STREAM_TYPES: set[str] = {"video", "audio"}
+WEBM_SAFE_VIDEO_CODECS: set[str] = {"vp8", "vp9", "av1"}
+WEBM_SAFE_AUDIO_CODECS: set[str] = {"opus", "vorbis"}
+MP4_SAFE_VIDEO_CODECS: set[str] = {"h264"}
+MP4_SAFE_AUDIO_CODECS: set[str] = {"aac"}
+
 
 async def _terminate_subprocess(proc: asyncio.subprocess.Process) -> None:
     """Terminate a subprocess cleanly and wait for it to exit."""
@@ -138,6 +144,63 @@ async def extract_ffprobe_metadata(file_path: str | Path) -> dict | None:
         return None
     else:
         return dct
+
+
+def _get_ffprobe_streams(ffprobe_data: dict | None) -> list[dict]:
+    if not ffprobe_data:
+        return []
+
+    streams = ffprobe_data.get("streams")
+    if not isinstance(streams, list):
+        return []
+
+    return [stream for stream in streams if isinstance(stream, dict)]
+
+
+def _has_only_supported_web_streams(streams: list[dict]) -> bool:
+    return bool(streams) and all(stream.get("codec_type") in SUPPORTED_WEB_STREAM_TYPES for stream in streams)
+
+
+def _streams_have_allowed_codecs(streams: list[dict], codec_type: str, allowed_codecs: set[str], *, require_stream: bool) -> bool:
+    matching_streams = [stream for stream in streams if stream.get("codec_type") == codec_type]
+    if require_stream and not matching_streams:
+        return False
+
+    return all(str(stream.get("codec_name") or "").lower() in allowed_codecs for stream in matching_streams)
+
+
+def is_web_safe_webm(ffprobe_data: dict | None) -> bool:
+    """Return True when ffprobe metadata describes a browser-safe WebM stream set."""
+    streams = _get_ffprobe_streams(ffprobe_data)
+    if not _has_only_supported_web_streams(streams):
+        return False
+
+    return _streams_have_allowed_codecs(streams, "video", WEBM_SAFE_VIDEO_CODECS, require_stream=True) and _streams_have_allowed_codecs(
+        streams,
+        "audio",
+        WEBM_SAFE_AUDIO_CODECS,
+        require_stream=False,
+    )
+
+
+def should_remux_to_mp4(mimetype: str | None, ffprobe_data: dict | None) -> bool:
+    """Return True when a non-MP4 video can be safely copy-remuxed into MP4."""
+    if mimetype == "video/mp4":
+        return False
+
+    streams = _get_ffprobe_streams(ffprobe_data)
+    if not _has_only_supported_web_streams(streams):
+        return False
+
+    if mimetype == "video/webm" and is_web_safe_webm(ffprobe_data):
+        return False
+
+    return _streams_have_allowed_codecs(streams, "video", MP4_SAFE_VIDEO_CODECS, require_stream=True) and _streams_have_allowed_codecs(
+        streams,
+        "audio",
+        MP4_SAFE_AUDIO_CODECS,
+        require_stream=False,
+    )
 
 
 def mime_allowed(filetype: str | None, allowed: list[str] | None) -> bool:
@@ -387,3 +450,82 @@ async def ensure_faststart_mp4(
                 tmp_out_path.unlink()
 
     return modified
+
+
+async def remux_to_mp4(
+    source_path: str | Path,
+    *,
+    ffmpeg_bin: str = "ffmpeg",
+) -> Path:
+    """Copy-remux a compatible media file into an MP4 container with faststart enabled."""
+    src = Path(source_path)
+    if not src.exists():
+        raise FileNotFoundError(src)
+
+    target_path = src.with_suffix(".mp4")
+    fd, tmp_out = tempfile.mkstemp(
+        prefix=target_path.name + ".",
+        suffix=".part",
+        dir=src.parent,
+    )
+    os.close(fd)
+    tmp_out_path = Path(tmp_out)
+
+    proc: asyncio.subprocess.Process | None = None
+    remuxed_path = target_path
+
+    try:
+        cmd = [
+            ffmpeg_bin,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(src),
+            "-map",
+            "0",
+            "-c",
+            "copy",
+            "-movflags",
+            "+faststart",
+            "-f",
+            "mp4",
+            str(tmp_out_path),
+        ]
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await proc.communicate()
+
+        if proc.returncode != 0:
+            msg = (
+                f"ffmpeg remux failed (rc={proc.returncode}).\n"
+                f"stdout:\n{out.decode(errors='replace')}\n"
+                f"stderr:\n{err.decode(errors='replace')}"
+            )
+            raise RuntimeError(msg)
+
+        if not tmp_out_path.exists() or tmp_out_path.stat().st_size == 0:
+            msg = "ffmpeg produced an empty remuxed output file"
+            raise RuntimeError(msg)
+
+        tmp_out_path.replace(target_path)
+        if target_path != src:
+            src.unlink(missing_ok=True)
+        remuxed_path = target_path
+
+    except asyncio.CancelledError:
+        if proc is not None:
+            await _terminate_subprocess(proc)
+        raise
+
+    finally:
+        with contextlib.suppress(Exception):
+            if tmp_out_path.exists():
+                tmp_out_path.unlink()
+
+    return remuxed_path

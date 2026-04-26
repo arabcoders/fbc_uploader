@@ -22,9 +22,10 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [PATCH /api/tokens/{token\_value}](#patch-apitokenstoken_value)
     - [DELETE /api/tokens/{token\_value}](#delete-apitokenstoken_value)
     - [GET /api/tokens/{token\_value}/info](#get-apitokenstoken_valueinfo)
-    - [GET /api/tokens/{token\_value}/uploads](#get-apitokenstoken_valueuploads)
-    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}](#get-apitokensdownload_tokenuploadsupload_id)
-    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
+     - [GET /api/tokens/{token\_value}/uploads](#get-apitokenstoken_valueuploads)
+     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}](#get-apitokensdownload_tokenuploadsupload_id)
+     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/stream](#get-apitokensdownload_tokenuploadsupload_idstream)
+     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
     - [POST /api/uploads/initiate](#post-apiuploadsinitiate)
     - [OPTIONS /api/uploads/tus](#options-apiuploadstus)
     - [HEAD /api/uploads/{upload\_id}/tus](#head-apiuploadsupload_idtus)
@@ -328,6 +329,7 @@ Get public token information including uploads.
       "status": "completed",
       "created_at": "2025-12-23T12:00:00Z",
       "completed_at": "2025-12-23T12:01:00Z",
+      "stream_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/stream",
       "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik",
       "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus"
     }
@@ -340,6 +342,7 @@ Get public token information including uploads.
 - `max_chunk_bytes`: Maximum chunk size for TUS uploads (from `FBC_MAX_CHUNK_BYTES`)
 - `allow_public_downloads`: Whether public downloads are enabled
 - `uploads`: Array of upload records
+- `stream_url`: Inline media URL for browser playback when the upload is completed
 
 **Upload Status Values:**
 - `initiated` - Upload created but no data uploaded yet
@@ -372,12 +375,13 @@ List all uploads for a specific token.
     "meta_data": {"title": "My Document"},
     "upload_length": 1024000,
     "upload_offset": 1024000,
-    "status": "completed",
-    "created_at": "2025-12-23T12:00:00Z",
-    "completed_at": "2025-12-23T12:01:00Z",
-    "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik",
-    "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus"
-  }
+     "status": "completed",
+     "created_at": "2025-12-23T12:00:00Z",
+     "completed_at": "2025-12-23T12:01:00Z",
+     "stream_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/stream",
+     "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik",
+     "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus"
+   }
 ]
 ```
 
@@ -412,6 +416,7 @@ Get metadata information about a completed upload.
   "status": "completed",
   "created_at": "2025-01-01T12:00:00Z",
   "completed_at": "2025-01-01T12:05:00Z",
+  "stream_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/stream",
   "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus",
   "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/download"
 }
@@ -420,6 +425,32 @@ Get metadata information about a completed upload.
 **Error Responses:**
 - `404 Not Found` - Download token or upload not found
 - `409 Conflict` - Upload not yet completed
+
+---
+
+### GET /api/tokens/{download_token}/uploads/{upload_id}/stream
+
+Stream a completed file inline for browser playback.
+
+**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+
+**Path Parameters:**
+- `download_token` (string): The download token (prefixed with `fbc_`)
+- `upload_id` (integer): The upload record ID
+
+**Response (200):**
+Returns the file with headers:
+- `Content-Type`: Original file MIME type or `application/octet-stream`
+- `Content-Disposition`: `inline; filename="original-filename.ext"`
+- `Content-Length`: File size in bytes
+
+**Error Responses:**
+- `404 Not Found` - Download token or upload not found
+- `409 Conflict` - Upload not yet completed
+
+**Notes:**
+- Use this endpoint for HTML `<video>` and `<audio>` playback
+- Use `/download` when you want attachment-style download behavior
 
 ---
 
@@ -915,10 +946,12 @@ Typical upload flow:
    ```
 
 5. **Download File**
-   ```http
-   GET /api/tokens/{download_token}/uploads/rT72ZKGMPdldiEmA9eDI7kik
-   Authorization: Bearer YOUR_API_KEY
-   ```
+    ```http
+    GET /api/tokens/{download_token}/uploads/rT72ZKGMPdldiEmA9eDI7kik
+    Authorization: Bearer YOUR_API_KEY
+    ```
+
+After upload data is received, multimedia files enter background post-processing before they become `completed`. Browser-safe `video/mp4` and `video/webm` files are kept as-is. Compatible non-MP4 video containers may be copy-remuxed into MP4 without transcoding, which updates the stored filename, extension, MIME type, size, and ffprobe metadata to match the final file. Files larger than `FBC_MAX_REMUX_BYTES` skip remux and still complete normally.
 
 ---
 
@@ -951,3 +984,5 @@ Typical upload flow:
 - Metadata is stored as JSON in the database (`meta_data` column)
 - TUS protocol is recommended for files larger than a few MB for reliability
 - Maximum chunk size is controlled by `FBC_MAX_CHUNK_BYTES` (default: 90MB)
+- Media remux eligibility is capped by `FBC_MAX_REMUX_BYTES` (default: 5GB)
+- Multimedia post-processing runs with up to `FBC_POSTPROCESSING_WORKERS` concurrent workers (default: 2)
