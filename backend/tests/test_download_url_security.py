@@ -37,6 +37,10 @@ async def test_list_token_uploads_does_not_expose_api_key():
         assert "api_key" not in download_url, "Download URL should not contain api_key"
         assert "?api_key=" not in download_url, "Download URL should not have api_key query param"
 
+        stream_url = uploads[0]["stream_url"]
+        assert "api_key" not in stream_url, "Stream URL should not contain api_key"
+        assert "/stream" in stream_url, "Stream URL should point at the inline stream endpoint"
+
 
 @pytest.mark.asyncio
 async def test_get_file_info_does_not_expose_api_key():
@@ -65,3 +69,7 @@ async def test_get_file_info_does_not_expose_api_key():
         download_url = file_info["download_url"]
         assert "api_key" not in download_url, "Download URL should not contain api_key"
         assert "?api_key=" not in download_url, "Download URL should not have api_key query param"
+
+        stream_url = file_info["stream_url"]
+        assert "api_key" not in stream_url, "Stream URL should not contain api_key"
+        assert "/stream" in stream_url, "Stream URL should point at the inline stream endpoint"

@@ -32,6 +32,47 @@ def _generate_token_value(num_bytes: int, prefix: str = "") -> str:
         return f"{prefix}{token}"
 
 
+async def _get_accessible_upload(
+    download_token: str,
+    upload_id: str,
+    db: AsyncSession,
+    is_admin: bool,
+) -> tuple[models.UploadToken, models.UploadRecord, Path]:
+    token_stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.download_token == download_token)
+    token_res: Result[tuple[models.UploadToken]] = await db.execute(token_stmt)
+    if not (token_row := token_res.scalar_one_or_none()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download token not found")
+
+    if not is_admin:
+        now: datetime = datetime.now(UTC)
+        expires_at: datetime = token_row.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+
+        if expires_at < now:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token has expired")
+
+        if token_row.disabled:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token is disabled")
+
+    upload_stmt: Select[tuple[models.UploadRecord]] = select(models.UploadRecord).where(
+        models.UploadRecord.public_id == upload_id, models.UploadRecord.token_id == token_row.id
+    )
+    upload_res: Result[tuple[models.UploadRecord]] = await db.execute(upload_stmt)
+
+    if not (record := upload_res.scalar_one_or_none()):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
+
+    if record.status != "completed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload not yet completed")
+
+    path = Path(record.storage_path or "")
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File missing")
+
+    return token_row, record, path
+
+
 @router.get("/", response_model=schemas.TokenListResponse, name="list_tokens")
 async def list_tokens(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -151,6 +192,7 @@ async def get_token(
         item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(u, from_attributes=True)
         item.upload_url = str(request.app.url_path_for("tus_head", upload_id=u.public_id))
         item.download_url = str(request.app.url_path_for("download_file", download_token=token_row.download_token, upload_id=u.public_id))
+        item.stream_url = str(request.app.url_path_for("stream_file", download_token=token_row.download_token, upload_id=u.public_id))
         item.info_url = str(request.app.url_path_for("get_file_info", download_token=token_row.download_token, upload_id=u.public_id))
         uploads_list.append(item)
 
@@ -320,6 +362,7 @@ async def list_token_uploads(
     for u in uploads:
         item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(u, from_attributes=True)
         item.download_url = str(request.app.url_path_for("download_file", download_token=token_row.download_token, upload_id=u.public_id))
+        item.stream_url = str(request.app.url_path_for("stream_file", download_token=token_row.download_token, upload_id=u.public_id))
         item.upload_url = str(request.app.url_path_for("tus_head", upload_id=u.public_id))
         item.info_url = str(request.app.url_path_for("get_file_info", download_token=token_row.download_token, upload_id=u.public_id))
         uploads_list.append(item)
@@ -350,45 +393,33 @@ async def get_file_info(
         UploadRecordResponse: Metadata about the uploaded file.
 
     """
-    token_stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.download_token == download_token)
-    token_res: Result[tuple[models.UploadToken]] = await db.execute(token_stmt)
-
-    if not (token_row := token_res.scalar_one_or_none()):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download token not found")
-
-    # Check token status (admin can bypass)
-    if not is_admin:
-        now: datetime = datetime.now(UTC)
-        expires_at: datetime = token_row.expires_at
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
-
-        if expires_at < now:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token has expired")
-
-        if token_row.disabled:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token is disabled")
-
-    upload_stmt: Select[tuple[models.UploadRecord]] = select(models.UploadRecord).where(
-        models.UploadRecord.public_id == upload_id, models.UploadRecord.token_id == token_row.id
-    )
-    upload_res: Result[tuple[models.UploadRecord]] = await db.execute(upload_stmt)
-
-    if not (record := upload_res.scalar_one_or_none()):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-
-    if "completed" != record.status:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload not yet completed")
-
-    path = Path(record.storage_path or "")
-    if not path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File missing")
+    _, record, _ = await _get_accessible_upload(download_token, upload_id, db, is_admin)
 
     item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(record, from_attributes=True)
     item.download_url = str(request.app.url_path_for("download_file", download_token=download_token, upload_id=upload_id))
+    item.stream_url = str(request.app.url_path_for("stream_file", download_token=download_token, upload_id=upload_id))
     item.upload_url = str(request.app.url_path_for("tus_head", upload_id=upload_id))
     item.info_url = str(request.app.url_path_for("get_file_info", download_token=download_token, upload_id=upload_id))
     return item
+
+
+@router.get("/{download_token}/uploads/{upload_id}/stream", name="stream_file")
+@router.get("/{download_token}/uploads/{upload_id}/stream/")
+async def stream_file(
+    download_token: str,
+    upload_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    is_admin: Annotated[bool, Depends(optional_admin_check)],
+) -> FileResponse:
+    """Stream a completed file inline for media playback."""
+    _, record, path = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+
+    return FileResponse(
+        path,
+        filename=record.filename or path.name,
+        media_type=record.mimetype or "application/octet-stream",
+        content_disposition_type="inline",
+    )
 
 
 @router.get("/{download_token}/uploads/{upload_id}/download", name="download_file")
@@ -412,37 +443,6 @@ async def download_file(
         FileResponse: The file response for downloading the file.
 
     """
-    token_stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.download_token == download_token)
-    token_res: Result[tuple[models.UploadToken]] = await db.execute(token_stmt)
-    if not (token_row := token_res.scalar_one_or_none()):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download token not found")
-
-    # Check token status (admin can bypass)
-    if not is_admin:
-        now: datetime = datetime.now(UTC)
-        expires_at: datetime = token_row.expires_at
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=UTC)
-
-        if expires_at < now:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token has expired")
-
-        if token_row.disabled:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token is disabled")
-
-    upload_stmt: Select[tuple[models.UploadRecord]] = select(models.UploadRecord).where(
-        models.UploadRecord.public_id == upload_id, models.UploadRecord.token_id == token_row.id
-    )
-    upload_res: Result[tuple[models.UploadRecord]] = await db.execute(upload_stmt)
-
-    if not (record := upload_res.scalar_one_or_none()):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
-
-    if "completed" != record.status:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload not yet completed")
-
-    path = Path(record.storage_path or "")
-    if not path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File missing")
+    _, record, path = await _get_accessible_upload(download_token, upload_id, db, is_admin)
 
     return FileResponse(path, filename=record.filename or path.name, media_type=record.mimetype or "application/octet-stream")

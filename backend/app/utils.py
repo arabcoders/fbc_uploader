@@ -21,6 +21,24 @@ MULTIPLIERS: dict[str, int] = {
 }
 
 
+async def _terminate_subprocess(proc: asyncio.subprocess.Process) -> None:
+    """Terminate a subprocess cleanly and wait for it to exit."""
+    if proc.returncode is not None:
+        return
+
+    with contextlib.suppress(ProcessLookupError):
+        proc.terminate()
+
+    try:
+        await proc.wait()
+    except asyncio.CancelledError:
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
+        raise
+
+
 def detect_mimetype(file_path: str | Path) -> str:
     """
     Detect the actual MIME type of a file using libmagic.
@@ -89,6 +107,8 @@ async def extract_ffprobe_metadata(file_path: str | Path) -> dict | None:
         msg: str = f"File not found: {file_path}"
         raise FileNotFoundError(msg)
 
+    proc: asyncio.subprocess.Process | None = None
+
     try:
         proc = await asyncio.create_subprocess_exec(
             "ffprobe",
@@ -110,6 +130,10 @@ async def extract_ffprobe_metadata(file_path: str | Path) -> dict | None:
         dct: dict | None = json.loads(stdout.decode())
         if dct and "format" in dct and "filename" in dct.get("format"):
             dct["format"].pop("filename", None)
+    except asyncio.CancelledError:
+        if proc is not None:
+            await _terminate_subprocess(proc)
+        raise
     except Exception:
         return None
     else:
@@ -308,6 +332,10 @@ async def ensure_faststart_mp4(
     os.close(fd)
     tmp_out_path = Path(tmp_out)
 
+    proc: asyncio.subprocess.Process | None = None
+
+    modified = False
+
     try:
         cmd = [
             ffmpeg_bin,
@@ -346,9 +374,16 @@ async def ensure_faststart_mp4(
             raise RuntimeError(msg)
 
         tmp_out_path.replace(src)
-        return True
+        modified = True
+
+    except asyncio.CancelledError:
+        if proc is not None:
+            await _terminate_subprocess(proc)
+        raise
 
     finally:
         with contextlib.suppress(Exception):
             if tmp_out_path.exists():
                 tmp_out_path.unlink()
+
+    return modified

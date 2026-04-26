@@ -63,6 +63,7 @@ class UploadRecordResponse(BaseModel):
     created_at: datetime
     completed_at: datetime | None
     download_url: str | None = None
+    stream_url: str | None = None
     upload_url: str | None = None
     info_url: str | None = None
 
