@@ -137,34 +137,42 @@ describe('useTusUpload', () => {
 
   it('adds a checksum header to PATCH requests', async () => {
     let uploadOptions: any
+    const originalError = console.error
+    console.error = mock(() => {}) as typeof console.error
 
-    MockUpload.implementation = (_file: any, opts: any) => ({
-      start: () => {
-        uploadOptions = opts
-        opts.onError(new Error('stop'))
-      },
-    })
+    try {
+      MockUpload.implementation = (_file: any, opts: any) => ({
+        start: () => {
+          uploadOptions = opts
+          opts.onError(new Error('stop'))
+        },
+      })
 
-    const { useTusUpload } = await import('~/composables/useTusUpload')
-    const { startTusUpload } = useTusUpload()
-    const slot = makeSlot()
-    const file = { name: 'a.bin', size: 20 * 1024 * 1024, type: 'application/octet-stream' } as File
+      const { useTusUpload } = await import('~/composables/useTusUpload')
+      const { startTusUpload } = useTusUpload()
+      const slot = makeSlot()
+      const file = { name: 'a.bin', size: 20 * 1024 * 1024, type: 'application/octet-stream' } as File
 
-    await expect(startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 90 * 1024 * 1024 } as any)).rejects.toThrow(
-      'stop',
-    )
+      await expect(startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 90 * 1024 * 1024 } as any)).rejects.toThrow(
+        'stop',
+      )
 
-    expect(uploadOptions.chunkSize).toBe(TUS_CHECKSUM_MAX_CHUNK_BYTES)
+      expect(uploadOptions.chunkSize).toBe(TUS_CHECKSUM_MAX_CHUNK_BYTES)
 
-    const request = uploadOptions.httpStack.createRequest('PATCH', 'http://upload')
+      const request = uploadOptions.httpStack.createRequest('PATCH', 'http://upload')
 
-    await request.send(new Blob(['hello world']))
+      await request.send(new Blob(['hello world']))
 
-    expect(request.getHeader('Upload-Checksum')).toMatch(/^sha256 /)
+      expect(request.getHeader('Upload-Checksum')).toMatch(/^sha256 /)
+    } finally {
+      console.error = originalError
+    }
   })
 
   it('falls back when Web Crypto is unavailable', async () => {
     let uploadOptions: any
+    const originalError = console.error
+    console.error = mock(() => {}) as typeof console.error
 
     MockUpload.implementation = (_file: any, opts: any) => ({
       start: () => {
@@ -203,6 +211,7 @@ describe('useTusUpload', () => {
         configurable: true,
         value: originalCrypto,
       })
+      console.error = originalError
       console.warn = originalWarn
     }
   })

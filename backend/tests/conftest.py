@@ -1,5 +1,7 @@
+import atexit
 import json
 import os
+import shutil
 import sys
 import tempfile
 from importlib import reload
@@ -8,13 +10,33 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-TEST_CONFIG_DIR = tempfile.mkdtemp(prefix="fbc-test-config-")
-TEST_STORAGE_DIR = tempfile.mkdtemp(prefix="fbc-test-storage-")
-TEST_FRONTEND_DIR = tempfile.mkdtemp(prefix="fbc-test-frontend-")
+TESTS_TMP_ROOT = Path("/tmp/fbc-tests")  # noqa: S108
+TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
 
-os.environ["FBC_CONFIG_PATH"] = TEST_CONFIG_DIR
-os.environ["FBC_STORAGE_PATH"] = TEST_STORAGE_DIR
-os.environ["FBC_FRONTEND_EXPORT_PATH"] = TEST_FRONTEND_DIR
+TEST_RUN_DIR = Path(tempfile.mkdtemp(prefix="run-", dir=str(TESTS_TMP_ROOT)))
+TEST_CONFIG_DIR = TEST_RUN_DIR / "config"
+TEST_STORAGE_DIR = TEST_RUN_DIR / "storage"
+TEST_FRONTEND_DIR = TEST_RUN_DIR / "frontend"
+TEST_TEMP_DIR = TEST_RUN_DIR / "tmp"
+
+for path in (TEST_CONFIG_DIR, TEST_STORAGE_DIR, TEST_FRONTEND_DIR, TEST_TEMP_DIR):
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _cleanup_test_run_dir() -> None:
+    shutil.rmtree(TEST_RUN_DIR, ignore_errors=True)
+
+
+atexit.register(_cleanup_test_run_dir)
+
+os.environ["TMPDIR"] = str(TEST_TEMP_DIR)
+os.environ["TMP"] = str(TEST_TEMP_DIR)
+os.environ["TEMP"] = str(TEST_TEMP_DIR)
+tempfile.tempdir = str(TEST_TEMP_DIR)
+
+os.environ["FBC_CONFIG_PATH"] = str(TEST_CONFIG_DIR)
+os.environ["FBC_STORAGE_PATH"] = str(TEST_STORAGE_DIR)
+os.environ["FBC_FRONTEND_EXPORT_PATH"] = str(TEST_FRONTEND_DIR)
 os.environ["FBC_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["FBC_ADMIN_API_KEY"] = "test-admin"
 os.environ["FBC_SKIP_MIGRATIONS"] = "1"
@@ -34,6 +56,11 @@ config_module.settings = Settings()
 
 
 reload(metadata_schema)
+
+
+@pytest.fixture(scope="session")
+def test_run_dir():
+    return TEST_RUN_DIR
 
 
 @pytest.fixture(autouse=True)
@@ -66,7 +93,7 @@ def reset_metadata_schema():
 
 
 @pytest.fixture(scope="session", autouse=True)
-async def setup_db():
+async def setup_db(test_run_dir):
     from backend.app.db import engine, init_db
 
     await init_db()
@@ -75,16 +102,10 @@ async def setup_db():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def setup_frontend():
+def setup_frontend(test_run_dir):
     """Create minimal frontend structure for tests."""
-    frontend_dir = Path(TEST_FRONTEND_DIR)
-    frontend_dir.mkdir(parents=True, exist_ok=True)
-    index_html = frontend_dir / "index.html"
+    index_html = TEST_FRONTEND_DIR / "index.html"
     index_html.write_text("<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>")
-    yield
-    import shutil
-
-    shutil.rmtree(TEST_FRONTEND_DIR, ignore_errors=True)
 
 
 @pytest.fixture
