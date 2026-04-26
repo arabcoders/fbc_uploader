@@ -5,6 +5,7 @@ import type { TokenInfo } from '~/types/token'
 const TUS_CHECKSUM_ALGORITHM = 'sha256'
 const TUS_WEB_CRYPTO_ALGORITHM = 'SHA-256'
 const TUS_CHECKSUM_MAX_CHUNK_BYTES = 16 * 1024 * 1024
+let hasWarnedChecksumFallback = false
 
 function resolveChunkSize(tokenInfo: TokenInfo | null): number {
   const maxChunk = tokenInfo?.max_chunk_bytes || 90 * 1024 * 1024
@@ -72,6 +73,28 @@ async function computeUploadChecksum(body: Blob | ArrayBuffer | ArrayBufferView 
   return arrayBufferToBase64(digest)
 }
 
+async function attachUploadChecksum(
+  request: {
+    getMethod: () => string
+    setHeader: (header: string, value: string) => void
+  },
+  body: Blob | ArrayBuffer | ArrayBufferView | { arrayBuffer: () => Promise<ArrayBuffer> } | null,
+): Promise<void> {
+  if (request.getMethod() !== 'PATCH' || body == null) {
+    return
+  }
+
+  try {
+    const checksum = await computeUploadChecksum(body)
+    request.setHeader('Upload-Checksum', `${TUS_CHECKSUM_ALGORITHM} ${checksum}`)
+  } catch (error) {
+    if (!hasWarnedChecksumFallback) {
+      console.warn('Falling back to uploads without Upload-Checksum header.', error)
+      hasWarnedChecksumFallback = true
+    }
+  }
+}
+
 function createChecksumHttpStack() {
   if (!tus.DefaultHttpStack) {
     return undefined
@@ -90,11 +113,7 @@ function createChecksumHttpStack() {
         getHeader: (header: string) => request.getHeader(header),
         setProgressHandler: (progressHandler: (bytesSent: number) => void) => request.setProgressHandler(progressHandler),
         async send(body: Blob | ArrayBuffer | ArrayBufferView | { arrayBuffer: () => Promise<ArrayBuffer> } | null) {
-          if (request.getMethod() === 'PATCH' && body != null) {
-            const checksum = await computeUploadChecksum(body)
-            request.setHeader('Upload-Checksum', `${TUS_CHECKSUM_ALGORITHM} ${checksum}`)
-          }
-
+          await attachUploadChecksum(request, body)
           return request.send(body)
         },
         abort: () => request.abort(),
@@ -134,9 +153,10 @@ export function useTusUpload() {
         },
         ...(httpStack ? { httpStack } : {}),
         onError(error: Error) {
-          slot.error = error.message
+          slot.error = error.message || String(error)
           slot.status = 'error'
           slot.tusUpload = undefined
+          console.error('TUS upload failed', error)
           reject(error)
         },
         onProgress(bytesUploaded: number, bytesTotal: number) {
