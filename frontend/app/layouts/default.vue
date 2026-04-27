@@ -9,13 +9,14 @@
           </NuxtLink>
           <div class="flex items-center gap-3">
             <template v-if="adminToken">
-              <UButton color="neutral" variant="ghost" size="sm" @click="navigateTo('/admin')"
+              <UButton color="neutral" variant="ghost" size="sm" aria-label="Dashboard" title="Dashboard" @click="navigateTo('/admin')"
                 icon="i-heroicons-shield-check-20-solid">
-                Dashboard
+                <span class="hidden sm:inline">Dashboard</span>
               </UButton>
               <UButton color="neutral" variant="ghost" size="sm" icon="i-heroicons-arrow-left-on-rectangle-20-solid"
+                aria-label="Sign out" title="Sign out"
                 @click="signOut">
-                Sign out
+                <span class="hidden sm:inline">Sign out</span>
               </UButton>
             </template>
             <UButton
@@ -27,7 +28,7 @@
               color="neutral"
               variant="ghost"
             >
-              Theme
+              <span class="hidden sm:inline">Theme</span>
             </UButton>
           </div>
         </UContainer>

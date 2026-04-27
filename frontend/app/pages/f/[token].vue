@@ -75,11 +75,11 @@
         </template>
       </UCard>
 
-      <UCard v-if="canPlaySelectedMedia && selectedUpload" class="overflow-hidden"
+      <UCard v-if="canPlaySelectedMedia && selectedUpload" class="max-w-full overflow-hidden"
         :ui="{ body: 'p-0 sm:p-0', root: 'overflow-hidden' }">
-        <div class="grid gap-0 xl:grid-cols-[minmax(0,2fr)_24rem] xl:items-stretch">
-          <div class="border-b xl:border-b-0 xl:border-r border-default bg-elevated/40">
-            <div class="flex items-center justify-between gap-3 px-4 py-3 sm:px-5 border-b border-default bg-default/70">
+        <div class="grid min-w-0 max-w-full gap-0 xl:grid-cols-[minmax(0,2fr)_24rem] xl:items-stretch">
+          <div class="min-w-0 max-w-full overflow-hidden border-b border-default bg-elevated/40 xl:border-b-0 xl:border-r">
+            <div class="flex flex-col gap-3 border-b border-default bg-default/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div class="min-w-0">
                 <div class="flex items-center gap-2 text-xs uppercase tracking-wide text-muted">
                   <UIcon :name="selectedIsVideo ? 'i-heroicons-film-20-solid' : 'i-heroicons-musical-note-20-solid'"
@@ -90,19 +90,23 @@
                   {{ selectedUpload.filename || 'Untitled media' }}
                 </h2>
               </div>
-              <a v-if="selectedUpload.download_url" :href="selectedUpload.download_url">
+              <a v-if="selectedUpload.download_url" :href="selectedUpload.download_url" class="w-full sm:w-auto">
                 <UButton color="neutral" variant="outline" icon="i-heroicons-arrow-down-tray-20-solid" size="sm">
                   Download
                 </UButton>
               </a>
             </div>
 
-            <div v-if="selectedIsVideo" class="bg-black">
-              <video :key="selectedUpload.public_id" class="w-full aspect-video max-h-[72vh] bg-black" controls playsinline
-                preload="metadata" autoplay>
-                <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined">
-                Your browser does not support the video tag.
-              </video>
+            <div v-if="selectedIsVideo" class="min-w-0 max-w-full overflow-hidden bg-black">
+              <div class="flex w-full max-w-full items-center justify-center overflow-hidden bg-black p-2 sm:p-0">
+                <video ref="mediaElement" :key="selectedUpload.public_id"
+                  class="block h-auto max-h-[70vh] w-full max-w-full bg-black object-contain sm:max-h-[72vh]" controls playsinline
+                  preload="metadata" @error="handleMediaPlaybackError" @loadedmetadata="clearMediaPlaybackError"
+                  @play="clearMediaPlaybackError" @volumechange="handleMediaVolumeChange">
+                  <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
             </div>
 
             <div v-else class="px-4 py-10 sm:px-6 lg:px-8">
@@ -116,15 +120,31 @@
                     <div class="text-lg font-semibold">{{ selectedUpload.filename || 'Untitled audio' }}</div>
                   </div>
                 </div>
-                <audio :key="selectedUpload.public_id" class="mt-6 w-full" controls preload="metadata">
+                <audio ref="mediaElement" :key="selectedUpload.public_id" class="mt-6 w-full" controls preload="metadata"
+                  @error="handleMediaPlaybackError" @loadedmetadata="clearMediaPlaybackError" @play="clearMediaPlaybackError"
+                  @volumechange="handleMediaVolumeChange">
                   <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined">
                   Your browser does not support the audio tag.
                 </audio>
               </div>
             </div>
+
+            <div v-if="mediaPlaybackError" class="border-t border-default bg-default px-4 py-4 sm:px-5">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="space-y-1">
+                  <div class="text-sm font-medium text-highlighted">Playback issue</div>
+                  <p class="text-sm text-muted">{{ mediaPlaybackError }}</p>
+                </div>
+                <a v-if="selectedUpload.download_url" :href="selectedUpload.download_url" class="shrink-0">
+                  <UButton color="neutral" variant="outline" icon="i-heroicons-arrow-down-tray-20-solid" size="sm">
+                    Download Original
+                  </UButton>
+                </a>
+              </div>
+            </div>
           </div>
 
-          <div class="bg-default/60">
+          <div class="min-w-0 bg-default/60">
             <div class="space-y-6 p-4 sm:p-5">
               <div class="space-y-3">
                 <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
@@ -392,7 +412,10 @@ const { tokenInfo, notFound, tokenError, isExpired, isDisabled, fetchTokenInfo }
 const loading = ref(true)
 const notice = ref<string>('')
 const showNotice = useStorage<boolean>('show_notice', true)
+const mediaVolume = useStorage<number>('share_media_volume', 1)
 const selectedUploadId = ref<string>('')
+const mediaPlaybackError = ref('')
+const mediaElement = ref<HTMLMediaElement | null>(null)
 
 const uploads = computed(() => tokenInfo.value?.uploads?.filter(upload => upload.status === 'completed') || [])
 
@@ -450,6 +473,24 @@ watch(playableUploads, (nextUploads) => {
   }
 }, { immediate: true })
 
+watch(() => selectedUpload.value?.public_id, () => {
+  clearMediaPlaybackError()
+})
+
+watch(mediaElement, (element) => {
+  applyStoredMediaVolume(element)
+}, { immediate: true })
+
+watch(mediaVolume, (nextVolume) => {
+  const normalizedVolume = normalizeMediaVolume(nextVolume)
+  if (normalizedVolume !== nextVolume) {
+    mediaVolume.value = normalizedVolume
+    return
+  }
+
+  applyStoredMediaVolume(mediaElement.value)
+}, { immediate: true })
+
 function copyShareUrl() {
   copyText(shareUrl.value)
   toast.add({
@@ -457,6 +498,40 @@ function copyShareUrl() {
     color: 'success',
     icon: 'i-heroicons-check-circle-20-solid',
   })
+}
+
+function clearMediaPlaybackError() {
+  mediaPlaybackError.value = ''
+}
+
+function handleMediaPlaybackError() {
+  mediaPlaybackError.value = selectedIsVideo.value
+    ? 'This video could not be played inline in your browser. Download the original file to view it locally.'
+    : 'This audio file could not be played inline in your browser. Download the original file to listen locally.'
+}
+
+function handleMediaVolumeChange(event: Event) {
+  const target = event.target as HTMLMediaElement | null
+  if (!target || typeof target.volume !== 'number') return
+
+  const normalizedVolume = normalizeMediaVolume(target.volume)
+  if (Math.abs(mediaVolume.value - normalizedVolume) > 0.001) {
+    mediaVolume.value = normalizedVolume
+  }
+}
+
+function applyStoredMediaVolume(element: HTMLMediaElement | null) {
+  if (!element) return
+
+  const normalizedVolume = normalizeMediaVolume(mediaVolume.value)
+  if (Math.abs(element.volume - normalizedVolume) > 0.001) {
+    element.volume = normalizedVolume
+  }
+}
+
+function normalizeMediaVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1
+  return Math.min(1, Math.max(0, volume))
 }
 
 function isPlayableUpload(upload: UploadRow): boolean {
