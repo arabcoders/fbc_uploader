@@ -18,6 +18,7 @@ from .config import settings
 from .db import engine
 from .migrate import run_migrations
 from .postprocessing import ProcessingQueue
+from .proxy_headers import TrustedProxyHeadersMiddleware
 
 
 def create_app() -> FastAPI:
@@ -74,27 +75,7 @@ def create_app() -> FastAPI:
     )
 
     if settings.trust_proxy_headers:
-
-        @app.middleware("http")
-        async def proxy_headers_middleware(request: Request, call_next):
-            """
-            Middleware to trust proxy headers for scheme and host.
-
-            Args:
-                request (Request): The incoming HTTP request.
-                call_next: Function to call the next middleware or route handler.
-
-            Returns:
-                Response: The HTTP response.
-
-            """
-            if forwarded_proto := request.headers.get("X-Forwarded-Proto"):
-                request.scope["scheme"] = forwarded_proto
-
-            if forwarded_host := request.headers.get("X-Forwarded-Host"):
-                request.scope["server"] = (forwarded_host.split(":")[0], 443 if forwarded_proto == "https" else 80)
-
-            return await call_next(request)
+        app.add_middleware(TrustedProxyHeadersMiddleware, trusted_hosts=settings.forwarded_allow_ips)
 
     app.add_middleware(
         CORSMiddleware,

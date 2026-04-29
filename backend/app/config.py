@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     postprocessing_workers: int = Field(4, ge=1, validation_alias="FBC_POSTPROCESSING_WORKERS")
     allow_public_downloads: bool = Field(False, validation_alias="FBC_ALLOW_PUBLIC_DOWNLOADS")
     trust_proxy_headers: bool = Field(False, validation_alias="FBC_TRUST_PROXY_HEADERS")
+    forwarded_allow_ips: str = Field("127.0.0.1,::1", validation_alias="FBC_FORWARDED_ALLOW_IPS")
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="FBC_", extra="ignore")
 
