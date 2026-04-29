@@ -48,14 +48,14 @@
                   :name="tokenInfo.allow_public_downloads ? 'i-heroicons-lock-open-20-solid' : 'i-heroicons-lock-closed-20-solid'"
                   class="size-4 text-muted" />
                 <span class="font-medium">
-                  {{ tokenInfo.allow_public_downloads ? 'Public downloads enabled' : 'Downloads require authentication'
-                  }}
+                  {{ tokenInfo.allow_public_downloads ? 'Public downloads enabled' : 'Downloads require authentication' }}
                 </span>
               </div>
             </div>
           </div>
         </UCard>
       </div>
+
       <UCard v-if="!notFound && notice" variant="outline">
         <template #header>
           <UCollapsible v-model:open="showNotice">
@@ -74,6 +74,164 @@
           </UCollapsible>
         </template>
       </UCard>
+
+      <UCard v-if="canPlaySelectedMedia && selectedUpload" class="max-w-full overflow-hidden"
+        :ui="{ body: 'p-0 sm:p-0', root: 'overflow-hidden' }">
+        <div class="grid min-w-0 max-w-full gap-0 xl:grid-cols-[minmax(0,2fr)_24rem] xl:items-stretch">
+          <div class="min-w-0 max-w-full overflow-hidden border-b border-default bg-elevated/40 xl:border-b-0 xl:border-r">
+            <div class="flex flex-col gap-3 border-b border-default bg-default/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 text-xs uppercase tracking-wide text-muted">
+                  <UIcon :name="selectedIsVideo ? 'i-heroicons-film-20-solid' : 'i-heroicons-musical-note-20-solid'"
+                    class="size-4" />
+                  <span>{{ selectedIsVideo ? 'Now playing' : 'Now listening' }}</span>
+                </div>
+                <h2 class="mt-1 truncate text-lg font-semibold text-highlighted">
+                  {{ selectedUpload.filename || 'Untitled media' }}
+                </h2>
+              </div>
+              <a v-if="selectedUpload.download_url" :href="selectedUpload.download_url" class="w-full sm:w-auto">
+                <UButton color="neutral" variant="outline" icon="i-heroicons-arrow-down-tray-20-solid" size="sm">
+                  Download
+                </UButton>
+              </a>
+            </div>
+
+            <div v-if="selectedIsVideo" class="min-w-0 max-w-full overflow-hidden bg-black">
+              <div class="flex w-full max-w-full items-center justify-center overflow-hidden bg-black p-2 sm:p-0">
+                <video ref="mediaElement" :key="selectedUpload.public_id"
+                  class="block h-auto max-h-[70vh] w-full max-w-full bg-black object-contain sm:max-h-[72vh]" controls playsinline
+                  preload="metadata" @error="handleMediaPlaybackError" @loadedmetadata="clearMediaPlaybackError"
+                  @play="clearMediaPlaybackError" @volumechange="handleMediaVolumeChange">
+                  <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+            </div>
+
+            <div v-else class="px-4 py-10 sm:px-6 lg:px-8">
+              <div class="rounded-2xl border border-default bg-default p-6 sm:p-8 shadow-sm">
+                <div class="flex items-center gap-3 text-highlighted">
+                  <div class="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary ring ring-default">
+                    <UIcon name="i-heroicons-musical-note-20-solid" class="size-6" />
+                  </div>
+                  <div>
+                    <div class="text-xs uppercase tracking-wide text-muted">Audio Preview</div>
+                    <div class="text-lg font-semibold">{{ selectedUpload.filename || 'Untitled audio' }}</div>
+                  </div>
+                </div>
+                <audio ref="mediaElement" :key="selectedUpload.public_id" class="mt-6 w-full" controls preload="metadata"
+                  @error="handleMediaPlaybackError" @loadedmetadata="clearMediaPlaybackError" @play="clearMediaPlaybackError"
+                  @volumechange="handleMediaVolumeChange">
+                  <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined">
+                  Your browser does not support the audio tag.
+                </audio>
+              </div>
+            </div>
+
+            <div v-if="mediaPlaybackError" class="border-t border-default bg-default px-4 py-4 sm:px-5">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="space-y-1">
+                  <div class="text-sm font-medium text-highlighted">Playback issue</div>
+                  <p class="text-sm text-muted">{{ mediaPlaybackError }}</p>
+                </div>
+                <a v-if="selectedUpload.download_url" :href="selectedUpload.download_url" class="shrink-0">
+                  <UButton color="neutral" variant="outline" icon="i-heroicons-arrow-down-tray-20-solid" size="sm">
+                    Download Original
+                  </UButton>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div class="min-w-0 bg-default/60">
+            <div class="space-y-6 p-4 sm:p-5">
+              <div class="space-y-3">
+                <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
+                  <UIcon name="i-heroicons-information-circle-20-solid" class="size-5 text-primary" />
+                  <span>Current Source</span>
+                </div>
+                <div class="grid gap-3 text-sm">
+                  <div class="flex items-center justify-between gap-4">
+                    <span class="text-muted">Type</span>
+                    <span class="text-right font-medium">{{ selectedUpload.mimetype || 'Unknown' }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-4">
+                    <span class="text-muted">Size</span>
+                    <span class="text-right font-medium">{{ formatBytes(selectedUpload.size_bytes || 0) || 'Unknown' }}</span>
+                  </div>
+                  <div v-if="selectedDurationLabel" class="flex items-center justify-between gap-4">
+                    <span class="text-muted">Duration</span>
+                    <span class="text-right font-medium">{{ selectedDurationLabel }}</span>
+                  </div>
+                  <div v-if="selectedResolutionLabel" class="flex items-center justify-between gap-4">
+                    <span class="text-muted">Resolution</span>
+                    <span class="text-right font-medium">{{ selectedResolutionLabel }}</span>
+                  </div>
+                  <div class="flex items-center justify-between gap-4">
+                    <span class="text-muted">Uploaded</span>
+                    <span class="text-right font-medium">{{ formatDate(selectedUpload.created_at) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="hasMetadata(selectedUpload.meta_data)" class="space-y-3 border-t border-default pt-5">
+                <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
+                  <UIcon name="i-heroicons-tag-20-solid" class="size-5 text-primary" />
+                  <span>Metadata</span>
+                </div>
+                <div class="space-y-2 text-sm">
+                  <div v-for="(val, key) in filterMetadata(selectedUpload.meta_data)" :key="key"
+                    class="grid grid-cols-[auto_1fr] gap-2">
+                    <span class="text-muted font-medium capitalize">{{ formatKey(key) }}:</span>
+                    <span class="wrap-break-word text-right">{{ formatValue(val) }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="playableUploads.length > 1" class="space-y-3 border-t border-default pt-5">
+                <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
+                  <UIcon name="i-heroicons-queue-list-20-solid" class="size-5 text-primary" />
+                  <span>Available Sources</span>
+                </div>
+                <div class="space-y-2">
+                  <button v-for="upload in playableUploads" :key="upload.public_id" type="button"
+                    class="w-full rounded-xl border px-3 py-3 text-left transition-colors"
+                    :class="upload.public_id === selectedUpload.public_id
+                      ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                      : 'border-default bg-default hover:bg-elevated/70'"
+                    @click="selectedUploadId = upload.public_id">
+                    <div class="flex items-start gap-3">
+                      <div class="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border border-default bg-elevated text-primary">
+                        <UIcon :name="isVideoUpload(upload) ? 'i-heroicons-film-20-solid' : 'i-heroicons-musical-note-20-solid'"
+                          class="size-5" />
+                      </div>
+                      <div class="min-w-0 flex-1 space-y-1">
+                        <div class="truncate font-medium text-highlighted">{{ upload.filename || 'Untitled media' }}</div>
+                        <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+                          <span>{{ upload.mimetype || 'Unknown type' }}</span>
+                          <span>{{ formatBytes(upload.size_bytes || 0) || 'Unknown size' }}</span>
+                          <span>{{ formatDate(upload.created_at) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <UAlert v-else-if="uploads.length > 0 && !loading && !tokenInfo?.allow_public_downloads" color="neutral" variant="outline"
+        title="Inline playback unavailable"
+        description="Public downloads are disabled for this token, so media playback is not available on the share page."
+        icon="i-heroicons-lock-closed-20-solid" />
+
+      <UAlert v-else-if="uploads.length > 0 && !loading && tokenInfo?.allow_public_downloads && !playableUploads.length" color="neutral"
+        variant="outline" title="No playable media found"
+        description="This share contains files, but none of the completed uploads are video or audio."
+        icon="i-heroicons-document-20-solid" />
 
       <div v-if="uploads.length > 0" class="space-y-3">
         <div class="flex items-center gap-2">
@@ -239,11 +397,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { formatBytes, formatDate, formatKey, formatValue, copyText } from '~/utils'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useStorage } from '@vueuse/core'
+import { useRoute } from 'vue-router'
 import { useTokenInfo } from '~/composables/useTokenInfo'
+import type { UploadRow } from '~/types/uploads'
+import { copyText, formatBytes, formatDate, formatKey, formatValue } from '~/utils'
 
 const route = useRoute()
 const toast = useToast()
@@ -253,15 +412,84 @@ const { tokenInfo, notFound, tokenError, isExpired, isDisabled, fetchTokenInfo }
 const loading = ref(true)
 const notice = ref<string>('')
 const showNotice = useStorage<boolean>('show_notice', true)
+const mediaVolume = useStorage<number>('share_media_volume', 1)
+const selectedUploadId = ref<string>('')
+const mediaPlaybackError = ref('')
+const mediaElement = ref<HTMLMediaElement | null>(null)
 
-const uploads = computed(() => {
-  return tokenInfo.value?.uploads?.filter(u => u.status === 'completed') || []
+const uploads = computed(() => tokenInfo.value?.uploads?.filter(upload => upload.status === 'completed') || [])
+
+const playableUploads = computed(() => {
+  return uploads.value.filter(upload => upload.stream_url && isPlayableUpload(upload))
+})
+
+const selectedUpload = computed(() => {
+  if (!playableUploads.value.length) return null
+  return playableUploads.value.find(upload => upload.public_id === selectedUploadId.value) || playableUploads.value[0]
+})
+
+const canPlaySelectedMedia = computed(() => {
+  return Boolean(tokenInfo.value?.allow_public_downloads && selectedUpload.value?.stream_url)
+})
+
+const selectedIsVideo = computed(() => {
+  return Boolean(selectedUpload.value && isVideoUpload(selectedUpload.value))
+})
+
+const selectedMediaUrl = computed(() => selectedUpload.value?.stream_url || '')
+
+const selectedFfprobe = computed<Record<string, any> | null>(() => {
+  const ffprobe = selectedUpload.value?.meta_data?.ffprobe
+  return ffprobe && typeof ffprobe === 'object' ? ffprobe as Record<string, any> : null
+})
+
+const selectedDurationLabel = computed(() => {
+  const duration = getMediaDurationSeconds(selectedFfprobe.value)
+  return duration ? formatDuration(duration) : ''
+})
+
+const selectedResolutionLabel = computed(() => {
+  const resolution = getVideoResolution(selectedFfprobe.value)
+  return resolution ? `${resolution.width} x ${resolution.height}` : ''
 })
 
 const shareUrl = computed(() => {
   if (!token.value) return ''
   return `${window.location.origin}/f/${token.value}`
 })
+
+watch(playableUploads, (nextUploads) => {
+  if (!nextUploads.length) {
+    selectedUploadId.value = ''
+    return
+  }
+
+  const selectedStillExists = nextUploads.some(upload => upload.public_id === selectedUploadId.value)
+  if (!selectedStillExists) {
+    const firstUpload = nextUploads[0]
+    if (firstUpload) {
+      selectedUploadId.value = firstUpload.public_id
+    }
+  }
+}, { immediate: true })
+
+watch(() => selectedUpload.value?.public_id, () => {
+  clearMediaPlaybackError()
+})
+
+watch(mediaElement, (element) => {
+  applyStoredMediaVolume(element)
+}, { immediate: true })
+
+watch(mediaVolume, (nextVolume) => {
+  const normalizedVolume = normalizeMediaVolume(nextVolume)
+  if (normalizedVolume !== nextVolume) {
+    mediaVolume.value = normalizedVolume
+    return
+  }
+
+  applyStoredMediaVolume(mediaElement.value)
+}, { immediate: true })
 
 function copyShareUrl() {
   copyText(shareUrl.value)
@@ -270,6 +498,83 @@ function copyShareUrl() {
     color: 'success',
     icon: 'i-heroicons-check-circle-20-solid',
   })
+}
+
+function clearMediaPlaybackError() {
+  mediaPlaybackError.value = ''
+}
+
+function handleMediaPlaybackError() {
+  mediaPlaybackError.value = selectedIsVideo.value
+    ? 'This video could not be played inline in your browser. Download the original file to view it locally.'
+    : 'This audio file could not be played inline in your browser. Download the original file to listen locally.'
+}
+
+function handleMediaVolumeChange(event: Event) {
+  const target = event.target as HTMLMediaElement | null
+  if (!target || typeof target.volume !== 'number') return
+
+  const normalizedVolume = normalizeMediaVolume(target.volume)
+  if (Math.abs(mediaVolume.value - normalizedVolume) > 0.001) {
+    mediaVolume.value = normalizedVolume
+  }
+}
+
+function applyStoredMediaVolume(element: HTMLMediaElement | null) {
+  if (!element) return
+
+  const normalizedVolume = normalizeMediaVolume(mediaVolume.value)
+  if (Math.abs(element.volume - normalizedVolume) > 0.001) {
+    element.volume = normalizedVolume
+  }
+}
+
+function normalizeMediaVolume(volume: number): number {
+  if (!Number.isFinite(volume)) return 1
+  return Math.min(1, Math.max(0, volume))
+}
+
+function isPlayableUpload(upload: UploadRow): boolean {
+  return Boolean(upload.mimetype?.startsWith('video/') || upload.mimetype?.startsWith('audio/'))
+}
+
+function isVideoUpload(upload: UploadRow): boolean {
+  return Boolean(upload.mimetype?.startsWith('video/'))
+}
+
+function getMediaDurationSeconds(ffprobe: Record<string, any> | null): number | null {
+  const duration = ffprobe?.format?.duration
+  if (!duration) return null
+  const parsed = Number(duration)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return Math.round(parsed)
+}
+
+function getVideoResolution(ffprobe: Record<string, any> | null): { width: number; height: number } | null {
+  const streams = ffprobe?.streams
+  if (!Array.isArray(streams)) return null
+
+  const videoStream = streams.find(stream => stream?.codec_type === 'video')
+  const width = Number(videoStream?.width)
+  const height = Number(videoStream?.height)
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null
+  }
+
+  return { width, height }
+}
+
+function formatDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (hours > 0) {
+    return [hours, minutes, seconds].map(value => String(value).padStart(2, '0')).join(':')
+  }
+
+  return [minutes, seconds].map(value => String(value).padStart(2, '0')).join(':')
 }
 
 function getStatusColor(status: string): 'success' | 'error' | 'warning' | 'neutral' {
@@ -330,14 +635,12 @@ onMounted(async () => {
   await fetchTokenInfo()
   loading.value = false
 
-  // Fetch notice
   try {
     const noticeData = await $fetch<{ notice: string | null }>('/api/notice/')
     if (noticeData.notice) {
       notice.value = noticeData.notice
     }
   } catch {
-    // Ignore notice fetch errors
   }
 })
 

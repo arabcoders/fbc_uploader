@@ -18,6 +18,7 @@ from .config import settings
 from .db import engine
 from .migrate import run_migrations
 from .postprocessing import ProcessingQueue
+from .proxy_headers import TrustedProxyHeadersMiddleware
 
 
 def create_app() -> FastAPI:
@@ -74,27 +75,7 @@ def create_app() -> FastAPI:
     )
 
     if settings.trust_proxy_headers:
-
-        @app.middleware("http")
-        async def proxy_headers_middleware(request: Request, call_next):
-            """
-            Middleware to trust proxy headers for scheme and host.
-
-            Args:
-                request (Request): The incoming HTTP request.
-                call_next: Function to call the next middleware or route handler.
-
-            Returns:
-                Response: The HTTP response.
-
-            """
-            if forwarded_proto := request.headers.get("X-Forwarded-Proto"):
-                request.scope["scheme"] = forwarded_proto
-
-            if forwarded_host := request.headers.get("X-Forwarded-Host"):
-                request.scope["server"] = (forwarded_host.split(":")[0], 443 if forwarded_proto == "https" else 80)
-
-            return await call_next(request)
+        app.add_middleware(TrustedProxyHeadersMiddleware, trusted_hosts=settings.forwarded_allow_ips)
 
     app.add_middleware(
         CORSMiddleware,
@@ -170,22 +151,22 @@ def create_app() -> FastAPI:
         if not settings.allow_public_downloads:
             return serve_static()
 
-        from backend.app.db import get_db
+        from backend.app.db import SessionLocal
 
-        async for db in get_db():
+        async with SessionLocal() as db:
             if not (token_row := await get_token(db, token)):
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
 
-        return await render_embed_preview(request, db, token_row, user=True)
+            return await render_embed_preview(request, db, token_row, user=True)
 
     @app.get("/f/{token}", name="share_page")
     @app.get("/f/{token}/")
     async def share_page(token: str, request: Request, user_agent: Annotated[str | None, Header()] = None):
         """Handle /f/{token} with bot detection for embed preview."""
-        from backend.app.db import get_db
+        from backend.app.db import SessionLocal
 
         if is_embed_bot(user_agent) and settings.allow_public_downloads:
-            async for db in get_db():
+            async with SessionLocal() as db:
                 if token_row := await get_token(db, token):
                     return await render_embed_preview(request, db, token_row)
 

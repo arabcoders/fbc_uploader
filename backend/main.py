@@ -13,7 +13,13 @@ LOG: logging.Logger = logging.getLogger("fbc-uploader")
 
 
 def main() -> None:
-    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=bool(os.getenv("FBC_DEV_MODE", "0") == "1"))
+    uvicorn.run(
+        "backend.app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=bool(os.getenv("FBC_DEV_MODE", "0") == "1"),
+        proxy_headers=False,
+    )
 
 
 if __name__ == "__main__":

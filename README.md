@@ -55,19 +55,28 @@ Then you can access the WebUI at `http://localhost:8000`.
 
 All configuration is done via environment variables prefixed with `FBC_`:
 
-| Variable                            | Default          | Description                                                     |
-| ----------------------------------- | ---------------- | --------------------------------------------------------------- |
-| `FBC_CONFIG_PATH`                   | `./data/config`  | Configuration directory                                         |
-| `FBC_STORAGE_PATH`                  | `./data/uploads` | Directory for uploaded files                                    |
-| `FBC_ADMIN_API_KEY`                 | Auto-generated   | Admin API key (stored in `{config_path}/secret.key` if not set) |
-| `FBC_DEFAULT_TOKEN_TTL_HOURS`       | `24`             | Default token expiration in hours (1-720)                       |
-| `FBC_CLEANUP_INTERVAL_SECONDS`      | `3600`           | Interval between cleanup job runs                               |
-| `FBC_INCOMPLETE_TTL_HOURS`          | `24`             | Time-to-live for incomplete uploads (0 to disable)              |
-| `FBC_DISABLED_TOKENS_TTL_DAYS`      | `30`             | Days to keep disabled tokens before deletion (0 to disable)     |
-| `FBC_DELETE_FILES_ON_TOKEN_CLEANUP` | `true`           | Delete associated files when cleaning up disabled tokens        |
-| `FBC_MAX_CHUNK_BYTES`               | `94371840`       | Maximum TUS chunk size. Default to (90MB)                       |
-| `FBC_ALLOW_PUBLIC_DOWNLOADS`        | `false`          | Allow public downloads without authentication                   |
-| `FBC_TRUST_PROXY_HEADERS`           | `false`          | Trust X-Forwarded-* headers from reverse proxy                  |
+| Variable                            | Default          | Description                                                                       |
+| ----------------------------------- | ---------------- | --------------------------------------------------------------------------------- |
+| `FBC_CONFIG_PATH`                   | `./data/config`  | Configuration directory                                                           |
+| `FBC_STORAGE_PATH`                  | `./data/uploads` | Directory for uploaded files                                                      |
+| `FBC_ADMIN_API_KEY`                 | Auto-generated   | Admin API key (stored in `{config_path}/secret.key` if not set)                   |
+| `FBC_DEFAULT_TOKEN_TTL_HOURS`       | `24`             | Default token expiration in hours (1-720)                                         |
+| `FBC_CLEANUP_INTERVAL_SECONDS`      | `3600`           | Interval between cleanup job runs                                                 |
+| `FBC_INCOMPLETE_TTL_HOURS`          | `24`             | Time-to-live for incomplete uploads (0 to disable)                                |
+| `FBC_DISABLED_TOKENS_TTL_DAYS`      | `30`             | Days to keep disabled tokens before deletion (0 to disable)                       |
+| `FBC_DELETE_FILES_ON_TOKEN_CLEANUP` | `true`           | Delete associated files when cleaning up disabled tokens                          |
+| `FBC_MAX_CHUNK_BYTES`               | `94371840`       | Maximum TUS chunk size. Default to (90MB)                                         |
+| `FBC_MAX_REMUX_BYTES`               | `5368709120`     | Maximum file size eligible for copy-remux to MP4 during post-processing (5GB)     |
+| `FBC_POSTPROCESSING_WORKERS`        | `4`              | Number of uploads processed concurrently in the background post-processing queue  |
+| `FBC_ALLOW_PUBLIC_DOWNLOADS`        | `false`          | Allow public downloads without authentication                                     |
+| `FBC_TRUST_PROXY_HEADERS`           | `false`          | Trust `X-Forwarded-*` headers, but only from proxies in `FBC_FORWARDED_ALLOW_IPS` |
+| `FBC_FORWARDED_ALLOW_IPS`           | `127.0.0.1,::1`  | Comma-separated trusted proxy IPs or CIDRs allowed to supply forwarded headers    |
+
+When running behind a reverse proxy, `FBC_TRUST_PROXY_HEADERS=true` is not enough on its own. You must also set `FBC_FORWARDED_ALLOW_IPS` to the proxy IPs or networks that connect directly to FBC Uploader, such as a Docker bridge subnet like `172.23.0.0/16`.
+
+If you leave `FBC_FORWARDED_ALLOW_IPS` at its default, only local loopback proxies are trusted. This protects against clients forging `X-Forwarded-For`, `X-Forwarded-Proto`, or `X-Forwarded-Host` when the app is exposed directly.
+
+Uploaded multimedia files are post-processed after upload completion. Browser-safe `mp4` and `webm` files are kept as-is. Compatible non-MP4 video containers may be copy-remuxed into `mp4` for better playback compatibility without transcoding. Files larger than `FBC_MAX_REMUX_BYTES` skip remux and still complete normally. The background worker pool processes up to `FBC_POSTPROCESSING_WORKERS` uploads concurrently.
 
 ## Dynamic Metadata Schema
 

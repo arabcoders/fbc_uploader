@@ -137,6 +137,42 @@ describe('useTusUpload', () => {
 
   it('adds a checksum header to PATCH requests', async () => {
     let uploadOptions: any
+    const originalError = console.error
+    console.error = mock(() => {}) as typeof console.error
+
+    try {
+      MockUpload.implementation = (_file: any, opts: any) => ({
+        start: () => {
+          uploadOptions = opts
+          opts.onError(new Error('stop'))
+        },
+      })
+
+      const { useTusUpload } = await import('~/composables/useTusUpload')
+      const { startTusUpload } = useTusUpload()
+      const slot = makeSlot()
+      const file = { name: 'a.bin', size: 20 * 1024 * 1024, type: 'application/octet-stream' } as File
+
+      await expect(startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 90 * 1024 * 1024 } as any)).rejects.toThrow(
+        'stop',
+      )
+
+      expect(uploadOptions.chunkSize).toBe(TUS_CHECKSUM_MAX_CHUNK_BYTES)
+
+      const request = uploadOptions.httpStack.createRequest('PATCH', 'http://upload')
+
+      await request.send(new Blob(['hello world']))
+
+      expect(request.getHeader('Upload-Checksum')).toMatch(/^sha256 /)
+    } finally {
+      console.error = originalError
+    }
+  })
+
+  it('falls back when Web Crypto is unavailable', async () => {
+    let uploadOptions: any
+    const originalError = console.error
+    console.error = mock(() => {}) as typeof console.error
 
     MockUpload.implementation = (_file: any, opts: any) => ({
       start: () => {
@@ -145,22 +181,39 @@ describe('useTusUpload', () => {
       },
     })
 
-    const { useTusUpload } = await import('~/composables/useTusUpload')
-    const { startTusUpload } = useTusUpload()
-    const slot = makeSlot()
-    const file = { name: 'a.bin', size: 20 * 1024 * 1024, type: 'application/octet-stream' } as File
+    const originalCrypto = globalThis.crypto
+    const warn = mock(() => {})
+    const originalWarn = console.warn
+    console.warn = warn as typeof console.warn
 
-    await expect(startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 90 * 1024 * 1024 } as any)).rejects.toThrow(
-      'stop',
-    )
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: undefined,
+    })
 
-    expect(uploadOptions.chunkSize).toBe(TUS_CHECKSUM_MAX_CHUNK_BYTES)
+    try {
+      const { useTusUpload } = await import('~/composables/useTusUpload')
+      const { startTusUpload } = useTusUpload()
+      const slot = makeSlot()
+      const file = { name: 'a.bin', size: 10, type: 'application/octet-stream' } as File
 
-    const request = uploadOptions.httpStack.createRequest('PATCH', 'http://upload')
+      await expect(startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 90 * 1024 * 1024 } as any)).rejects.toThrow(
+        'stop',
+      )
 
-    await request.send(new Blob(['hello world']))
+      const request = uploadOptions.httpStack.createRequest('PATCH', 'http://upload')
 
-    expect(request.getHeader('Upload-Checksum')).toMatch(/^sha256 /)
+      await expect(request.send(new Blob(['hello world']))).resolves.toBeDefined()
+      expect(request.getHeader('Upload-Checksum')).toBeUndefined()
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', {
+        configurable: true,
+        value: originalCrypto,
+      })
+      console.error = originalError
+      console.warn = originalWarn
+    }
   })
 
   it('pauses and resumes existing upload', () => {

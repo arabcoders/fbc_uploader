@@ -18,6 +18,11 @@
       </div>
     </div>
     <div class="flex items-center gap-2">
+      <UButton v-if="shareLink && !shareDisabled" size="xs" color="neutral" variant="outline"
+        icon="i-heroicons-arrow-top-right-on-square-20-solid" :href="shareLink" target="_blank"
+        rel="noopener noreferrer">
+        Open share page
+      </UButton>
       <UButton v-if="shareLink" size="xs" color="primary" variant="outline" icon="i-heroicons-clipboard"
         :disabled="shareDisabled" @click="$emit('copy')">
         Copy share link

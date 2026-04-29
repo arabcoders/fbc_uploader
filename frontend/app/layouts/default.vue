@@ -9,16 +9,27 @@
           </NuxtLink>
           <div class="flex items-center gap-3">
             <template v-if="adminToken">
-              <UButton color="neutral" variant="ghost" size="sm" @click="navigateTo('/admin')"
+              <UButton color="neutral" variant="ghost" size="sm" aria-label="Dashboard" title="Dashboard" @click="navigateTo('/admin')"
                 icon="i-heroicons-shield-check-20-solid">
-                Dashboard
+                <span class="hidden sm:inline">Dashboard</span>
               </UButton>
               <UButton color="neutral" variant="ghost" size="sm" icon="i-heroicons-arrow-left-on-rectangle-20-solid"
+                aria-label="Sign out" title="Sign out"
                 @click="signOut">
-                Sign out
+                <span class="hidden sm:inline">Sign out</span>
               </UButton>
             </template>
-            <UColorModeButton variant="ghost" size="sm" />
+            <UButton
+              size="sm"
+              :icon="colorModeButtonIcon"
+              :aria-label="colorModeButtonAriaLabel"
+              :title="colorModeButtonTitle"
+              @click="cycleColorMode"
+              color="neutral"
+              variant="ghost"
+            >
+              <span class="hidden sm:inline">Theme</span>
+            </UButton>
           </div>
         </UContainer>
       </header>
@@ -61,8 +72,12 @@
 </template>
 
 <script setup lang="ts">
+type ColorModePreference = "system" | "light" | "dark";
+
+const colorMode = useColorMode();
 const adminToken = useState<string | null>("adminToken", () => null);
 const toast = useToast();
+const colorModePreferences: Array<ColorModePreference> = ["system", "light", "dark"];
 const version = ref<{
   loaded: boolean;
   version: string;
@@ -76,6 +91,55 @@ const version = ref<{
   build_date: "unknown",
   branch: "unknown",
 });
+
+const colorModePreference = computed<ColorModePreference>(() => {
+  const preference = colorMode.preference;
+  return colorModePreferences.includes(preference as ColorModePreference)
+    ? (preference as ColorModePreference)
+    : "system";
+});
+
+const colorModeButtonIcon = computed(() => {
+  switch (colorModePreference.value) {
+    case "light":
+      return "i-heroicons-sun-20-solid";
+    case "dark":
+      return "i-heroicons-moon-20-solid";
+    default:
+      return "i-heroicons-computer-desktop-20-solid";
+  }
+});
+
+const nextColorModePreference = computed<ColorModePreference>(() => {
+  const currentIndex = colorModePreferences.indexOf(colorModePreference.value);
+  return colorModePreferences[(currentIndex + 1) % colorModePreferences.length] ?? "system";
+});
+
+const colorModeButtonTitle = computed(() => {
+  switch (colorModePreference.value) {
+    case "light":
+      return "Theme: Light";
+    case "dark":
+      return "Theme: Dark";
+    default:
+      return "Theme: System";
+  }
+});
+
+const colorModeButtonAriaLabel = computed(() => {
+  switch (nextColorModePreference.value) {
+    case "light":
+      return "Switch theme to light";
+    case "dark":
+      return "Switch theme to dark";
+    default:
+      return "Switch theme to system";
+  }
+});
+
+const cycleColorMode = (): void => {
+  colorMode.preference = nextColorModePreference.value;
+};
 
 const signOut = async () => {
   adminToken.value = null;
