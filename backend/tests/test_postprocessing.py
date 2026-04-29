@@ -1,6 +1,7 @@
 """Tests for post-processing worker."""
 
 import asyncio
+import logging
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -347,6 +348,77 @@ async def test_postprocessing_skips_remux_when_file_exceeds_limit():
             assert record.mimetype == "video/x-matroska", "MIME type should remain unchanged when remux is skipped"
             assert record.storage_path == str(temp_path), "Storage path should remain on the original file when remux is skipped"
             assert record.meta_data["ffprobe"] == original_ffprobe, "ffprobe metadata should still be stored for the original file"
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_postprocessing_logs_reason_when_remux_is_rejected(caplog):
+    """Non-remuxable video uploads should log why they were left unchanged."""
+    with tempfile.NamedTemporaryFile(suffix=".mkv", delete=False) as temp_file:
+        temp_file.write(b"fake mkv bytes")
+        temp_path = Path(temp_file.name)
+
+    ffprobe_with_subtitles = {
+        "format": {"format_name": "matroska,webm", "duration": "1.0"},
+        "streams": [
+            {"codec_type": "video", "codec_name": "h264", "width": 1280, "height": 720},
+            {"codec_type": "audio", "codec_name": "aac"},
+            {"codec_type": "subtitle", "codec_name": "ass"},
+        ],
+    }
+
+    try:
+        async with SessionLocal() as session:
+            expires_at = datetime.now(UTC) + timedelta(days=1)
+
+            token = models.UploadToken(
+                token="test_token_remux_skip_reason",
+                download_token="test_download_remux_skip_reason",
+                max_uploads=1,
+                max_size_bytes=1000000,
+                expires_at=expires_at,
+            )
+            session.add(token)
+            await session.flush()
+
+            record = models.UploadRecord(
+                public_id="postprocess_remux_skip_reason_test",
+                token_id=token.id,
+                filename="sample.mkv",
+                ext="mkv",
+                mimetype="video/x-matroska",
+                size_bytes=temp_path.stat().st_size,
+                status="postprocessing",
+                storage_path=str(temp_path),
+            )
+            session.add(record)
+            await session.commit()
+
+            with (
+                patch("backend.app.postprocessing.extract_ffprobe_metadata", new=AsyncMock(return_value=ffprobe_with_subtitles)),
+                patch(
+                    "backend.app.postprocessing.remux_to_mp4",
+                    new=AsyncMock(side_effect=AssertionError("remux_to_mp4 should not be called")),
+                ),
+                caplog.at_level(logging.INFO, logger="backend.app.postprocessing"),
+            ):
+                success = await process_upload(record.public_id)
+
+            assert success is True, "Processing should still complete when remux is rejected"
+
+            await session.refresh(record)
+            assert record.status == "completed", "Upload should complete even when remux is skipped"
+            assert record.filename == "sample.mkv", "Filename should remain unchanged when remux is rejected"
+            assert record.ext == "mkv", "Extension should remain unchanged when remux is rejected"
+            assert record.meta_data["ffprobe"] == ffprobe_with_subtitles, "Original ffprobe metadata should still be stored"
+
+            log_messages = [record.message for record in caplog.records if record.name == "backend.app.postprocessing"]
+            assert any(
+                "Skipping MP4 remux for upload postprocess_remux_skip_reason_test because it contains unsupported non-audio/video streams: subtitle (ass)"
+                in message
+                for message in log_messages
+            ), "Rejected remuxes should log the unsupported subtitle stream reason"
     finally:
         temp_path.unlink(missing_ok=True)
 

@@ -169,6 +169,27 @@ def _streams_have_allowed_codecs(streams: list[dict], codec_type: str, allowed_c
     return all(str(stream.get("codec_name") or "").lower() in allowed_codecs for stream in matching_streams)
 
 
+def _get_stream_codecs(streams: list[dict], codec_type: str) -> list[str]:
+    return sorted({str(stream.get("codec_name") or "unknown").lower() for stream in streams if stream.get("codec_type") == codec_type})
+
+
+def _describe_unsupported_streams(streams: list[dict]) -> list[str]:
+    unsupported_types = sorted(
+        {
+            str(stream.get("codec_type") or "unknown").lower()
+            for stream in streams
+            if stream.get("codec_type") not in SUPPORTED_WEB_STREAM_TYPES
+        }
+    )
+    descriptions: list[str] = []
+
+    for stream_type in unsupported_types:
+        codecs = ", ".join(_get_stream_codecs(streams, stream_type))
+        descriptions.append(f"{stream_type} ({codecs})" if codecs else stream_type)
+
+    return descriptions
+
+
 def is_web_safe_webm(ffprobe_data: dict | None) -> bool:
     """Return True when ffprobe metadata describes a browser-safe WebM stream set."""
     streams = _get_ffprobe_streams(ffprobe_data)
@@ -183,24 +204,36 @@ def is_web_safe_webm(ffprobe_data: dict | None) -> bool:
     )
 
 
-def should_remux_to_mp4(mimetype: str | None, ffprobe_data: dict | None) -> bool:
-    """Return True when a non-MP4 video can be safely copy-remuxed into MP4."""
+def get_mp4_remux_skip_reason(mimetype: str | None, ffprobe_data: dict | None) -> str | None:
+    """Return a human-readable reason when copy-remuxing into MP4 should be skipped."""
     if mimetype == "video/mp4":
-        return False
+        return "it is already an MP4 file"
 
     streams = _get_ffprobe_streams(ffprobe_data)
-    if not _has_only_supported_web_streams(streams):
-        return False
+    if not streams:
+        return "ffprobe metadata did not contain any streams"
+
+    if unsupported_streams := _describe_unsupported_streams(streams):
+        return f"it contains unsupported non-audio/video streams: {', '.join(unsupported_streams)}"
 
     if mimetype == "video/webm" and is_web_safe_webm(ffprobe_data):
-        return False
+        return "it is already a browser-safe WebM file"
 
-    return _streams_have_allowed_codecs(streams, "video", MP4_SAFE_VIDEO_CODECS, require_stream=True) and _streams_have_allowed_codecs(
-        streams,
-        "audio",
-        MP4_SAFE_AUDIO_CODECS,
-        require_stream=False,
-    )
+    if not _streams_have_allowed_codecs(streams, "video", MP4_SAFE_VIDEO_CODECS, require_stream=True):
+        video_codecs = _get_stream_codecs(streams, "video")
+        if not video_codecs:
+            return "it does not contain an H.264 video stream"
+        return f"its video codecs are not MP4 copy-remuxable: {', '.join(video_codecs)}"
+
+    if not _streams_have_allowed_codecs(streams, "audio", MP4_SAFE_AUDIO_CODECS, require_stream=False):
+        return f"its audio codecs are not MP4 copy-remuxable: {', '.join(_get_stream_codecs(streams, 'audio'))}"
+
+    return None
+
+
+def should_remux_to_mp4(mimetype: str | None, ffprobe_data: dict | None) -> bool:
+    """Return True when a non-MP4 video can be safely copy-remuxed into MP4."""
+    return get_mp4_remux_skip_reason(mimetype, ffprobe_data) is None
 
 
 def mime_allowed(filetype: str | None, allowed: list[str] | None) -> bool:

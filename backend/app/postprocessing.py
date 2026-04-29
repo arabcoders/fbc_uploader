@@ -21,7 +21,15 @@ from sqlalchemy.orm import attributes
 from . import models
 from .config import settings
 from .db import SessionLocal
-from .utils import detect_mimetype, ensure_faststart_mp4, extract_ffprobe_metadata, is_multimedia, remux_to_mp4, should_remux_to_mp4
+from .utils import (
+    detect_mimetype,
+    ensure_faststart_mp4,
+    extract_ffprobe_metadata,
+    get_mp4_remux_skip_reason,
+    is_multimedia,
+    remux_to_mp4,
+    should_remux_to_mp4,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +63,12 @@ async def _apply_media_normalization(record: models.UploadRecord, path: Path) ->
             record.mimetype = detect_mimetype(path)
             record.size_bytes = path.stat().st_size
             ffprobe_data = await extract_ffprobe_metadata(path)
+    elif record.mimetype and record.mimetype.startswith("video/") and record.mimetype != "video/mp4":
+        logger.info(
+            "Skipping MP4 remux for upload %s because %s",
+            record.public_id,
+            get_mp4_remux_skip_reason(record.mimetype, ffprobe_data),
+        )
 
     if record.mimetype == "video/mp4":
         try:
