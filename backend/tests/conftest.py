@@ -18,6 +18,7 @@ TEST_CONFIG_DIR = TEST_RUN_DIR / "config"
 TEST_STORAGE_DIR = TEST_RUN_DIR / "storage"
 TEST_FRONTEND_DIR = TEST_RUN_DIR / "frontend"
 TEST_TEMP_DIR = TEST_RUN_DIR / "tmp"
+TEST_FALLBACK_THUMBNAIL_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
 
 for path in (TEST_CONFIG_DIR, TEST_STORAGE_DIR, TEST_FRONTEND_DIR, TEST_TEMP_DIR):
     path.mkdir(parents=True, exist_ok=True)
@@ -106,6 +107,10 @@ def setup_frontend(test_run_dir):
     """Create minimal frontend structure for tests."""
     index_html = TEST_FRONTEND_DIR / "index.html"
     index_html.write_text("<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>")
+
+    fallback_image = TEST_FRONTEND_DIR / "images" / "thumbnail-fallback.jpg"
+    fallback_image.parent.mkdir(parents=True, exist_ok=True)
+    fallback_image.write_bytes(TEST_FALLBACK_THUMBNAIL_BYTES)
 
 
 @pytest.fixture

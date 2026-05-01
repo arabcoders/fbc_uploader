@@ -2,10 +2,18 @@
 
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.app.utils import _needs_faststart, ensure_faststart_mp4, is_web_safe_webm, should_remux_to_mp4
+from backend.app.utils import (
+    _needs_faststart,
+    ensure_faststart_mp4,
+    generate_video_thumbnail,
+    get_thumbnail_path,
+    is_web_safe_webm,
+    should_remux_to_mp4,
+)
 
 
 @pytest.mark.asyncio
@@ -91,6 +99,68 @@ async def test_ensure_faststart_file_not_found():
     nonexistent = Path("/tmp/does_not_exist_12345.mp4")
     with pytest.raises(FileNotFoundError):
         await ensure_faststart_mp4(nonexistent, "video/mp4")
+
+
+@pytest.mark.asyncio
+async def test_generate_video_thumbnail_uses_seeked_sampling_and_retries_without_seek():
+    """Thumbnail generation should skip intros first, then fall back to a no-seek attempt if needed."""
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".mp4", delete=False) as f:
+        f.write(b"fake video bytes")
+        f.flush()
+        path = Path(f.name)
+
+    commands: list[tuple[str, ...]] = []
+
+    class DummyProcess:
+        def __init__(self, output_path: Path, *, returncode: int, stderr: bytes = b"") -> None:
+            self.returncode = returncode
+            self._output_path = output_path
+            self._stderr = stderr
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            if self.returncode == 0:
+                self._output_path.write_bytes(b"jpeg-bytes")
+            return b"", self._stderr
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        del kwargs
+        commands.append(tuple(str(arg) for arg in args))
+        output_path = Path(args[-1])
+        if 1 == len(commands):
+            return DummyProcess(output_path, returncode=1, stderr=b"seek failed")
+        return DummyProcess(output_path, returncode=0)
+
+    try:
+        create_subprocess_exec = AsyncMock(side_effect=fake_create_subprocess_exec)
+        with (
+            patch("backend.app.utils.shutil.which", return_value="/usr/bin/ffmpeg"),
+            patch("backend.app.utils.extract_ffprobe_metadata", new=AsyncMock(return_value={"format": {"duration": "120.0"}})),
+            patch("backend.app.utils.asyncio.create_subprocess_exec", new=create_subprocess_exec),
+        ):
+            thumbnail_path = await generate_video_thumbnail(path)
+
+        assert thumbnail_path == get_thumbnail_path(path), "Generated thumbnail should use the deterministic sidecar path"
+        assert thumbnail_path is not None and thumbnail_path.exists(), "Successful retry should leave a thumbnail sidecar on disk"
+        assert len(commands) == 2, "Generator should retry without a seek offset after a failed seeked attempt"
+
+        first_command = commands[0]
+        assert "-ss" in first_command, "First attempt should seek past the intro before sampling frames"
+        first_seek_index = first_command.index("-ss")
+        assert first_command[first_seek_index + 1] == "12.000", "Seek offset should use about 10% of duration for longer videos"
+        first_filter_index = first_command.index("-vf")
+        assert first_command[first_filter_index + 1] == "thumbnail=200,scale=1280:-1:force_original_aspect_ratio=decrease", (
+            "Thumbnail selection should sample a larger frame window"
+        )
+
+        second_command = commands[1]
+        assert "-ss" not in second_command, "Fallback attempt should retry without seeking when the first seeked pass fails"
+        second_filter_index = second_command.index("-vf")
+        assert second_command[second_filter_index + 1] == "thumbnail=200,scale=1280:-1:force_original_aspect_ratio=decrease", (
+            "Fallback attempt should keep the wider thumbnail sampling window"
+        )
+    finally:
+        get_thumbnail_path(path).unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
 
 
 def test_should_remux_mkv_with_h264_aac_to_mp4():

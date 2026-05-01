@@ -11,7 +11,7 @@ from sqlalchemy.engine.result import Result
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Select
 
-from backend.app import models, schemas
+from backend.app import models, schemas, utils
 from backend.app.config import settings
 from backend.app.db import SessionLocal, get_db
 from backend.app.security import optional_admin_check, verify_admin
@@ -30,6 +30,20 @@ def _generate_token_value(num_bytes: int, prefix: str = "") -> str:
             continue
 
         return f"{prefix}{token}"
+
+
+def _get_thumbnail_fallback_path() -> Path:
+    repo_root = Path(__file__).resolve().parents[3]
+    candidates = (
+        Path(settings.frontend_export_path).resolve() / "images" / "thumbnail-fallback.jpg",
+        repo_root / "frontend" / "public" / "images" / "thumbnail-fallback.jpg",
+    )
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    return candidates[0]
 
 
 async def _get_accessible_upload(
@@ -71,6 +85,14 @@ async def _get_accessible_upload(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File missing")
 
     return token_row, record, path
+
+
+def _set_upload_urls(request: Request, item: schemas.UploadRecordResponse, download_token: str, upload_id: str) -> None:
+    item.download_url = str(request.app.url_path_for("download_file", download_token=download_token, upload_id=upload_id))
+    item.stream_url = str(request.app.url_path_for("stream_file", download_token=download_token, upload_id=upload_id))
+    item.thumbnail_url = str(request.app.url_path_for("get_file_thumbnail", download_token=download_token, upload_id=upload_id))
+    item.upload_url = str(request.app.url_path_for("tus_head", upload_id=upload_id))
+    item.info_url = str(request.app.url_path_for("get_file_info", download_token=download_token, upload_id=upload_id))
 
 
 @router.get("/", response_model=schemas.TokenListResponse, name="list_tokens")
@@ -190,10 +212,7 @@ async def get_token(
     uploads_list: list[schemas.UploadRecordResponse] = []
     for u in uploads:
         item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(u, from_attributes=True)
-        item.upload_url = str(request.app.url_path_for("tus_head", upload_id=u.public_id))
-        item.download_url = str(request.app.url_path_for("download_file", download_token=token_row.download_token, upload_id=u.public_id))
-        item.stream_url = str(request.app.url_path_for("stream_file", download_token=token_row.download_token, upload_id=u.public_id))
-        item.info_url = str(request.app.url_path_for("get_file_info", download_token=token_row.download_token, upload_id=u.public_id))
+        _set_upload_urls(request, item, token_row.download_token, u.public_id)
         uploads_list.append(item)
 
     return schemas.TokenPublicInfo(
@@ -309,11 +328,7 @@ async def delete_token(
         uploads_res: Result[tuple[models.UploadRecord]] = await db.execute(uploads_stmt)
         uploads: Sequence[models.UploadRecord] = uploads_res.scalars().all()
         for record in uploads:
-            if record.storage_path:
-                path = Path(record.storage_path)
-                if path.exists():
-                    with contextlib.suppress(OSError):
-                        path.unlink()
+            utils.delete_upload_artifacts(record.storage_path)
 
         storage_dir: Path = Path(settings.storage_path).expanduser().resolve() / token_row.token
         if storage_dir.exists() and storage_dir.is_dir():
@@ -361,10 +376,7 @@ async def list_token_uploads(
     uploads_list: list[schemas.UploadRecordResponse] = []
     for u in uploads:
         item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(u, from_attributes=True)
-        item.download_url = str(request.app.url_path_for("download_file", download_token=token_row.download_token, upload_id=u.public_id))
-        item.stream_url = str(request.app.url_path_for("stream_file", download_token=token_row.download_token, upload_id=u.public_id))
-        item.upload_url = str(request.app.url_path_for("tus_head", upload_id=u.public_id))
-        item.info_url = str(request.app.url_path_for("get_file_info", download_token=token_row.download_token, upload_id=u.public_id))
+        _set_upload_urls(request, item, token_row.download_token, u.public_id)
         uploads_list.append(item)
 
     return uploads_list
@@ -396,11 +408,40 @@ async def get_file_info(
     _, record, _ = await _get_accessible_upload(download_token, upload_id, db, is_admin)
 
     item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(record, from_attributes=True)
-    item.download_url = str(request.app.url_path_for("download_file", download_token=download_token, upload_id=upload_id))
-    item.stream_url = str(request.app.url_path_for("stream_file", download_token=download_token, upload_id=upload_id))
-    item.upload_url = str(request.app.url_path_for("tus_head", upload_id=upload_id))
-    item.info_url = str(request.app.url_path_for("get_file_info", download_token=download_token, upload_id=upload_id))
+    _set_upload_urls(request, item, download_token, upload_id)
     return item
+
+
+@router.get("/{download_token}/uploads/{upload_id}/thumbnail", name="get_file_thumbnail", response_model=None)
+@router.get("/{download_token}/uploads/{upload_id}/thumbnail/", response_model=None)
+async def get_file_thumbnail(
+    download_token: str,
+    upload_id: str,
+    is_admin: Annotated[bool, Depends(optional_admin_check)],
+) -> Response:
+    """Return a generated video thumbnail or the shared fallback image."""
+    async with SessionLocal() as db:
+        _, _, path = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+        thumbnail_path = utils.get_thumbnail_path(path)
+
+    if thumbnail_path.exists() and thumbnail_path.stat().st_size > 0:
+        return FileResponse(
+            thumbnail_path,
+            filename=thumbnail_path.name,
+            media_type=utils.THUMBNAIL_MEDIA_TYPE,
+            content_disposition_type="inline",
+        )
+
+    fallback_path = _get_thumbnail_fallback_path()
+    if not fallback_path.is_file():
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Thumbnail fallback missing")
+
+    return FileResponse(
+        fallback_path,
+        filename=fallback_path.name,
+        media_type=utils.THUMBNAIL_MEDIA_TYPE,
+        content_disposition_type="inline",
+    )
 
 
 @router.get("/{download_token}/uploads/{upload_id}/stream", name="stream_file")

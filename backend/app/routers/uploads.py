@@ -1,6 +1,5 @@
 import base64
 import binascii
-import contextlib
 import hashlib
 import secrets
 from datetime import UTC, datetime
@@ -19,7 +18,7 @@ from backend.app.config import settings
 from backend.app.db import SessionLocal, get_db
 from backend.app.metadata_schema import validate_metadata
 from backend.app.postprocessing import ProcessingQueue
-from backend.app.utils import compute_file_digest, detect_mimetype, is_multimedia, mime_allowed
+from backend.app.utils import compute_file_digest, delete_upload_artifacts, detect_mimetype, is_multimedia, mime_allowed
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.result import Result
@@ -221,7 +220,7 @@ async def _finalize_upload(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
 
     if not mime_allowed(actual_mimetype, token.allowed_mime):
-        path.unlink(missing_ok=True)
+        delete_upload_artifacts(path)
         await db.delete(record)
         await db.commit()
         raise HTTPException(
@@ -506,11 +505,7 @@ async def tus_delete(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)
     record: models.UploadRecord = await _get_upload_record(db, upload_id)
     await _ensure_token(db, token_id=record.token_id, check_remaining=False)
 
-    path = Path(record.storage_path or "")
-
-    if path.exists():
-        with contextlib.suppress(OSError):
-            path.unlink()
+    delete_upload_artifacts(record.storage_path)
 
     await db.delete(record)
     await db.commit()
@@ -573,10 +568,7 @@ async def cancel_upload(
     if "completed" == record.status:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot cancel completed upload")
 
-    path = Path(record.storage_path or "")
-    if path.exists():
-        with contextlib.suppress(OSError):
-            path.unlink()
+    delete_upload_artifacts(record.storage_path)
 
     await db.delete(record)
 

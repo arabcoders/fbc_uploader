@@ -41,6 +41,10 @@ async def test_list_token_uploads_does_not_expose_api_key():
         assert "api_key" not in stream_url, "Stream URL should not contain api_key"
         assert "/stream" in stream_url, "Stream URL should point at the inline stream endpoint"
 
+        thumbnail_url = uploads[0]["thumbnail_url"]
+        assert "api_key" not in thumbnail_url, "Thumbnail URL should not contain api_key"
+        assert "/thumbnail" in thumbnail_url, "Thumbnail URL should point at the thumbnail endpoint"
+
 
 @pytest.mark.asyncio
 async def test_get_file_info_does_not_expose_api_key():
@@ -73,3 +77,7 @@ async def test_get_file_info_does_not_expose_api_key():
         stream_url = file_info["stream_url"]
         assert "api_key" not in stream_url, "Stream URL should not contain api_key"
         assert "/stream" in stream_url, "Stream URL should point at the inline stream endpoint"
+
+        thumbnail_url = file_info["thumbnail_url"]
+        assert "api_key" not in thumbnail_url, "Thumbnail URL should not contain api_key"
+        assert "/thumbnail" in thumbnail_url, "Thumbnail URL should point at the thumbnail endpoint"

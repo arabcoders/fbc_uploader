@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.db import get_db
 from backend.app.models import UploadRecord
 from backend.app.security import verify_admin
+from backend.app.utils import delete_upload_artifacts
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.result import Result
@@ -45,10 +45,7 @@ async def delete_upload(
     if not (upload := res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
 
-    if upload.storage_path:
-        file_path = Path(upload.storage_path)
-        if file_path.exists():
-            file_path.unlink()
+    delete_upload_artifacts(upload.storage_path)
 
     await db.delete(upload)
     await db.commit()

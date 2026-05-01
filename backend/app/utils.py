@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -25,6 +26,167 @@ WEBM_SAFE_VIDEO_CODECS: set[str] = {"vp8", "vp9", "av1"}
 WEBM_SAFE_AUDIO_CODECS: set[str] = {"opus", "vorbis"}
 MP4_SAFE_VIDEO_CODECS: set[str] = {"h264"}
 MP4_SAFE_AUDIO_CODECS: set[str] = {"aac"}
+THUMBNAIL_SUFFIX = ".thumb.jpg"
+THUMBNAIL_MEDIA_TYPE = "image/jpeg"
+THUMBNAIL_SAMPLE_FRAMES = 200
+THUMBNAIL_DEFAULT_SEEK_SECONDS = 3.0
+THUMBNAIL_MIN_SEEK_SECONDS = 1.0
+THUMBNAIL_MAX_SEEK_SECONDS = 15.0
+THUMBNAIL_END_MARGIN_SECONDS = 0.1
+
+
+def get_thumbnail_path(file_path: str | Path) -> Path:
+    """Return the deterministic sidecar thumbnail path for an upload file."""
+    path = Path(file_path)
+    return path.with_name(f"{path.name}{THUMBNAIL_SUFFIX}")
+
+
+def thumbnail_exists(file_path: str | Path) -> bool:
+    """Return True when a non-empty thumbnail sidecar exists for the given upload file."""
+    thumbnail_path = get_thumbnail_path(file_path)
+    with contextlib.suppress(OSError):
+        return thumbnail_path.exists() and thumbnail_path.stat().st_size > 0
+
+    return False
+
+
+def delete_upload_artifacts(file_path: str | Path | None) -> None:
+    """Delete an upload file and any derived thumbnail sidecar."""
+    if not file_path:
+        return
+
+    path = Path(file_path)
+    for candidate in (get_thumbnail_path(path), path):
+        if candidate.exists():
+            with contextlib.suppress(OSError):
+                candidate.unlink()
+
+
+def _get_thumbnail_seek_seconds(ffprobe_data: dict | None) -> float | None:
+    """Pick a seek offset that avoids intros without jumping past short videos."""
+    if not ffprobe_data:
+        return THUMBNAIL_DEFAULT_SEEK_SECONDS
+
+    format_data = ffprobe_data.get("format")
+    if not isinstance(format_data, dict):
+        return THUMBNAIL_DEFAULT_SEEK_SECONDS
+
+    with contextlib.suppress(TypeError, ValueError):
+        duration = float(format_data.get("duration"))
+        if duration <= THUMBNAIL_END_MARGIN_SECONDS:
+            return None
+
+        return min(
+            max(duration * 0.1, THUMBNAIL_MIN_SEEK_SECONDS),
+            THUMBNAIL_MAX_SEEK_SECONDS,
+            duration - THUMBNAIL_END_MARGIN_SECONDS,
+        )
+
+    return THUMBNAIL_DEFAULT_SEEK_SECONDS
+
+
+def _build_thumbnail_command(
+    ffmpeg_bin: str,
+    source_path: Path,
+    output_path: Path,
+    *,
+    seek_seconds: float | None,
+) -> list[str]:
+    command = [ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y"]
+    if seek_seconds is not None and seek_seconds > 0:
+        command.extend(["-ss", f"{seek_seconds:.3f}"])
+
+    command.extend(
+        [
+            "-i",
+            str(source_path),
+            "-vf",
+            f"thumbnail={THUMBNAIL_SAMPLE_FRAMES},scale=1280:-1:force_original_aspect_ratio=decrease",
+            "-frames:v",
+            "1",
+            "-q:v",
+            "3",
+            str(output_path),
+        ]
+    )
+    return command
+
+
+async def generate_video_thumbnail(source_path: str | Path, *, ffmpeg_bin: str = "ffmpeg") -> Path | None:
+    """Generate a JPEG thumbnail sidecar for a video file when ffmpeg is available."""
+    src = Path(source_path)
+    if not src.exists():
+        raise FileNotFoundError(src)
+
+    thumbnail_path = get_thumbnail_path(src)
+    if thumbnail_exists(src):
+        return thumbnail_path
+
+    if thumbnail_path.exists():
+        thumbnail_path.unlink(missing_ok=True)
+
+    if shutil.which(ffmpeg_bin) is None:
+        return None
+
+    fd, tmp_out = tempfile.mkstemp(prefix=thumbnail_path.name + ".", suffix=".part.jpg", dir=src.parent)
+    os.close(fd)
+    tmp_out_path = Path(tmp_out)
+    proc: asyncio.subprocess.Process | None = None
+    generated_thumbnail: Path | None = None
+    ffprobe_data = await extract_ffprobe_metadata(src)
+    seek_seconds = _get_thumbnail_seek_seconds(ffprobe_data)
+    attempt_seek_offsets = [seek_seconds]
+    if seek_seconds is not None and seek_seconds > 0:
+        attempt_seek_offsets.append(None)
+
+    try:
+        last_error = "ffmpeg produced an empty thumbnail file"
+        for attempt_seek_seconds in attempt_seek_offsets:
+            tmp_out_path.unlink(missing_ok=True)
+            cmd = _build_thumbnail_command(ffmpeg_bin, src, tmp_out_path, seek_seconds=attempt_seek_seconds)
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await proc.communicate()
+
+            if proc.returncode == 0 and tmp_out_path.exists() and tmp_out_path.stat().st_size > 0:
+                tmp_out_path.replace(thumbnail_path)
+                generated_thumbnail = thumbnail_path
+                break
+
+            if proc.returncode != 0:
+                last_error = (
+                    f"ffmpeg thumbnail generation failed (rc={proc.returncode}).\n"
+                    f"stdout:\n{out.decode(errors='replace')}\n"
+                    f"stderr:\n{err.decode(errors='replace')}"
+                )
+            else:
+                last_error = "ffmpeg produced an empty thumbnail file"
+
+        if generated_thumbnail is None:
+            raise RuntimeError(last_error)
+
+    except asyncio.CancelledError:
+        if proc is not None:
+            await _terminate_subprocess(proc)
+        raise
+
+    finally:
+        with contextlib.suppress(Exception):
+            if tmp_out_path.exists():
+                tmp_out_path.unlink()
+
+    return generated_thumbnail
+
+
+async def ensure_video_thumbnail(source_path: str | Path, *, ffmpeg_bin: str = "ffmpeg") -> Path | None:
+    """Return the existing thumbnail sidecar or generate it when missing."""
+    if thumbnail_exists(source_path):
+        return get_thumbnail_path(source_path)
+
+    return await generate_video_thumbnail(source_path, ffmpeg_bin=ffmpeg_bin)
 
 
 async def _terminate_subprocess(proc: asyncio.subprocess.Process) -> None:

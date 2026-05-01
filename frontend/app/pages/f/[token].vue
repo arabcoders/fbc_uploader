@@ -84,7 +84,7 @@
                 <div class="flex items-center gap-2 text-xs uppercase tracking-wide text-muted">
                   <UIcon :name="selectedIsVideo ? 'i-heroicons-film-20-solid' : 'i-heroicons-musical-note-20-solid'"
                     class="size-4" />
-                  <span>{{ selectedIsVideo ? 'Now playing' : 'Now listening' }}</span>
+                  <span>{{ shouldRenderSelectedMedia ? (selectedIsVideo ? 'Now playing' : 'Now listening') : 'Ready to preview' }}</span>
                 </div>
                 <h2 class="mt-1 truncate text-lg font-semibold text-highlighted">
                   {{ selectedUpload.filename || 'Untitled media' }}
@@ -99,9 +99,28 @@
 
             <div v-if="selectedIsVideo" class="min-w-0 max-w-full overflow-hidden bg-black">
               <div class="flex w-full max-w-full items-center justify-center overflow-hidden bg-black p-2 sm:p-0">
-                <video ref="mediaElement" :key="selectedUpload.public_id"
+                <button v-if="!shouldRenderSelectedMedia" type="button"
+                  class="group relative block h-auto max-h-[70vh] w-full max-w-full overflow-hidden bg-black text-left sm:max-h-[72vh]"
+                  @click="activateSelectedMedia">
+                  <img v-if="selectedThumbnailUrl" :src="selectedThumbnailUrl" :alt="`${selectedUpload.filename || 'Untitled media'} preview`"
+                    class="block h-auto max-h-[70vh] w-full max-w-full bg-black object-contain opacity-90 transition duration-200 group-hover:opacity-100 sm:max-h-[72vh]" />
+                  <div v-else class="flex min-h-64 w-full items-center justify-center bg-black/90 text-white/80">
+                    <UIcon name="i-heroicons-film-20-solid" class="size-12" />
+                  </div>
+                  <div class="pointer-events-none absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-black/20" />
+                  <div class="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-4 px-4 py-4 sm:px-6">
+                    <div class="min-w-0">
+                      <div class="text-xs uppercase tracking-[0.2em] text-white/70">Video Preview</div>
+                      <div class="mt-1 truncate text-lg font-semibold text-white">{{ selectedUpload.filename || 'Untitled media' }}</div>
+                    </div>
+                    <div class="flex size-16 shrink-0 items-center justify-center rounded-full bg-white/12 text-white backdrop-blur ring-1 ring-white/25">
+                      <UIcon name="i-heroicons-play-20-solid" class="ml-1 size-8" />
+                    </div>
+                  </div>
+                </button>
+                <video v-else ref="mediaElement" :key="selectedUpload.public_id"
                   class="block h-auto max-h-[70vh] w-full max-w-full bg-black object-contain sm:max-h-[72vh]" controls playsinline
-                  preload="metadata" @error="handleMediaPlaybackError" @loadedmetadata="clearMediaPlaybackError"
+                  preload="metadata" :poster="selectedThumbnailUrl || undefined" @error="handleMediaPlaybackError" @loadedmetadata="clearMediaPlaybackError"
                   @play="clearMediaPlaybackError" @volumechange="handleMediaVolumeChange">
                   <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined">
                   Your browser does not support the video tag.
@@ -111,7 +130,27 @@
 
             <div v-else class="px-4 py-10 sm:px-6 lg:px-8">
               <div class="rounded-2xl border border-default bg-default p-6 sm:p-8 shadow-sm">
-                <div class="flex items-center gap-3 text-highlighted">
+                <button v-if="!shouldRenderSelectedMedia" type="button"
+                  class="group block w-full rounded-2xl text-left"
+                  @click="activateSelectedMedia">
+                  <div class="overflow-hidden rounded-2xl border border-default bg-elevated/80 shadow-sm">
+                    <img v-if="selectedThumbnailUrl" :src="selectedThumbnailUrl" :alt="`${selectedUpload.filename || 'Untitled audio'} preview`"
+                      class="block h-auto w-full object-cover transition duration-200 group-hover:scale-[1.01] group-hover:opacity-100" />
+                    <div v-else class="flex min-h-56 items-center justify-center bg-linear-to-br from-primary/15 via-default to-elevated text-primary">
+                      <UIcon name="i-heroicons-musical-note-20-solid" class="size-16" />
+                    </div>
+                    <div class="flex items-center justify-between gap-4 border-t border-default bg-default/95 px-5 py-4">
+                      <div class="min-w-0">
+                        <div class="text-xs uppercase tracking-[0.2em] text-muted">Audio Preview</div>
+                        <div class="mt-1 truncate text-lg font-semibold text-highlighted">{{ selectedUpload.filename || 'Untitled audio' }}</div>
+                      </div>
+                      <div class="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring ring-default">
+                        <UIcon name="i-heroicons-play-20-solid" class="ml-0.5 size-7" />
+                      </div>
+                    </div>
+                  </div>
+                </button>
+                <div v-else class="flex items-center gap-3 text-highlighted">
                   <div class="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary ring ring-default">
                     <UIcon name="i-heroicons-musical-note-20-solid" class="size-6" />
                   </div>
@@ -120,7 +159,7 @@
                     <div class="text-lg font-semibold">{{ selectedUpload.filename || 'Untitled audio' }}</div>
                   </div>
                 </div>
-                <audio ref="mediaElement" :key="selectedUpload.public_id" class="mt-6 w-full" controls preload="metadata"
+                <audio v-if="shouldRenderSelectedMedia" ref="mediaElement" :key="selectedUpload.public_id" class="mt-6 w-full" controls preload="metadata"
                   @error="handleMediaPlaybackError" @loadedmetadata="clearMediaPlaybackError" @play="clearMediaPlaybackError"
                   @volumechange="handleMediaVolumeChange">
                   <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined">
@@ -202,8 +241,10 @@
                       : 'border-default bg-default hover:bg-elevated/70'"
                     @click="selectedUploadId = upload.public_id">
                     <div class="flex items-start gap-3">
-                      <div class="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border border-default bg-elevated text-primary">
-                        <UIcon :name="isVideoUpload(upload) ? 'i-heroicons-film-20-solid' : 'i-heroicons-musical-note-20-solid'"
+                      <div class="mt-0.5 flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-default bg-elevated text-primary">
+                        <img v-if="upload.thumbnail_url" :src="upload.thumbnail_url" :alt="`${upload.filename || 'Untitled media'} thumbnail`"
+                          class="h-full w-full object-cover" />
+                        <UIcon v-else :name="isVideoUpload(upload) ? 'i-heroicons-film-20-solid' : 'i-heroicons-musical-note-20-solid'"
                           class="size-5" />
                       </div>
                       <div class="min-w-0 flex-1 space-y-1">
@@ -414,6 +455,7 @@ const notice = ref<string>('')
 const showNotice = useStorage<boolean>('show_notice', true)
 const mediaVolume = useStorage<number>('share_media_volume', 1)
 const selectedUploadId = ref<string>('')
+const activeUploadId = ref<string>('')
 const mediaPlaybackError = ref('')
 const mediaElement = ref<HTMLMediaElement | null>(null)
 
@@ -437,6 +479,10 @@ const selectedIsVideo = computed(() => {
 })
 
 const selectedMediaUrl = computed(() => selectedUpload.value?.stream_url || '')
+const selectedThumbnailUrl = computed(() => selectedUpload.value?.thumbnail_url || '')
+const shouldRenderSelectedMedia = computed(() => {
+  return Boolean(selectedUpload.value && activeUploadId.value === selectedUpload.value.public_id)
+})
 
 const selectedFfprobe = computed<Record<string, any> | null>(() => {
   const ffprobe = selectedUpload.value?.meta_data?.ffprobe
@@ -474,6 +520,7 @@ watch(playableUploads, (nextUploads) => {
 }, { immediate: true })
 
 watch(() => selectedUpload.value?.public_id, () => {
+  activeUploadId.value = ''
   clearMediaPlaybackError()
 })
 
@@ -502,6 +549,12 @@ function copyShareUrl() {
 
 function clearMediaPlaybackError() {
   mediaPlaybackError.value = ''
+}
+
+function activateSelectedMedia() {
+  if (!selectedUpload.value) return
+  activeUploadId.value = selectedUpload.value.public_id
+  clearMediaPlaybackError()
 }
 
 function handleMediaPlaybackError() {

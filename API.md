@@ -22,10 +22,11 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [PATCH /api/tokens/{token\_value}](#patch-apitokenstoken_value)
     - [DELETE /api/tokens/{token\_value}](#delete-apitokenstoken_value)
     - [GET /api/tokens/{token\_value}/info](#get-apitokenstoken_valueinfo)
-     - [GET /api/tokens/{token\_value}/uploads](#get-apitokenstoken_valueuploads)
-     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}](#get-apitokensdownload_tokenuploadsupload_id)
-     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/stream](#get-apitokensdownload_tokenuploadsupload_idstream)
-     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
+    - [GET /api/tokens/{token\_value}/uploads](#get-apitokenstoken_valueuploads)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}](#get-apitokensdownload_tokenuploadsupload_id)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/stream](#get-apitokensdownload_tokenuploadsupload_idstream)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/thumbnail](#get-apitokensdownload_tokenuploadsupload_idthumbnail)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
     - [POST /api/uploads/initiate](#post-apiuploadsinitiate)
     - [OPTIONS /api/uploads/tus](#options-apiuploadstus)
     - [HEAD /api/uploads/{upload\_id}/tus](#head-apiuploadsupload_idtus)
@@ -330,6 +331,7 @@ Get public token information including uploads.
       "created_at": "2025-12-23T12:00:00Z",
       "completed_at": "2025-12-23T12:01:00Z",
       "stream_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/stream",
+      "thumbnail_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/thumbnail",
       "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik",
       "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus"
     }
@@ -343,6 +345,7 @@ Get public token information including uploads.
 - `allow_public_downloads`: Whether public downloads are enabled
 - `uploads`: Array of upload records
 - `stream_url`: Inline media URL for browser playback when the upload is completed
+- `thumbnail_url`: Preview image URL for embeds and thumbnail-first media UIs
 
 **Upload Status Values:**
 - `initiated` - Upload created but no data uploaded yet
@@ -376,12 +379,13 @@ List all uploads for a specific token.
     "upload_length": 1024000,
     "upload_offset": 1024000,
      "status": "completed",
-     "created_at": "2025-12-23T12:00:00Z",
-     "completed_at": "2025-12-23T12:01:00Z",
-     "stream_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/stream",
-     "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik",
-     "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus"
-   }
+      "created_at": "2025-12-23T12:00:00Z",
+      "completed_at": "2025-12-23T12:01:00Z",
+      "stream_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/stream",
+      "thumbnail_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/thumbnail",
+      "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik",
+      "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus"
+    }
 ]
 ```
 
@@ -397,7 +401,7 @@ Get metadata information about a completed upload.
 **Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
 
 **Path Parameters:**
-- `download_token` (string): The download token (prefixed with `fbc_`)
+- `download_token` (string): The download token
 - `upload_id` (integer): The upload record ID
 
 **Response (200):**
@@ -417,6 +421,7 @@ Get metadata information about a completed upload.
   "created_at": "2025-01-01T12:00:00Z",
   "completed_at": "2025-01-01T12:05:00Z",
   "stream_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/stream",
+  "thumbnail_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/thumbnail",
   "upload_url": "http://localhost:8000/api/uploads/rT72ZKGMPdldiEmA9eDI7kik/tus",
   "download_url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/download"
 }
@@ -435,7 +440,7 @@ Stream a completed file inline for browser playback.
 **Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
 
 **Path Parameters:**
-- `download_token` (string): The download token (prefixed with `fbc_`)
+- `download_token` (string): The download token
 - `upload_id` (integer): The upload record ID
 
 **Response (200):**
@@ -454,6 +459,32 @@ Returns the file with headers:
 
 ---
 
+### GET /api/tokens/{download_token}/uploads/{upload_id}/thumbnail
+
+Return a preview image for a completed upload.
+
+**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+
+**Path Parameters:**
+- `download_token` (string): The download token
+- `upload_id` (integer): The upload record ID
+
+**Response (200):**
+Returns an image with headers:
+- `Content-Type`: `image/jpeg`
+- `Content-Disposition`: `inline; filename="..."`
+
+**Error Responses:**
+- `404 Not Found` - Download token or upload not found
+- `409 Conflict` - Upload not yet completed
+
+**Notes:**
+- Video uploads return a generated sidecar thumbnail when available
+- Uploads without a generated sidecar return the shared fallback image from the exported frontend assets
+- The same endpoint is used by social embeds and the thumbnail-first share page UI
+
+---
+
 ### GET /api/tokens/{download_token}/uploads/{upload_id}/download
 
 Download a completed file.
@@ -461,7 +492,7 @@ Download a completed file.
 **Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
 
 **Path Parameters:**
-- `download_token` (string): The download token (prefixed with `fbc_`)
+- `download_token` (string): The download token
 - `upload_id` (integer): The upload record ID
 
 **Response (200):**

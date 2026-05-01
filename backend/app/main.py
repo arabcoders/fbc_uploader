@@ -17,7 +17,7 @@ from .cleanup import start_cleanup_loop
 from .config import settings
 from .db import engine
 from .migrate import run_migrations
-from .postprocessing import ProcessingQueue
+from .postprocessing import ProcessingQueue, backfill_missing_video_thumbnails
 from .proxy_headers import TrustedProxyHeadersMiddleware
 
 
@@ -48,11 +48,22 @@ def create_app() -> FastAPI:
         queue = ProcessingQueue()
         queue.start_worker()
         app.state.processing_queue = queue
+        app.state.thumbnail_backfill_task = asyncio.create_task(
+            backfill_missing_video_thumbnails(),
+            name="thumbnail_backfill",
+        )
 
         if not settings.skip_cleanup:
             app.state.cleanup_task = asyncio.create_task(start_cleanup_loop(), name="cleanup_loop")
 
         yield
+
+        thumbnail_backfill_task: asyncio.Task | None = getattr(app.state, "thumbnail_backfill_task", None)
+        if thumbnail_backfill_task:
+            if not thumbnail_backfill_task.done():
+                thumbnail_backfill_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await thumbnail_backfill_task
 
         await queue.stop_worker()
 

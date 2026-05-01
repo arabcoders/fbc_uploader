@@ -13,6 +13,12 @@
     <meta property="og:description" content="{{ description }}" />
     {% endif %}
 
+    <meta property="og:image" content="{{ thumbnail_url }}" />
+    <meta property="og:image:url" content="{{ thumbnail_url }}" />
+    <meta property="og:image:secure_url" content="{{ thumbnail_url }}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
     {% if is_video %}
     <meta property="og:video" content="{{ media_url }}" />
     <meta property="og:video:url" content="{{ media_url }}" />
@@ -39,6 +45,7 @@
     {% if description %}
     <meta name="twitter:description" content="{{ description }}" />
     {% endif %}
+    <meta name="twitter:image" content="{{ thumbnail_url }}" />
 
     <style>
         * {
@@ -119,6 +126,15 @@
 
         .player-container {
             position: relative;
+            background: #000;
+        }
+
+        .poster-frame {
+            display: block;
+            width: 100%;
+            height: auto;
+            max-height: 50vh;
+            object-fit: contain;
             background: #000;
         }
 
@@ -295,15 +311,20 @@
 <body>
     {% if is_user %}
     {% if is_video %}
-    <video class="fullscreen" controls autoplay preload="auto" playsinline>
+    <video class="fullscreen" controls preload="none" playsinline poster="{{ thumbnail_url }}">
         <source src="{{ media_url }}" mime="{{ mime_type }}" />
         Your browser does not support the video tag.
     </video>
     {% elif is_audio %}
-    <audio class="fullscreen" controls autoplay preload="auto" playsinline>
-        <source src="{{ media_url }}" mime="{{ mime_type }}" />
-        Your browser does not support the audio tag.
-    </audio>
+    <div class="container">
+        <div class="player-wrapper">
+            <img class="poster-frame" src="{{ thumbnail_url }}" alt="{{ title }} preview" />
+        </div>
+        <audio controls preload="none" playsinline>
+            <source src="{{ media_url }}" mime="{{ mime_type }}" />
+            Your browser does not support the audio tag.
+        </audio>
+    </div>
     {% endif %}
     {% else %}
     <div class="container">
@@ -316,17 +337,7 @@
 
         <div class="player-wrapper">
             <div class="player-container">
-                {% if is_video %}
-                <video controls autoplay preload="metadata" playsinline>
-                    <source src="{{ media_url }}" mime="{{ mime_type }}" />
-                    Your browser does not support the video tag.
-                </video>
-                {% elif is_audio %}
-                <audio controls autoplay preload="metadata" playsinline>
-                    <source src="{{ media_url }}" mime="{{ mime_type }}" />
-                    Your browser does not support the audio tag.
-                </audio>
-                {% endif %}
+                <img class="poster-frame" src="{{ thumbnail_url }}" alt="{{ title }} preview" />
             </div>
         </div>
 

@@ -13,7 +13,8 @@ from sqlalchemy import select
 
 from backend.app import models
 from backend.app.db import SessionLocal
-from backend.app.postprocessing import ProcessingQueue, process_upload
+from backend.app.postprocessing import ProcessingQueue, backfill_missing_video_thumbnails, process_upload
+from backend.app.utils import get_thumbnail_path
 from backend.tests.utils import create_token, initiate_upload, upload_file_via_tus
 
 
@@ -455,3 +456,84 @@ async def test_processing_queue_can_run_multiple_uploads_concurrently():
         finally:
             release_processing.set()
             await queue.stop_worker()
+
+
+@pytest.mark.asyncio
+async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_path):
+    """Startup thumbnail backfill should skip expired videos and only process eligible missing sidecars."""
+    video_path = tmp_path / "video.mp4"
+    video_path.write_bytes(b"video-bytes")
+    existing_path = tmp_path / "existing.mp4"
+    existing_path.write_bytes(b"existing-video-bytes")
+    existing_thumbnail = get_thumbnail_path(existing_path)
+    existing_thumbnail.write_bytes(b"thumb")
+    expired_path = tmp_path / "expired.mp4"
+    expired_path.write_bytes(b"expired-video-bytes")
+    text_path = tmp_path / "doc.txt"
+    text_path.write_text("hello")
+
+    async with SessionLocal() as session:
+        active_expires_at = datetime.now(UTC) + timedelta(days=1)
+        expired_expires_at = datetime.now(UTC) - timedelta(days=1)
+        token = models.UploadToken(
+            token="backfill-token",
+            download_token="backfill-download",
+            max_uploads=3,
+            max_size_bytes=1000000,
+            expires_at=active_expires_at,
+        )
+        expired_token = models.UploadToken(
+            token="expired-backfill-token",
+            download_token="expired-backfill-download",
+            max_uploads=1,
+            max_size_bytes=1000000,
+            expires_at=expired_expires_at,
+        )
+        session.add(token)
+        session.add(expired_token)
+        await session.flush()
+
+        session.add_all(
+            [
+                models.UploadRecord(
+                    public_id="needs-thumb",
+                    token_id=token.id,
+                    filename="video.mp4",
+                    mimetype="video/mp4",
+                    status="completed",
+                    storage_path=str(video_path),
+                ),
+                models.UploadRecord(
+                    public_id="has-thumb",
+                    token_id=token.id,
+                    filename="existing.mp4",
+                    mimetype="video/mp4",
+                    status="completed",
+                    storage_path=str(existing_path),
+                ),
+                models.UploadRecord(
+                    public_id="expired-video",
+                    token_id=expired_token.id,
+                    filename="expired.mp4",
+                    mimetype="video/mp4",
+                    status="completed",
+                    storage_path=str(expired_path),
+                ),
+                models.UploadRecord(
+                    public_id="not-video",
+                    token_id=token.id,
+                    filename="doc.txt",
+                    mimetype="text/plain",
+                    status="completed",
+                    storage_path=str(text_path),
+                ),
+            ]
+        )
+        await session.commit()
+
+    generated_thumbnail = get_thumbnail_path(video_path)
+    with patch("backend.app.postprocessing.ensure_video_thumbnail", new=AsyncMock(return_value=generated_thumbnail)) as ensure_thumb:
+        generated_count = await backfill_missing_video_thumbnails()
+
+    assert generated_count == 1, "Backfill should only generate thumbnails for completed videos missing a sidecar"
+    ensure_thumb.assert_awaited_once_with(video_path)

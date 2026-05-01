@@ -43,7 +43,10 @@ export default defineNuxtConfig({
         { "name": "theme-color", "content": "#000000" },
       ],
       base: { "href": "/" },
-      link: []
+      link: [
+        { rel: 'icon', type: 'image/x-icon', href: '/images/favicon.ico' },
+        { rel: 'apple-touch-icon', href: '/images/favicon.png' },
+      ]
     },
     pageTransition: { name: 'page', mode: 'out-in' }
   },
