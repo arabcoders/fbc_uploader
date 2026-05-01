@@ -24,11 +24,13 @@ from .db import SessionLocal
 from .utils import (
     detect_mimetype,
     ensure_faststart_mp4,
+    ensure_video_thumbnail,
     extract_ffprobe_metadata,
     get_mp4_remux_skip_reason,
     is_multimedia,
     remux_to_mp4,
     should_remux_to_mp4,
+    thumbnail_exists,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,13 @@ def _build_remuxed_filename(filename: str | None) -> str | None:
 
     path = Path(filename)
     return f"{path.stem}.mp4" if path.suffix else f"{filename}.mp4"
+
+
+def _token_has_expired(expires_at: datetime) -> bool:
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+
+    return expires_at < datetime.now(UTC)
 
 
 async def _apply_media_normalization(record: models.UploadRecord, path: Path) -> tuple[Path, dict | None]:
@@ -78,6 +87,8 @@ async def _apply_media_normalization(record: models.UploadRecord, path: Path) ->
         except Exception:
             logger.exception("Failed to apply faststart to upload %s", record.public_id)
 
+    await _ensure_thumbnail(record, path)
+
     return path, ffprobe_data
 
 
@@ -96,6 +107,21 @@ def _build_processing_state(record: models.UploadRecord) -> SimpleNamespace:
         mimetype=record.mimetype,
         size_bytes=record.size_bytes,
     )
+
+
+async def _ensure_thumbnail(record: models.UploadRecord | SimpleNamespace, path: Path) -> None:
+    mimetype = getattr(record, "mimetype", None)
+    if not mimetype or not mimetype.startswith("video/"):
+        return
+
+    try:
+        thumbnail_path = await ensure_video_thumbnail(path)
+    except Exception:
+        logger.exception("Failed to generate thumbnail for upload %s", record.public_id)
+        return
+
+    if thumbnail_path is not None:
+        logger.info("Thumbnail ready for upload %s", record.public_id)
 
 
 async def _mark_upload_failed(upload_id: str, error_message: str) -> bool:
@@ -256,3 +282,63 @@ async def process_upload(upload_id: str) -> bool:
         return await _mark_upload_failed(upload_id, "Post-processing failed")
 
     return await _mark_upload_completed(upload_id, processing_state, path, ffprobe_data)
+
+
+async def backfill_missing_video_thumbnails() -> int:
+    """Generate thumbnails for completed video uploads that predate thumbnail support."""
+    async with SessionLocal() as session:
+        stmt = (
+            select(models.UploadRecord, models.UploadToken.expires_at)
+            .join(models.UploadToken, models.UploadToken.id == models.UploadRecord.token_id)
+            .where(models.UploadRecord.status == "completed")
+        )
+        result = await session.execute(stmt)
+        upload_ids = [
+            record.public_id
+            for record, expires_at in result.all()
+            if record.storage_path
+            and record.mimetype
+            and record.mimetype.startswith("video/")
+            and not _token_has_expired(expires_at)
+            and not thumbnail_exists(record.storage_path)
+        ]
+
+    generated_count = 0
+    for upload_id in upload_ids:
+        async with SessionLocal() as session:
+            stmt = (
+                select(models.UploadRecord, models.UploadToken.expires_at)
+                .join(models.UploadToken, models.UploadToken.id == models.UploadRecord.token_id)
+                .where(models.UploadRecord.public_id == upload_id)
+            )
+            result = await session.execute(stmt)
+            row = result.one_or_none()
+            if row is None:
+                continue
+
+            record, expires_at = row
+            if _token_has_expired(expires_at):
+                continue
+
+            if not record.storage_path or not record.mimetype or not record.mimetype.startswith("video/"):
+                continue
+
+            path = Path(record.storage_path)
+
+        if not path.exists():
+            logger.warning("Skipping thumbnail backfill for upload %s because file is missing", upload_id)
+            continue
+
+        try:
+            thumbnail_path = await ensure_video_thumbnail(path)
+        except Exception:
+            logger.exception("Failed to backfill thumbnail for upload %s", upload_id)
+            continue
+
+        if thumbnail_path is not None:
+            generated_count += 1
+
+    if generated_count > 0:
+        logger.info("Backfilled thumbnails for %s upload(s)", generated_count)
+
+    return generated_count

@@ -25,6 +25,7 @@ export type UploadRow = {
   upload_offset?: number;
   download_url?: string;
   stream_url?: string;
+  thumbnail_url?: string;
 };
 
 export type Slot = {

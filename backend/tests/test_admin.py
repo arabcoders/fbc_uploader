@@ -3,7 +3,7 @@ from fastapi import status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from backend.app import models
+from backend.app import models, utils
 from backend.app.config import settings
 from backend.app.db import SessionLocal
 from backend.app.main import app
@@ -71,6 +71,8 @@ async def test_delete_upload():
             res = await session.execute(stmt)
             upload = res.scalar_one_or_none()
             assert upload is not None, "Upload should exist before deletion"
+            thumbnail_path = utils.get_thumbnail_path(upload.storage_path or "")
+            thumbnail_path.write_bytes(b"thumbnail")
 
         delete_resp = await client.delete(
             app.url_path_for("delete_upload", upload_id=upload_id),
@@ -84,6 +86,8 @@ async def test_delete_upload():
             res = await session.execute(stmt)
             upload = res.scalar_one_or_none()
             assert upload is None, "Upload should be deleted from database"
+
+        assert not thumbnail_path.exists(), "Upload thumbnail should be deleted with the upload"
 
 
 @pytest.mark.asyncio

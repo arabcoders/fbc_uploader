@@ -60,6 +60,9 @@ async def render_embed_preview(request: Request, db: AsyncSession, token_row: mo
             "share_url": str(request.url_for("share_page", token=token_row.download_token)),
             "media_url": str(request.url_for("stream_file", download_token=token_row.download_token, upload_id=first_media.public_id)),
             "download_url": str(request.url_for("download_file", download_token=token_row.download_token, upload_id=first_media.public_id)),
+            "thumbnail_url": str(
+                request.url_for("get_file_thumbnail", download_token=token_row.download_token, upload_id=first_media.public_id)
+            ),
             "mime_type": mime_type,
             "is_video": is_video,
             "is_audio": is_audio,

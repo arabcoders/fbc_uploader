@@ -12,6 +12,7 @@ from sqlalchemy.sql.selectable import Select
 
 from . import config, models
 from .db import SessionLocal
+from .utils import delete_upload_artifacts
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.result import Result
@@ -83,13 +84,10 @@ async def _remove_stale_uploads(session: AsyncSession) -> int:
     res: Result[tuple[models.UploadRecord]] = await session.execute(stmt)
 
     for record in res.scalars().all():
-        if record.storage_path:
-            path = Path(record.storage_path)
-            if path.exists():
-                try:
-                    path.unlink()
-                except OSError:
-                    logger.warning("Failed to remove stale upload file: %s", path)
+        try:
+            delete_upload_artifacts(record.storage_path)
+        except OSError:
+            logger.warning("Failed to remove stale upload file: %s", record.storage_path)
 
         total_removed += 1
         await session.delete(record)
@@ -129,13 +127,10 @@ async def _remove_disabled_tokens(session: AsyncSession) -> int:
             uploads_res: Result[tuple[models.UploadRecord]] = await session.execute(uploads_stmt)
 
             for upload in uploads_res.scalars().all():
-                if upload.storage_path:
-                    path = Path(upload.storage_path)
-                    if path.exists():
-                        try:
-                            path.unlink()
-                        except OSError:
-                            logger.warning("Failed to remove upload file during token cleanup: %s", path)
+                try:
+                    delete_upload_artifacts(upload.storage_path)
+                except OSError:
+                    logger.warning("Failed to remove upload file during token cleanup: %s", upload.storage_path)
 
                 total_removed += 1
                 await session.delete(upload)

@@ -1,11 +1,12 @@
 """Test share view endpoint returns appropriate data based on token type."""
 
 import asyncio
-import pytest
 from pathlib import Path
-from httpx import ASGITransport, AsyncClient
-from fastapi import status
 from unittest.mock import patch
+
+import pytest
+from fastapi import status
+from httpx import ASGITransport, AsyncClient
 
 from backend.app.main import app
 from backend.tests.utils import complete_upload, create_token
@@ -85,7 +86,7 @@ async def test_share_page_route_exists_and_responds():
 @pytest.mark.asyncio
 @pytest.mark.asyncio
 async def test_share_page_bot_preview_with_video(client):
-    """Test that Discord bot gets video embed preview when video file exists."""
+    """Discord bot preview should expose playable video embed tags alongside the thumbnail image."""
     with patch("backend.app.security.settings.allow_public_downloads", True):
         token_data = await create_token(client, max_uploads=1)
         token_value = token_data["token"]
@@ -131,13 +132,17 @@ async def test_share_page_bot_preview_with_video(client):
 
         assert response.status_code == status.HTTP_200_OK, "Should return 200 for Discord bot"
         html_content = response.text
-        assert "og:video" in html_content or "og:type" in html_content, "Should include OpenGraph video metadata"
+        assert "og:image" in html_content, "Bot preview should expose an OpenGraph image"
+        assert "twitter:image" in html_content, "Bot preview should expose a Twitter image"
+        assert "player" in html_content, "Bot preview should use a player card"
+        assert "og:video" in html_content, "Bot preview should expose playable video metadata"
+        assert "/thumbnail" in html_content, "Bot preview should point to the thumbnail endpoint"
         assert "sample.mp4" in html_content, "Should include video filename"
 
 
 @pytest.mark.asyncio
 async def test_token_embed_page_renders_preview_for_public_token(client):
-    """Test that static embed endpoint renders preview HTML for a shared media token."""
+    """Human embed page should keep video embed metadata while avoiding eager autoplay."""
     with patch("backend.app.security.settings.allow_public_downloads", True):
         token_data = await create_token(client, max_uploads=1)
         token_value = token_data["token"]
@@ -184,8 +189,57 @@ async def test_token_embed_page_renders_preview_for_public_token(client):
 
         assert response.status_code == status.HTTP_200_OK, "Embed endpoint should return HTML for valid shared media"
         html_content = response.text
-        assert "og:video" in html_content or "og:type" in html_content, "Embed page should include OpenGraph video metadata"
+        assert "og:image" in html_content, "Embed page should include OpenGraph image metadata"
+        assert "og:video" in html_content, "Embed page should still include playable video metadata"
+        assert "/thumbnail" in html_content, "Embed page should include the thumbnail endpoint"
+        assert 'preload="none"' in html_content, "Embed page should avoid eager media preloading"
+        assert "autoplay" not in html_content, "Embed page should not autoplay media"
         assert "sample.mp4" in html_content, "Embed page should include video filename"
+
+
+@pytest.mark.asyncio
+async def test_thumbnail_endpoint_returns_shared_fallback_when_no_thumbnail_exists(client):
+    """Thumbnail endpoint should return the shared fallback image when no sidecar exists."""
+    with patch("backend.app.security.settings.allow_public_downloads", True):
+        token_data = await create_token(client, max_uploads=1)
+        token_value = token_data["token"]
+        download_token = token_data["download_token"]
+        file_content = b"hello world"
+
+        init_resp = await client.post(
+            app.url_path_for("initiate_upload"),
+            json={
+                "filename": "sample.txt",
+                "filetype": "text/plain",
+                "size_bytes": len(file_content),
+                "meta_data": {},
+            },
+            params={"token": token_value},
+        )
+        assert init_resp.status_code == status.HTTP_201_CREATED, "Upload initiation should succeed"
+        upload_id = init_resp.json()["upload_id"]
+
+        patch_resp = await client.patch(
+            app.url_path_for("tus_patch", upload_id=upload_id),
+            content=file_content,
+            headers={
+                "Content-Type": "application/offset+octet-stream",
+                "Upload-Offset": "0",
+                "Content-Length": str(len(file_content)),
+            },
+        )
+        assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Upload bytes should be accepted"
+
+        complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+        assert complete_status == status.HTTP_200_OK, "Completion endpoint should accept uploaded files"
+        assert complete_data["status"] == "completed", "Non-video uploads should complete without postprocessing"
+
+        response = await client.get(app.url_path_for("get_file_thumbnail", download_token=download_token, upload_id=upload_id))
+
+        assert response.status_code == status.HTTP_200_OK, "Thumbnail endpoint should return a response"
+        assert response.headers["content-type"].startswith("image/jpeg"), "Fallback thumbnail should use the shared JPEG asset"
+        assert response.headers["content-disposition"].startswith("inline;"), "Fallback thumbnail should render inline"
+        assert response.content, "Thumbnail endpoint should return image bytes"
 
 
 @pytest.mark.asyncio
