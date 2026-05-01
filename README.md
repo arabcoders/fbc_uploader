@@ -104,6 +104,69 @@ yt-dlp "https://yourdomain.com/api/tokens/fbc_token_here/uploads"
 
 The extractor authenticates using the admin API key and downloads all completed uploads associated with the token.
 
+## Go CLI
+
+A standalone Go client lives in `tools/client`.
+
+It is a pure CLI and uses only the Go standard library. It supports token creation, upload with server-driven resume, download, file/token inspection, and upload cancellation.
+
+Tagged releases publish prebuilt Go client binaries for Linux, macOS, and Windows on `amd64` and `arm64`.
+
+**Environment variables:**
+
+```bash
+export FBC_PUBLIC_BASE_URL=https://yourdomain.com
+export FBC_ADMIN_API_KEY=YOUR_API_KEY
+```
+
+**Build:**
+
+```bash
+cd tools/client
+go build -o fbc .
+```
+
+Build Linux binaries for both `amd64` and `arm64`:
+
+```bash
+cd tools/client
+./build.sh
+```
+
+**Examples:**
+
+```bash
+# Create a token pair
+./fbc create --max-uploads 3 --max-size 2G --allowed-mime video/*
+
+# Inspect a token
+./fbc info --token YOUR_UPLOAD_TOKEN
+
+# Upload a file with nested metadata
+./fbc upload \
+  --token YOUR_UPLOAD_TOKEN \
+  --file ./episode.mp4 \
+  --metadata series.title="Example Show" \
+  --metadata episode=2
+
+# Or send the same metadata as JSON
+./fbc upload \
+  --token YOUR_UPLOAD_TOKEN \
+  --file ./episode.mp4 \
+  --metadata-json '{"series":{"title":"Example Show"},"episode":2}'
+
+# Resume an upload using the existing upload ID
+./fbc upload \
+  --token YOUR_UPLOAD_TOKEN \
+  --upload-id EXISTING_UPLOAD_ID \
+  --file ./episode.mp4
+
+# Download a completed file
+./fbc download --download-token fbc_download_token --upload-id EXISTING_UPLOAD_ID
+```
+
+See `tools/client/README.md` for more details.
+
 ## API Documentation
 
 See [API.md](API.md) for complete API documentation.
