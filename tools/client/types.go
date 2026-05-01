@@ -3,45 +3,45 @@ package main
 import "time"
 
 type TokenResponse struct {
-	Token         string    `json:"token"`
-	DownloadToken string    `json:"download_token"`
-	UploadURL     string    `json:"upload_url"`
-	ExpiresAt     time.Time `json:"expires_at"`
-	MaxUploads    int       `json:"max_uploads"`
-	MaxSizeBytes  int64     `json:"max_size_bytes"`
-	AllowedMime   []string  `json:"allowed_mime"`
+	Token         string       `json:"token"`
+	DownloadToken string       `json:"download_token"`
+	UploadURL     string       `json:"upload_url"`
+	ExpiresAt     FlexibleTime `json:"expires_at"`
+	MaxUploads    int          `json:"max_uploads"`
+	MaxSizeBytes  int64        `json:"max_size_bytes"`
+	AllowedMime   []string     `json:"allowed_mime"`
 }
 
 type TokenPublicInfo struct {
-	Token                *string        `json:"token"`
-	DownloadToken        string         `json:"download_token"`
-	RemainingUploads     int            `json:"remaining_uploads"`
-	MaxUploads           int            `json:"max_uploads"`
-	MaxSizeBytes         int64          `json:"max_size_bytes"`
-	MaxChunkBytes        int64          `json:"max_chunk_bytes"`
-	AllowedMime          []string       `json:"allowed_mime"`
-	ExpiresAt            time.Time      `json:"expires_at"`
-	Disabled             bool           `json:"disabled"`
-	AllowPublicDownloads bool           `json:"allow_public_downloads"`
-	Uploads              []UploadRecord `json:"uploads"`
+	Token                *string         `json:"token"`
+	DownloadToken        string          `json:"download_token"`
+	RemainingUploads     int             `json:"remaining_uploads"`
+	MaxUploads           int             `json:"max_uploads"`
+	MaxSizeBytes         int64           `json:"max_size_bytes"`
+	MaxChunkBytes        int64           `json:"max_chunk_bytes"`
+	AllowedMime          []string        `json:"allowed_mime"`
+	ExpiresAt            FlexibleTime    `json:"expires_at"`
+	Disabled             bool            `json:"disabled"`
+	AllowPublicDownloads bool            `json:"allow_public_downloads"`
+	Uploads              []UploadRecord  `json:"uploads"`
 }
 
 type UploadRecord struct {
-	PublicID     string         `json:"public_id"`
-	Filename     *string        `json:"filename"`
-	Ext          *string        `json:"ext"`
-	Mimetype     *string        `json:"mimetype"`
-	SizeBytes    *int64         `json:"size_bytes"`
-	MetaData     map[string]any `json:"meta_data"`
-	UploadLength *int64         `json:"upload_length"`
-	UploadOffset int64          `json:"upload_offset"`
-	Status       string         `json:"status"`
-	CreatedAt    time.Time      `json:"created_at"`
-	CompletedAt  *time.Time     `json:"completed_at"`
-	DownloadURL  *string        `json:"download_url"`
-	StreamURL    *string        `json:"stream_url"`
-	UploadURL    *string        `json:"upload_url"`
-	InfoURL      *string        `json:"info_url"`
+	PublicID     string          `json:"public_id"`
+	Filename     *string         `json:"filename"`
+	Ext          *string         `json:"ext"`
+	Mimetype     *string         `json:"mimetype"`
+	SizeBytes    *int64          `json:"size_bytes"`
+	MetaData     map[string]any  `json:"meta_data"`
+	UploadLength *int64          `json:"upload_length"`
+	UploadOffset int64           `json:"upload_offset"`
+	Status       string          `json:"status"`
+	CreatedAt    FlexibleTime    `json:"created_at"`
+	CompletedAt  *FlexibleTime   `json:"completed_at"`
+	DownloadURL  *string         `json:"download_url"`
+	StreamURL    *string         `json:"stream_url"`
+	UploadURL    *string         `json:"upload_url"`
+	InfoURL      *string         `json:"info_url"`
 }
 
 type InitiateUploadResponse struct {
@@ -78,14 +78,14 @@ type HeadUploadInfo struct {
 }
 
 type CreateCommandResult struct {
-	Token         string    `json:"token"`
-	DownloadToken string    `json:"download_token"`
-	UploadPageURL string    `json:"upload_page_url"`
-	ShareURL      string    `json:"share_url"`
-	ExpiresAt     time.Time `json:"expires_at"`
-	MaxUploads    int       `json:"max_uploads"`
-	MaxSizeBytes  int64     `json:"max_size_bytes"`
-	AllowedMime   []string  `json:"allowed_mime,omitempty"`
+	Token         string       `json:"token"`
+	DownloadToken string       `json:"download_token"`
+	UploadPageURL string       `json:"upload_page_url"`
+	ShareURL      string       `json:"share_url"`
+	ExpiresAt     FlexibleTime `json:"expires_at"`
+	MaxUploads    int          `json:"max_uploads"`
+	MaxSizeBytes  int64        `json:"max_size_bytes"`
+	AllowedMime   []string     `json:"allowed_mime,omitempty"`
 }
 
 type UploadCommandResult struct {

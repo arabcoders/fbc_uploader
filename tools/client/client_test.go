@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestParseByteSize(t *testing.T) {
@@ -76,6 +77,12 @@ func TestParseResourceTarget(t *testing.T) {
 			baseURL:   "https://example.com",
 			rawURL:    "https://example.com/f/fbc_abc",
 			wantToken: "fbc_abc",
+		},
+		{
+			name:      "upload page",
+			baseURL:   "https://example.com",
+			rawURL:    "https://example.com/t/upload_abc",
+			wantToken: "upload_abc",
 		},
 		{
 			name:       "download route",
@@ -156,5 +163,47 @@ func TestLoadCombinedMetadataRejectsPathConflict(t *testing.T) {
 	_, err := loadCombinedMetadata("", `{"series":"plain"}`, []string{"series.title=Updated"})
 	if err == nil {
 		t.Fatalf("loadCombinedMetadata unexpectedly succeeded for conflicting metadata path")
+	}
+}
+
+func TestFlexibleTimeUnmarshalAcceptsNaiveAndRFC3339(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		raw      string
+		wantTime time.Time
+	}{
+		{
+			name:     "naive",
+			raw:      `"2026-05-02T16:37:12"`,
+			wantTime: time.Date(2026, 5, 2, 16, 37, 12, 0, time.UTC),
+		},
+		{
+			name:     "rfc3339 zulu",
+			raw:      `"2026-05-02T16:37:12Z"`,
+			wantTime: time.Date(2026, 5, 2, 16, 37, 12, 0, time.UTC),
+		},
+		{
+			name:     "rfc3339 offset",
+			raw:      `"2026-05-02T18:37:12+02:00"`,
+			wantTime: time.Date(2026, 5, 2, 18, 37, 12, 0, time.FixedZone("", 2*60*60)),
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			var parsed FlexibleTime
+			if err := json.Unmarshal([]byte(testCase.raw), &parsed); err != nil {
+				t.Fatalf("json.Unmarshal(%s) returned error: %v", testCase.raw, err)
+			}
+
+			if !parsed.Time.Equal(testCase.wantTime) {
+				t.Fatalf("parsed time = %s, want %s", parsed.Time.Format(time.RFC3339Nano), testCase.wantTime.Format(time.RFC3339Nano))
+			}
+		})
 	}
 }

@@ -84,7 +84,7 @@ func runCreateCommand(ctx context.Context, args []string) error {
 	fmt.Fprintf(os.Stdout, "Download token: %s\n", result.DownloadToken)
 	fmt.Fprintf(os.Stdout, "Upload page: %s\n", result.UploadPageURL)
 	fmt.Fprintf(os.Stdout, "Share page: %s\n", result.ShareURL)
-	fmt.Fprintf(os.Stdout, "Expires at: %s\n", result.ExpiresAt.Format(time.RFC3339))
+	fmt.Fprintf(os.Stdout, "Expires at: %s\n", result.ExpiresAt.Time.Format(time.RFC3339))
 	fmt.Fprintf(os.Stdout, "Max uploads: %d\n", result.MaxUploads)
 	fmt.Fprintf(os.Stdout, "Max size: %d bytes (%s)\n", result.MaxSizeBytes, formatBytes(result.MaxSizeBytes))
 	if len(result.AllowedMime) > 0 {

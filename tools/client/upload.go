@@ -21,6 +21,7 @@ func runUploadCommand(ctx context.Context, args []string) error {
 	bindCommonFlags(fs, &cfg, true)
 
 	token := fs.String("token", "", "Upload token")
+	rawURL := fs.String("url", "", "FBC upload or token URL")
 	filePath := fs.String("file", "", "Path to the local file to upload")
 	uploadID := fs.String("upload-id", "", "Existing upload ID to resume instead of initiating a new upload")
 	metadataFile := fs.String("metadata-file", "", "Path to a JSON object to send as meta_data")
@@ -37,8 +38,23 @@ func runUploadCommand(ctx context.Context, args []string) error {
 	if err := requireNoArgs(fs); err != nil {
 		return err
 	}
+	if strings.TrimSpace(*rawURL) != "" {
+		target, err := parseResourceTarget(cfg.BaseURL, *rawURL)
+		if err != nil {
+			return err
+		}
+
+		if target.Token == "" {
+			return fmt.Errorf("upload URL %q did not contain a token", *rawURL)
+		}
+
+		cfg.BaseURL = target.BaseURL
+		if strings.TrimSpace(*token) == "" {
+			*token = target.Token
+		}
+	}
 	if strings.TrimSpace(*token) == "" {
-		return fmt.Errorf("--token is required")
+		return fmt.Errorf("--token or --url is required")
 	}
 	if strings.TrimSpace(*filePath) == "" {
 		return fmt.Errorf("--file is required")
