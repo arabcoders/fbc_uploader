@@ -42,6 +42,32 @@ jobs:
       - name: Run Python tests
         run: uv run pytest backend/tests/ -v --tb=short
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/client/go.mod
+          cache: false
+
+      - name: Run Go client tests
+        working-directory: tools/client
+        run: go test ./...
+
+      - name: Validate Go client cross-builds
+        working-directory: tools/client
+        run: |
+          mkdir -p dist
+          while read -r goos goarch output; do
+            echo "Building ${output}"
+            GOOS="${goos}" GOARCH="${goarch}" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "dist/${output}" .
+          done <<'EOF'
+          linux amd64 fbc-linux-amd64
+          linux arm64 fbc-linux-arm64
+          darwin amd64 fbc-darwin-amd64
+          darwin arm64 fbc-darwin-arm64
+          windows amd64 fbc-windows-amd64.exe
+          windows arm64 fbc-windows-arm64.exe
+          EOF
+
       - name: Cache bun installation
         id: cache-bun
         uses: actions/cache@v4

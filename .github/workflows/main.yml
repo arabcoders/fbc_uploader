@@ -72,6 +72,16 @@ jobs:
       - name: Run Python tests
         run: uv run pytest backend/tests/ -v --tb=short
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/client/go.mod
+          cache: false
+
+      - name: Run Go client tests
+        working-directory: tools/client
+        run: go test ./...
+
       - name: Cache bun installation
         id: cache-bun
         uses: actions/cache@v4
@@ -134,6 +144,63 @@ jobs:
           name: frontend-build
           path: frontend/exported/
           retention-days: 1
+
+  go-client-build:
+    name: Build Go Client (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: vars.REGISTRY == ''
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            asset_name: fbc-linux-amd64
+          - goos: linux
+            goarch: arm64
+            asset_name: fbc-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            asset_name: fbc-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            asset_name: fbc-darwin-arm64
+          - goos: windows
+            goarch: amd64
+            asset_name: fbc-windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            asset_name: fbc-windows-arm64.exe
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/client/go.mod
+          cache: false
+
+      - name: Build Go client binary
+        working-directory: tools/client
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.asset_name }}" .
+
+      - name: Upload Go client artifact
+        uses: actions/upload-artifact@v4
+        if: env.REGISTRY == ''
+        with:
+          name: go-client-${{ matrix.asset_name }}
+          path: tools/client/dist/${{ matrix.asset_name }}
+          retention-days: 7
 
   docker-build-amd64:
     name: Build Container (amd64)
@@ -484,3 +551,24 @@ jobs:
         with:
           entrypoint: node
           args: /opt/docker-readme-sync/sync
+
+  upload-go-client-release-assets:
+    name: Upload Go Client Release Assets
+    runs-on: ubuntu-latest
+    needs: [go-client-build]
+    if: startsWith(github.ref, 'refs/tags/v') && vars.REGISTRY == ''
+    permissions:
+      contents: write
+    steps:
+      - name: Download Go client artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: go-client-*
+          path: tools/client/dist
+          merge-multiple: true
+
+      - name: Upload assets to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" tools/client/dist/* --clobber
