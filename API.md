@@ -513,7 +513,6 @@ Returns an image with headers:
 
 **Notes:**
 - Video uploads return a generated sidecar thumbnail when available
-- Uploads without a generated sidecar return the shared fallback image from the exported frontend assets
 - The same endpoint is used by social embeds and the thumbnail-first share page UI
 
 ---

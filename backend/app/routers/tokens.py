@@ -35,8 +35,9 @@ def _generate_token_value(num_bytes: int, prefix: str = "") -> str:
 def _get_thumbnail_fallback_path() -> Path:
     repo_root = Path(__file__).resolve().parents[3]
     candidates = (
+        repo_root / "frontend" / "public" / "images" / "thumbnail-fallback.jpg",
         repo_root / "frontend" / "app" / "assets" / "images" / "thumbnail-fallback.jpg",
-        repo_root / "frontend" / "public" / "assets" / "images" / "thumbnail-fallback.jpg",
+        Path(settings.frontend_export_path).resolve() / "images" / "thumbnail-fallback.jpg",
         Path(settings.frontend_export_path).resolve() / "assets" / "images" / "thumbnail-fallback.jpg",
     )
 
