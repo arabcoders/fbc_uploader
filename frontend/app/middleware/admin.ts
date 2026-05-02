@@ -1,11 +1,11 @@
 export default defineNuxtRouteMiddleware(async (to) => {
   if (import.meta.server) return;
 
-  const adminToken = useState<string | null>("adminToken", () => null);
-  const lastValidated = useState<number>("adminTokenValidated", () => 0);
+  const adminToken = useState<string | null>('adminToken', () => null);
+  const lastValidated = useState<number>('adminTokenValidated', () => 0);
 
   if (import.meta.client && !adminToken.value) {
-    const stored = localStorage.getItem("adminToken");
+    const stored = localStorage.getItem('adminToken');
     if (stored) {
       adminToken.value = stored;
     }
@@ -22,13 +22,13 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (now - lastValidated.value > fiveMinutes) {
     try {
-      await $fetch("/api/admin/validate", {
+      await $fetch('/api/admin/validate', {
         headers: { Authorization: `Bearer ${adminToken.value}` },
       });
       lastValidated.value = now;
     } catch {
       adminToken.value = null;
-      localStorage.removeItem("adminToken");
+      localStorage.removeItem('adminToken');
       const redirect = encodeURIComponent(to.fullPath);
       return navigateTo(`/?redirect=${redirect}`);
     }

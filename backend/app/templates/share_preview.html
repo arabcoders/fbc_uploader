@@ -12,6 +12,9 @@
     {% if description %}
     <meta property="og:description" content="{{ description }}" />
     {% endif %}
+    {% if uses_preview_clip %}
+    <meta name="fbc:preview-mode" content="generated-short-clip" />
+    {% endif %}
 
     <meta property="og:image" content="{{ thumbnail_url }}" />
     <meta property="og:image:url" content="{{ thumbnail_url }}" />

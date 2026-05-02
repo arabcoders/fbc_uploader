@@ -1,4 +1,4 @@
-import type { UploadRow } from "./uploads";
+import type { UploadRow } from './uploads';
 
 export type TokenInfo = {
   token?: string;

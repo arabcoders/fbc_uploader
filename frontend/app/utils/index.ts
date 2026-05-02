@@ -5,26 +5,29 @@
  */
 const copyText = (str: string): void => {
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(str).then(() => { }).catch((e) => {
-      console.error('Failed to copy.', e)
-    })
-    return
+    navigator.clipboard
+      .writeText(str)
+      .then(() => {})
+      .catch((e) => {
+        console.error('Failed to copy.', e);
+      });
+    return;
   }
 
-  const el = document.createElement('textarea')
-  el.value = str
-  document.body.appendChild(el)
-  el.select()
-  document.execCommand('copy')
-  document.body.removeChild(el)
-}
+  const el = document.createElement('textarea');
+  el.value = str;
+  document.body.appendChild(el);
+  el.select();
+  document.execCommand('copy');
+  document.body.removeChild(el);
+};
 
 /**
  * Format bytes to human-readable string
  */
 function formatBytes(size: number): string {
-  if (!size) return "";
-  const units = ["B", "KB", "MB", "GB", "TB"];
+  if (!size) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let s = size;
   let u = 0;
   while (s >= 1024 && u < units.length - 1) {
@@ -38,7 +41,7 @@ function formatBytes(size: number): string {
  * Format date to locale string with timezone
  */
 function formatDate(d?: string) {
-  if (!d) return "";
+  if (!d) return '';
   try {
     const date = new Date(d);
     return date.toLocaleString(undefined, {
@@ -47,7 +50,7 @@ function formatDate(d?: string) {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      timeZoneName: 'short'
+      timeZoneName: 'short',
     });
   } catch {
     return d;
@@ -58,7 +61,7 @@ function formatDate(d?: string) {
  * Calculate percentage from offset and length
  */
 function percent(offset?: number, length?: number) {
-  if (!length || length <= 0) return "—";
+  if (!length || length <= 0) return '—';
   const val = Math.min(100, Math.round(((offset || 0) / length) * 100));
   return `${val}%`;
 }
@@ -83,7 +86,11 @@ function formatValue(val: unknown): string {
 /**
  * Add admin API key to download URL if public downloads are disabled
  */
-function addAdminKeyToUrl(url: string, allowPublicDownloads: boolean, apiKey: string | null): string {
+function addAdminKeyToUrl(
+  url: string,
+  allowPublicDownloads: boolean,
+  apiKey: string | null,
+): string {
   if (allowPublicDownloads || !apiKey) return url;
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}api_key=${apiKey}`;

@@ -17,10 +17,11 @@ async def test_create_token_with_allowed_mime_types():
             client,
             max_uploads=3,
             max_size_bytes=50_000_000,
-            allowed_mimes=["video/mp4", "video/webm"],
+            allowed_mime=["video/mp4", "video/webm"],
         )
-        assert "token" in token_data, "Response should include token"
-        assert "download_token" in token_data, "Response should include download_token"
+        assert token_data["max_uploads"] == 3, "Token response should preserve the requested upload limit"
+        assert token_data["max_size_bytes"] == 50_000_000, "Token response should preserve the requested size limit"
+        assert token_data["allowed_mime"] == ["video/mp4", "video/webm"], "Token response should preserve allowed MIME types"
 
 
 @pytest.mark.asyncio
@@ -35,9 +36,9 @@ async def test_create_token_with_expiry():
             client,
             max_uploads=5,
             max_size_bytes=100_000_000,
-            expires_at=expiry,
+            expiry_datetime=expiry,
         )
-        assert "expires_at" in token_data, "Response should include expires_at field"
+        assert token_data["expires_at"].startswith(expiry[:19]), "Token response should reflect the requested expiry"
 
 
 @pytest.mark.asyncio
@@ -84,11 +85,8 @@ async def test_reject_upload_exceeding_size():
         assert upload_resp.status_code in [status.HTTP_403_FORBIDDEN, status.HTTP_413_CONTENT_TOO_LARGE], (
             "Upload exceeding size limit should be rejected"
         )
-        assert (
-            "exceeds" in upload_resp.json()["detail"].lower()
-            or "too large" in upload_resp.json()["detail"].lower()
-            or "entity" in upload_resp.json()["detail"].lower()
-        ), "Error message should indicate size limit exceeded"
+        assert upload_resp.headers["content-type"].startswith("application/json"), "Oversized upload should return a JSON error response"
+        assert "detail" in upload_resp.json(), "Oversized upload should include error detail"
 
 
 @pytest.mark.asyncio

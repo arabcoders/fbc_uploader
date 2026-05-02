@@ -4,7 +4,9 @@
       <div class="flex items-center gap-2">
         <UIcon name="i-heroicons-rectangle-stack-20-solid" class="text-muted" />
         <span class="text-muted">Remaining uploads:</span>
-        <UBadge color="primary" variant="soft">{{ tokenInfo.remaining_uploads }} / {{ tokenInfo.max_uploads }}</UBadge>
+        <UBadge color="primary" variant="soft"
+          >{{ tokenInfo.remaining_uploads }} / {{ tokenInfo.max_uploads }}</UBadge
+        >
       </div>
       <div v-if="tokenInfo.max_size_bytes" class="flex items-center gap-2">
         <UIcon name="i-heroicons-scale-20-solid" class="text-muted" />
@@ -18,16 +20,36 @@
       </div>
     </div>
     <div class="flex items-center gap-2">
-      <UButton v-if="shareLink && !shareDisabled" size="xs" color="neutral" variant="outline"
-        icon="i-heroicons-arrow-top-right-on-square-20-solid" :href="shareLink" target="_blank"
-        rel="noopener noreferrer">
+      <UButton
+        v-if="shareLink && !shareDisabled"
+        size="xs"
+        color="neutral"
+        variant="outline"
+        icon="i-heroicons-arrow-top-right-on-square-20-solid"
+        :href="shareLink"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         Open share page
       </UButton>
-      <UButton v-if="shareLink" size="xs" color="primary" variant="outline" icon="i-heroicons-clipboard"
-        :disabled="shareDisabled" @click="$emit('copy')">
+      <UButton
+        v-if="shareLink"
+        size="xs"
+        color="primary"
+        variant="outline"
+        icon="i-heroicons-clipboard"
+        :disabled="shareDisabled"
+        @click="$emit('copy')"
+      >
         Copy share link
       </UButton>
-      <UButton size="xs" color="neutral" variant="ghost" icon="i-heroicons-arrow-path" @click="$emit('refresh')">
+      <UButton
+        size="xs"
+        color="neutral"
+        variant="ghost"
+        icon="i-heroicons-arrow-path"
+        @click="$emit('refresh')"
+      >
         Refresh
       </UButton>
     </div>
@@ -35,8 +57,8 @@
 </template>
 
 <script setup lang="ts">
-import type { TokenInfo } from "../types/token";
-import { formatBytes, formatDate } from "../utils";
+import type { TokenInfo } from '../types/token';
+import { formatBytes, formatDate } from '../utils';
 
 defineProps<{
   tokenInfo: TokenInfo | null;
