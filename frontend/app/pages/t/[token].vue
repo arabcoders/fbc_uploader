@@ -207,7 +207,7 @@ async function start(slot: Slot, idx: number) {
     }
 
     if (slot.file) {
-      await startTusUpload(slot, res.upload_url, slot.file, token.value, tokenInfo.value, (completedSlot) => {
+      await startTusUpload(slot, res.upload_url, slot.file, token.value, tokenInfo.value, res.recommended_chunk_bytes, (completedSlot) => {
         if (completedSlot.status === 'postprocessing' && completedSlot.uploadId) {
           pollUploadStatus(completedSlot.uploadId, token.value, completedSlot, refreshAll)
         }
@@ -331,11 +331,19 @@ async function onResumeFile(e: Event) {
   slots.value.push(resumeSlot)
 
   try {
-    await startTusUpload(resumeSlot, resumeTarget.value.upload_url, file, token.value, tokenInfo.value, (completedSlot) => {
-      if (completedSlot.status === 'postprocessing' && completedSlot.uploadId) {
-        pollUploadStatus(completedSlot.uploadId, token.value, completedSlot, refreshAll)
-      }
-    })
+    await startTusUpload(
+      resumeSlot,
+      resumeTarget.value.upload_url,
+      file,
+      token.value,
+      tokenInfo.value,
+      resumeTarget.value.recommended_chunk_bytes,
+      (completedSlot) => {
+        if (completedSlot.status === 'postprocessing' && completedSlot.uploadId) {
+          pollUploadStatus(completedSlot.uploadId, token.value, completedSlot, refreshAll)
+        }
+      },
+    )
     await refreshAll()
   } catch (err) {
     const error = err as ApiError

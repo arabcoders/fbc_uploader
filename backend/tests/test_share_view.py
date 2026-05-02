@@ -32,6 +32,7 @@ async def test_get_token_with_upload_token_returns_full_info():
         assert data["token"] == upload_token, "Upload token should match"
         assert "download_token" in data, "Should include download token field"
         assert "remaining_uploads" in data, "Should include remaining_uploads field"
+        assert "max_chunk_bytes" in data, "Should include max_chunk_bytes field"
 
 
 @pytest.mark.asyncio
@@ -52,6 +53,7 @@ async def test_get_token_with_download_token_returns_limited_info():
         assert "max_uploads" in data, "Should include max_uploads field"
         assert "allowed_mime" in data, "Should include allowed_mime field"
         assert "allow_public_downloads" in data, "Should include allow_public_downloads field"
+        assert "max_chunk_bytes" in data, "Should include max_chunk_bytes field"
 
 
 @pytest.mark.asyncio

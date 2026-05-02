@@ -23,6 +23,7 @@ export type UploadRow = {
   upload_url?: string;
   upload_length?: number;
   upload_offset?: number;
+  recommended_chunk_bytes?: number;
   download_url?: string;
   stream_url?: string;
   thumbnail_url?: string;
@@ -55,6 +56,7 @@ export interface InitiateUploadResponse {
   meta_data: UploadMetadata;
   allowed_mime: string[] | null;
   remaining_uploads: number;
+  recommended_chunk_bytes: number;
 }
 
 export interface CancelUploadResponse {

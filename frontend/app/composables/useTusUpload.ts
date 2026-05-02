@@ -4,17 +4,31 @@ import type { TokenInfo } from '~/types/token'
 
 const TUS_CHECKSUM_ALGORITHM = 'sha256'
 const TUS_WEB_CRYPTO_ALGORITHM = 'SHA-256'
-const TUS_CHECKSUM_MAX_CHUNK_BYTES = 16 * 1024 * 1024
-let hasWarnedChecksumFallback = false
+const DEFAULT_MAX_CHUNK_BYTES = 90 * 1024 * 1024
 
-function resolveChunkSize(tokenInfo: TokenInfo | null): number {
-  const maxChunk = tokenInfo?.max_chunk_bytes || 90 * 1024 * 1024
+type ChecksumBody = Blob | ArrayBuffer | ArrayBufferView | { arrayBuffer: () => Promise<ArrayBuffer> }
+
+function resolveChunkSize(fileSize: number, tokenInfo: TokenInfo | null, recommendedChunkBytes?: number | null): number {
+  const maxChunk = tokenInfo?.max_chunk_bytes || DEFAULT_MAX_CHUNK_BYTES
   const maxSize = tokenInfo?.max_size_bytes ?? maxChunk
+  const preferredChunk = recommendedChunkBytes && recommendedChunkBytes > 0 ? recommendedChunkBytes : maxChunk
 
-  return Math.min(maxChunk, maxSize, TUS_CHECKSUM_MAX_CHUNK_BYTES)
+  return Math.max(1, Math.min(preferredChunk, maxChunk, maxSize, fileSize || preferredChunk))
 }
 
-async function toArrayBuffer(body: Blob | ArrayBuffer | ArrayBufferView | { arrayBuffer: () => Promise<ArrayBuffer> }): Promise<ArrayBuffer> {
+function getChecksumSupportError(): Error | null {
+  if (!globalThis.crypto?.subtle) {
+    return new Error('This browser cannot compute the required upload checksums')
+  }
+
+  if (!tus.DefaultHttpStack) {
+    return new Error('This browser cannot create checksum-verified uploads')
+  }
+
+  return null
+}
+
+async function toArrayBuffer(body: ChecksumBody): Promise<ArrayBuffer> {
   if (body instanceof Blob) {
     if (typeof body.arrayBuffer === 'function') {
       return body.arrayBuffer()
@@ -62,45 +76,71 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   throw new Error('Base64 encoding is not available in this environment')
 }
 
-async function computeUploadChecksum(body: Blob | ArrayBuffer | ArrayBufferView | { arrayBuffer: () => Promise<ArrayBuffer> }): Promise<string> {
-  if (!globalThis.crypto?.subtle) {
-    throw new Error('Web Crypto is not available for checksum calculation')
+function getBodySize(body: ChecksumBody): number | null {
+  if (body instanceof Blob) {
+    return body.size
   }
 
+  if (body instanceof ArrayBuffer) {
+    return body.byteLength
+  }
+
+  if (ArrayBuffer.isView(body)) {
+    return body.byteLength
+  }
+
+  return null
+}
+
+function getRequestOffset(request: { getHeader: (header: string) => string | undefined }): number {
+  const rawOffset = request.getHeader('Upload-Offset')
+  const offset = Number.parseInt(rawOffset || '', 10)
+
+  if (!Number.isFinite(offset) || offset < 0) {
+    throw new Error('Upload offset missing for checksum calculation')
+  }
+
+  return offset
+}
+
+async function computeUploadChecksum(body: ChecksumBody): Promise<string> {
   const buffer = await toArrayBuffer(body)
   const digest = await globalThis.crypto.subtle.digest(TUS_WEB_CRYPTO_ALGORITHM, buffer)
 
   return arrayBufferToBase64(digest)
 }
 
-async function attachUploadChecksum(
-  request: {
-    getMethod: () => string
-    setHeader: (header: string, value: string) => void
-  },
-  body: Blob | ArrayBuffer | ArrayBufferView | { arrayBuffer: () => Promise<ArrayBuffer> } | null,
-): Promise<void> {
-  if (request.getMethod() !== 'PATCH' || body == null) {
-    return
-  }
+function createChecksumHttpStack(file: File, chunkSize: number) {
+  const baseStack = new tus.DefaultHttpStack()
+  const checksumsByOffset = new Map<number, Promise<string>>()
 
-  try {
-    const checksum = await computeUploadChecksum(body)
-    request.setHeader('Upload-Checksum', `${TUS_CHECKSUM_ALGORITHM} ${checksum}`)
-  } catch (error) {
-    if (!hasWarnedChecksumFallback) {
-      console.warn('Falling back to uploads without Upload-Checksum header.', error)
-      hasWarnedChecksumFallback = true
+  function pruneChecksums(currentOffset: number) {
+    for (const offset of checksumsByOffset.keys()) {
+      if (offset < currentOffset) {
+        checksumsByOffset.delete(offset)
+      }
     }
   }
-}
 
-function createChecksumHttpStack() {
-  if (!tus.DefaultHttpStack) {
-    return undefined
+  function scheduleChecksum(offset: number, body: ChecksumBody): Promise<string> {
+    const existingChecksum = checksumsByOffset.get(offset)
+    if (existingChecksum) {
+      return existingChecksum
+    }
+
+    const checksumPromise = computeUploadChecksum(body)
+    checksumsByOffset.set(offset, checksumPromise)
+    return checksumPromise
   }
 
-  const baseStack = new tus.DefaultHttpStack()
+  function scheduleLookahead(nextOffset: number) {
+    if (nextOffset >= file.size) {
+      return
+    }
+
+    const nextEnd = Math.min(nextOffset + chunkSize, file.size)
+    scheduleChecksum(nextOffset, file.slice(nextOffset, nextEnd))
+  }
 
   return {
     createRequest(method: string, url: string) {
@@ -112,9 +152,23 @@ function createChecksumHttpStack() {
         setHeader: (header: string, value: string) => request.setHeader(header, value),
         getHeader: (header: string) => request.getHeader(header),
         setProgressHandler: (progressHandler: (bytesSent: number) => void) => request.setProgressHandler(progressHandler),
-        async send(body: Blob | ArrayBuffer | ArrayBufferView | { arrayBuffer: () => Promise<ArrayBuffer> } | null) {
-          await attachUploadChecksum(request, body)
-          return request.send(body)
+        async send(body: ChecksumBody | null) {
+          if (request.getMethod() !== 'PATCH' || body == null) {
+            return request.send(body)
+          }
+
+          const offset = getRequestOffset(request)
+          pruneChecksums(offset)
+
+          const checksum = await scheduleChecksum(offset, body)
+          request.setHeader('Upload-Checksum', `${TUS_CHECKSUM_ALGORITHM} ${checksum}`)
+
+          const sendPromise = request.send(body)
+          const bodySize = getBodySize(body)
+          const nextOffset = offset + (bodySize ?? chunkSize)
+          scheduleLookahead(nextOffset)
+
+          return sendPromise
         },
         abort: () => request.abort(),
         getUnderlyingObject: () => request.getUnderlyingObject(),
@@ -135,14 +189,22 @@ export function useTusUpload() {
     file: File,
     token: string,
     tokenInfo: TokenInfo | null,
+    recommendedChunkBytes?: number | null,
     onUploadComplete?: (slot: Slot) => void
   ) {
     slot.status = 'uploading'
     slot.paused = false
 
+    const checksumSupportError = getChecksumSupportError()
+    if (checksumSupportError) {
+      slot.error = checksumSupportError.message
+      slot.status = 'error'
+      return Promise.reject(checksumSupportError)
+    }
+
     return new Promise<void>((resolve, reject) => {
-      const httpStack = createChecksumHttpStack()
-      const chunkSize = Math.min(resolveChunkSize(tokenInfo), file.size || resolveChunkSize(tokenInfo))
+      const chunkSize = resolveChunkSize(file.size, tokenInfo, recommendedChunkBytes)
+      const httpStack = createChecksumHttpStack(file, chunkSize)
       const upload = new tus.Upload(file, {
         uploadUrl,
         chunkSize,
@@ -151,7 +213,7 @@ export function useTusUpload() {
           filename: file.name,
           filetype: file.type,
         },
-        ...(httpStack ? { httpStack } : {}),
+        httpStack,
         onError(error: Error) {
           slot.error = error.message || String(error)
           slot.status = 'error'

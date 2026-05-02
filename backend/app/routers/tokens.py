@@ -95,6 +95,7 @@ def _set_upload_urls(request: Request, item: schemas.UploadRecordResponse, downl
     item.thumbnail_url = str(request.app.url_path_for("get_file_thumbnail", download_token=download_token, upload_id=upload_id))
     item.upload_url = str(request.app.url_path_for("tus_head", upload_id=upload_id))
     item.info_url = str(request.app.url_path_for("get_file_info", download_token=download_token, upload_id=upload_id))
+    item.recommended_chunk_bytes = utils.recommend_chunk_size(item.upload_length, settings.max_chunk_bytes)
 
 
 @router.get("/", response_model=schemas.TokenListResponse, name="list_tokens")

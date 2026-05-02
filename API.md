@@ -328,6 +328,7 @@ Get public token information including uploads.
       "meta_data": {"title": "My Document"},
       "upload_length": 1024000,
       "upload_offset": 1024000,
+      "recommended_chunk_bytes": 94371840,
       "status": "completed",
       "created_at": "2025-12-23T12:00:00Z",
       "completed_at": "2025-12-23T12:01:00Z",
@@ -345,6 +346,7 @@ Get public token information including uploads.
 - `max_chunk_bytes`: Maximum chunk size for TUS uploads (from `FBC_MAX_CHUNK_BYTES`)
 - `allow_public_downloads`: Whether public downloads are enabled
 - `uploads`: Array of upload records
+- `recommended_chunk_bytes`: Server-selected TUS chunk size to reuse for checksum-verified resume operations
 - `stream_url`: Inline media URL for browser playback when the upload is completed
 - `thumbnail_url`: Preview image URL for embeds and thumbnail-first media UIs
 
@@ -379,6 +381,7 @@ List all uploads for a specific token.
     "meta_data": {"title": "My Document"},
     "upload_length": 1024000,
     "upload_offset": 1024000,
+    "recommended_chunk_bytes": 94371840,
      "status": "completed",
       "created_at": "2025-12-23T12:00:00Z",
       "completed_at": "2025-12-23T12:01:00Z",
@@ -418,6 +421,7 @@ Get metadata information about a completed upload.
   },
   "upload_length": 1024000,
   "upload_offset": 1024000,
+  "recommended_chunk_bytes": 94371840,
   "status": "completed",
   "created_at": "2025-01-01T12:00:00Z",
   "completed_at": "2025-01-01T12:05:00Z",
@@ -580,9 +584,12 @@ Initiate a new file upload.
     "category": "reports"
   },
   "allowed_mime": ["application/pdf"],
-  "remaining_uploads": 0
+  "remaining_uploads": 0,
+  "recommended_chunk_bytes": 1024000
 }
 ```
+
+- `recommended_chunk_bytes`: Server-selected TUS chunk size for this upload. Clients should use this value when sending checksum-verified PATCH requests and when resuming the upload.
 
 **Error Responses:**
 - `404 Not Found` - Token does not exist

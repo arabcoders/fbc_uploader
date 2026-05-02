@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -35,6 +36,19 @@ THUMBNAIL_DEFAULT_SEEK_SECONDS = 3.0
 THUMBNAIL_MIN_SEEK_SECONDS = 1.0
 THUMBNAIL_MAX_SEEK_SECONDS = 15.0
 THUMBNAIL_END_MARGIN_SECONDS = 0.1
+
+
+def recommend_chunk_size(upload_length: int | None, max_chunk_bytes: int) -> int:
+    """Return a server-chosen TUS chunk size for the given upload length."""
+    if max_chunk_bytes <= 0:
+        msg = "max_chunk_bytes must be greater than zero"
+        raise ValueError(msg)
+
+    if upload_length is None or upload_length <= 0:
+        return max_chunk_bytes
+
+    chunk_count = max(1, math.ceil(upload_length / max_chunk_bytes))
+    return max(1, math.ceil(upload_length / chunk_count))
 
 
 def get_thumbnail_path(file_path: str | Path) -> Path:

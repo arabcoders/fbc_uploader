@@ -11,7 +11,7 @@ const (
 	envPublicBaseURL      = "FBC_PUBLIC_BASE_URL"
 	envAdminAPIKey        = "FBC_ADMIN_API_KEY"
 	defaultBaseURL        = "http://127.0.0.1:8000"
-	defaultUploadChunkRaw = "8M"
+	defaultUploadChunkRaw = ""
 	checksumStatusCode    = 460
 )
 

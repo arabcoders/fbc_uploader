@@ -18,7 +18,14 @@ from backend.app.config import settings
 from backend.app.db import SessionLocal, get_db
 from backend.app.metadata_schema import validate_metadata
 from backend.app.postprocessing import ProcessingQueue
-from backend.app.utils import compute_file_digest, delete_upload_artifacts, detect_mimetype, is_multimedia, mime_allowed
+from backend.app.utils import (
+    compute_file_digest,
+    delete_upload_artifacts,
+    detect_mimetype,
+    is_multimedia,
+    mime_allowed,
+    recommend_chunk_size,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.result import Result
@@ -327,6 +334,7 @@ async def initiate_upload(
         meta_data=cleaned_metadata,
         allowed_mime=token_row.allowed_mime,
         remaining_uploads=token_row.remaining_uploads,
+        recommended_chunk_bytes=recommend_chunk_size(record.upload_length, settings.max_chunk_bytes),
     )
 
 

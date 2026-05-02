@@ -36,6 +36,7 @@ async def test_token_info_and_initiate():
         assert isinstance(body["upload_id"], str) and len(body["upload_id"]) > 0, "Upload ID should be a non-empty string"
 
         assert body["remaining_uploads"] == 0, "Remaining uploads should decrease to 0"
+        assert body["recommended_chunk_bytes"] == 10, "Initiate should recommend a chunk size aligned to the file size"
 
         tus_head_url = app.url_path_for("tus_head", upload_id=body["upload_id"])
         head = await client.head(tus_head_url)
@@ -86,3 +87,29 @@ async def test_upload_requires_explicit_completion():
         complete_status, complete_data = await complete_upload(client, upload_id, token)
         assert complete_status == status.HTTP_200_OK, "Completion endpoint should finalize uploaded files"
         assert complete_data["status"] == "completed", "Text upload should be marked completed after explicit completion"
+
+
+@pytest.mark.asyncio
+async def test_token_info_exposes_recommended_chunk_size_for_resume():
+    seed_schema()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        token_data = await create_token(client, max_uploads=1, max_size_bytes=2000)
+        token = token_data["token"]
+
+        init = await client.post(
+            app.url_path_for("initiate_upload"),
+            params={"token": token},
+            json={
+                "meta_data": {"broadcast_date": "2024-01-01", "title": "Test", "source": "youtube"},
+                "filename": "resume.txt",
+                "filetype": "text/plain",
+                "size_bytes": 1500,
+            },
+        )
+        assert init.status_code == status.HTTP_201_CREATED, "Upload initiation should return 201"
+        upload_id = init.json()["upload_id"]
+
+        info = await get_token_info(client, token)
+        upload_row = next(upload for upload in info["uploads"] if upload["public_id"] == upload_id)
+        assert upload_row["recommended_chunk_bytes"] == 1500, "Token info should expose the recommended chunk size for resumed uploads"

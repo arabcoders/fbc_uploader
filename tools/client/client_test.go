@@ -45,6 +45,46 @@ func TestParseByteSize(t *testing.T) {
 	}
 }
 
+func TestChooseUploadChunkSize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		configured int64
+		tokenMax   int64
+		preferred  int64
+		want       int64
+		wantErr    bool
+	}{
+		{name: "uses preferred chunk size", configured: 0, tokenMax: 90, preferred: 64, want: 64},
+		{name: "falls back to token max", configured: 0, tokenMax: 90, preferred: 0, want: 90},
+		{name: "uses explicit override", configured: 32, tokenMax: 90, preferred: 0, want: 32},
+		{name: "rejects oversized override", configured: 128, tokenMax: 90, preferred: 0, wantErr: true},
+	}
+
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := chooseUploadChunkSize(testCase.configured, testCase.tokenMax, testCase.preferred)
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("chooseUploadChunkSize unexpectedly succeeded")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("chooseUploadChunkSize returned error: %v", err)
+			}
+			if got != testCase.want {
+				t.Fatalf("chooseUploadChunkSize = %d, want %d", got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestParseJSONMapSupportsNestedData(t *testing.T) {
 	t.Parallel()
 

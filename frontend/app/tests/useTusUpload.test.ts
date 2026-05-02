@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import type { Slot } from '~/types/uploads'
 
-const TUS_CHECKSUM_MAX_CHUNK_BYTES = 16 * 1024 * 1024
+function makeFile(size: number, name = 'a.bin', type = 'application/octet-stream'): File {
+  return new File([new Uint8Array(size)], name, { type })
+}
 
 const makeSlot = (): Slot => ({
   file: null,
@@ -120,16 +122,16 @@ describe('useTusUpload', () => {
       },
     })
 
-    const { useTusUpload } = await import('~/composables/useTusUpload')
-    const { startTusUpload } = useTusUpload()
-    const slot = makeSlot()
-    const file = { name: 'a.bin', size: 10, type: 'application/octet-stream' } as File
+      const { useTusUpload } = await import('~/composables/useTusUpload')
+      const { startTusUpload } = useTusUpload()
+      const slot = makeSlot()
+      const file = makeFile(10)
 
-    await startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 50 } as any)
+      await startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 50 } as any, 50)
 
-    expect(slot.status).toBe('completed')
-    expect(slot.progress).toBe(100)
-    expect(slot.bytesUploaded).toBe(10)
+      expect(slot.status).toBe('completed')
+      expect(slot.progress).toBe(100)
+      expect(slot.bytesUploaded).toBe(10)
     expect(slot.tusUpload).toBeUndefined()
     expect(uploadOptions.chunkSize).toBe(10)
     expect(uploadOptions.httpStack).toBeDefined()
@@ -151,15 +153,16 @@ describe('useTusUpload', () => {
       const { useTusUpload } = await import('~/composables/useTusUpload')
       const { startTusUpload } = useTusUpload()
       const slot = makeSlot()
-      const file = { name: 'a.bin', size: 20 * 1024 * 1024, type: 'application/octet-stream' } as File
+      const file = makeFile(20 * 1024 * 1024)
 
-      await expect(startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 90 * 1024 * 1024 } as any)).rejects.toThrow(
+      await expect(startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 90 * 1024 * 1024 } as any, 90 * 1024 * 1024)).rejects.toThrow(
         'stop',
       )
 
-      expect(uploadOptions.chunkSize).toBe(TUS_CHECKSUM_MAX_CHUNK_BYTES)
+      expect(uploadOptions.chunkSize).toBe(20 * 1024 * 1024)
 
       const request = uploadOptions.httpStack.createRequest('PATCH', 'http://upload')
+      request.setHeader('Upload-Offset', '0')
 
       await request.send(new Blob(['hello world']))
 
@@ -169,7 +172,7 @@ describe('useTusUpload', () => {
     }
   })
 
-  it('falls back when Web Crypto is unavailable', async () => {
+  it('fails when Web Crypto is unavailable', async () => {
     let uploadOptions: any
     const originalError = console.error
     console.error = mock(() => {}) as typeof console.error
@@ -182,9 +185,6 @@ describe('useTusUpload', () => {
     })
 
     const originalCrypto = globalThis.crypto
-    const warn = mock(() => {})
-    const originalWarn = console.warn
-    console.warn = warn as typeof console.warn
 
     Object.defineProperty(globalThis, 'crypto', {
       configurable: true,
@@ -195,24 +195,20 @@ describe('useTusUpload', () => {
       const { useTusUpload } = await import('~/composables/useTusUpload')
       const { startTusUpload } = useTusUpload()
       const slot = makeSlot()
-      const file = { name: 'a.bin', size: 10, type: 'application/octet-stream' } as File
+      const file = makeFile(10)
 
-      await expect(startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 90 * 1024 * 1024 } as any)).rejects.toThrow(
-        'stop',
+      await expect(startTusUpload(slot, 'http://upload', file, 'token-123', { max_chunk_bytes: 90 * 1024 * 1024 } as any, 90 * 1024 * 1024)).rejects.toThrow(
+        'required upload checksums',
       )
-
-      const request = uploadOptions.httpStack.createRequest('PATCH', 'http://upload')
-
-      await expect(request.send(new Blob(['hello world']))).resolves.toBeDefined()
-      expect(request.getHeader('Upload-Checksum')).toBeUndefined()
-      expect(warn).toHaveBeenCalled()
+      expect(slot.status).toBe('error')
+      expect(slot.error).toContain('required upload checksums')
+      expect(uploadOptions).toBeUndefined()
     } finally {
       Object.defineProperty(globalThis, 'crypto', {
         configurable: true,
         value: originalCrypto,
       })
       console.error = originalError
-      console.warn = originalWarn
     }
   })
 

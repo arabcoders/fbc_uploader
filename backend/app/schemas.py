@@ -67,6 +67,7 @@ class UploadRecordResponse(BaseModel):
     thumbnail_url: str | None = None
     upload_url: str | None = None
     info_url: str | None = None
+    recommended_chunk_bytes: int | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -111,3 +112,4 @@ class InitiateUploadResponse(BaseModel):
     meta_data: dict[str, Any]
     allowed_mime: list[str] | None
     remaining_uploads: int
+    recommended_chunk_bytes: int

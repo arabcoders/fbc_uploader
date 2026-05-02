@@ -104,6 +104,7 @@ Cancel an incomplete upload:
 ## Notes
 
 - Resume is server-driven. The CLI uses `HEAD /api/uploads/{upload_id}/tus` as the source of truth.
+- By default, upload chunk size follows the server-provided `recommended_chunk_bytes` value. Use `--chunk-size` to override it explicitly.
 - Uploads are only finalized after `POST /api/uploads/{upload_id}/complete?token=...`.
 - Restricted downloads work by sending `Authorization: Bearer <FBC_ADMIN_API_KEY>` when present.
 - Metadata must be a JSON object and may be nested.
