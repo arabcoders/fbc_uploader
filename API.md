@@ -818,9 +818,45 @@ Each field object can have:
 - `min`, `max` (number, optional): Numeric value constraints
 - `regex` (string, optional): Regular expression pattern for string validation
 - `default` (any, optional): Default value if not provided
+- `extract_regex` (string, optional): Python regular expression used by `/api/metadata/extract` to prefill metadata from a filename
 
 **Notes:**
 - Schema is loaded from `{config_path}/metadata.json`
+- `extract_regex` is interpreted with Python `re` syntax
+
+---
+
+### POST /api/metadata/extract
+
+Extract metadata values from a filename using the configured schema.
+
+**Authentication:** None
+
+**Request Body:**
+```json
+{
+  "filename": "240101 Example Show [youtube-dQw4w9WgXcQ].mp4"
+}
+```
+
+**Response (200):**
+```json
+{
+  "metadata": {
+    "broadcast_date": "2024-01-01",
+    "title": "Example Show",
+    "source": "youtube",
+    "source_id": "dQw4w9WgXcQ"
+  }
+}
+```
+
+**Extraction Rules:**
+1. Fields without `extract_regex` are ignored
+2. The regex is matched against the provided filename with case-insensitive search
+3. Capture group 1 is used when present; otherwise the full match is used
+4. For `date` fields, named groups `year`, `month`, and `day` are combined into `YYYY-MM-DD`
+5. Two-digit years are normalized to `20xx`
 
 ---
 

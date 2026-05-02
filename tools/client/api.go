@@ -257,6 +257,19 @@ func (c *Client) InitiateUpload(ctx context.Context, token string, payload Uploa
 	return response, err
 }
 
+func (c *Client) ExtractMetadata(ctx context.Context, filename string) (map[string]any, error) {
+	var response MetadataExtractResponse
+	err := c.doJSON(ctx, http.MethodPost, "/api/metadata/extract", nil, MetadataExtractRequest{Filename: filename}, &response)
+	if err != nil {
+		return nil, err
+	}
+	if response.Metadata == nil {
+		return map[string]any{}, nil
+	}
+
+	return response.Metadata, nil
+}
+
 func (c *Client) CompleteUpload(ctx context.Context, uploadID string, token string) (UploadRecord, error) {
 	var response UploadRecord
 	query := url.Values{"token": []string{token}}

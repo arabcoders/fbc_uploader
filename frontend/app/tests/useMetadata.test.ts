@@ -49,4 +49,31 @@ describe('useMetadata', () => {
 
     expect(metadataSchema.value).toEqual([]);
   });
+
+  it('extracts metadata from the backend endpoint', async () => {
+    const fetchMock = mock(async () => ({ metadata: { title: 'Example Show' } }));
+    testGlobals.$fetch = fetchMock;
+    const { extractMetadata } = useMetadata();
+
+    const metadata = await extractMetadata('example.mp4');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/metadata/extract', {
+      method: 'POST',
+      body: { filename: 'example.mp4' },
+    });
+    expect(metadata).toEqual({ title: 'Example Show' });
+  });
+
+  it('returns empty metadata when extraction fails', async () => {
+    const fetchMock = mock(async () => {
+      throw new Error('network');
+    });
+    testGlobals.$fetch = fetchMock;
+    const { extractMetadata } = useMetadata();
+
+    const metadata = await extractMetadata('example.mp4');
+
+    expect(metadata).toEqual({});
+  });
 });

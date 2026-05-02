@@ -132,7 +132,6 @@ import type {
 } from '~/types/uploads';
 import { useTokenInfo } from '~/composables/useTokenInfo';
 import { useMetadata } from '~/composables/useMetadata';
-import { useMetadataParser } from '~/composables/useMetadataParser';
 import { validateSlot } from '~/utils/validation';
 import { useTusUpload } from '~/composables/useTusUpload';
 import { useUploadSlots } from '~/composables/useUploadSlots';
@@ -145,8 +144,7 @@ const token = ref<string>((route.params.token as string) || '');
 
 const { tokenInfo, notFound, tokenError, isExpired, isDisabled, shareLinkText, fetchTokenInfo } =
   useTokenInfo(token);
-const { metadataSchema, fetchMetadata } = useMetadata();
-const { applyParsedMeta } = useMetadataParser();
+const { metadataSchema, fetchMetadata, extractMetadata } = useMetadata();
 const { startTusUpload, pauseUpload, resumeUpload } = useTusUpload();
 const { slots, seedSlots, addSlot, unintiatedSlots } = useUploadSlots(metadataSchema);
 const { pollUploadStatus, stopPolling, stopAllPolling } = useUploadPolling();
@@ -211,11 +209,35 @@ async function refreshAll() {
   seedSlots(tokenInfo.value);
 }
 
-function onFile(slot: Slot, e: Event) {
+function buildDefaultMetadataValues() {
+  return Object.fromEntries(metadataSchema.value.map((field) => [field.key, field.default ?? '']));
+}
+
+async function onFile(slot: Slot, e: Event) {
   const target = e.target as HTMLInputElement;
-  slot.file = target.files?.[0] || null;
-  metadataSchema.value.forEach((f) => (slot.values[f.key] = f.default ?? ''));
-  if (slot.file) applyParsedMeta(slot, slot.file.name, metadataSchema.value);
+  const selectedFile = target.files?.[0] || null;
+  const defaultValues = buildDefaultMetadataValues();
+
+  slot.file = selectedFile;
+  slot.values = defaultValues;
+  slot.errors = validateSlot(slot, metadataSchema.value, tokenInfo.value);
+
+  if (!selectedFile) {
+    return;
+  }
+
+  const extractedValues = await extractMetadata(selectedFile.name);
+  if (slot.file !== selectedFile) {
+    return;
+  }
+
+  const nextValues = { ...slot.values };
+  Object.entries(extractedValues).forEach(([key, value]) => {
+    if (slot.values[key] === defaultValues[key]) {
+      nextValues[key] = value;
+    }
+  });
+  slot.values = nextValues;
   slot.errors = validateSlot(slot, metadataSchema.value, tokenInfo.value);
 }
 

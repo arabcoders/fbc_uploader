@@ -126,6 +126,19 @@ func loadCombinedMetadata(metadataFile string, metadataJSON string, metadataEntr
 	return merged, nil
 }
 
+func mergeMetadata(base map[string]any, overlay map[string]any) map[string]any {
+	if len(base) == 0 && len(overlay) == 0 {
+		return map[string]any{}
+	}
+
+	merged := cloneMap(base)
+	for key, value := range overlay {
+		merged[key] = cloneValue(value)
+	}
+
+	return merged
+}
+
 func parseMetadataEntry(entry string) ([]string, any, error) {
 	parts := strings.SplitN(entry, "=", 2)
 	if len(parts) != 2 {

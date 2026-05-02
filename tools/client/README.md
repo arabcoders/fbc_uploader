@@ -108,4 +108,5 @@ Cancel an incomplete upload:
 - Uploads are only finalized after `POST /api/uploads/{upload_id}/complete?token=...`.
 - Restricted downloads work by sending `Authorization: Bearer <FBC_ADMIN_API_KEY>` when present.
 - Metadata must be a JSON object and may be nested.
+- For fresh uploads, the CLI first asks `/api/metadata/extract` to prefill metadata from the filename.
 - `--metadata key=value` may be repeated, supports dot paths like `series.title=Example`, and overrides matching keys from `--metadata-file` or `--metadata-json`.

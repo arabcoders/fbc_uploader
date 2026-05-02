@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
@@ -203,6 +207,72 @@ func TestLoadCombinedMetadataRejectsPathConflict(t *testing.T) {
 	_, err := loadCombinedMetadata("", `{"series":"plain"}`, []string{"series.title=Updated"})
 	if err == nil {
 		t.Fatalf("loadCombinedMetadata unexpectedly succeeded for conflicting metadata path")
+	}
+}
+
+func TestMergeMetadataUsesOverlayValues(t *testing.T) {
+	t.Parallel()
+
+	merged := mergeMetadata(
+		map[string]any{"title": "Auto", "series": map[string]any{"episode": int64(1)}},
+		map[string]any{"title": "Manual", "published": true},
+	)
+
+	if got := merged["title"]; got != "Manual" {
+		t.Fatalf("title = %#v, want Manual", got)
+	}
+	if got := merged["published"]; got != true {
+		t.Fatalf("published = %#v, want true", got)
+	}
+	series, ok := merged["series"].(map[string]any)
+	if !ok {
+		t.Fatalf("series was not an object: %#v", merged["series"])
+	}
+	if got := series["episode"]; got != int64(1) {
+		t.Fatalf("series.episode = %#v, want int64(1)", got)
+	}
+}
+
+func TestClientExtractMetadata(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/metadata/extract" {
+			t.Fatalf("path = %s, want /api/metadata/extract", r.URL.Path)
+		}
+
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll returned error: %v", err)
+		}
+
+		var payload MetadataExtractRequest
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatalf("json.Unmarshal returned error: %v", err)
+		}
+		if payload.Filename != "example.mp4" {
+			t.Fatalf("filename = %q, want example.mp4", payload.Filename)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"metadata":{"title":"Example Show"}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	metadata, err := client.ExtractMetadata(context.Background(), "example.mp4")
+	if err != nil {
+		t.Fatalf("ExtractMetadata returned error: %v", err)
+	}
+	if !reflect.DeepEqual(metadata, map[string]any{"title": "Example Show"}) {
+		t.Fatalf("metadata = %#v, want map[title:Example Show]", metadata)
 	}
 }
 

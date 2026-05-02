@@ -2,7 +2,8 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from backend.app.metadata_schema import load_schema, validate_metadata
+from backend.app import schemas
+from backend.app.metadata_schema import extract_metadata_from_filename, load_schema, validate_metadata
 
 router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 
@@ -17,6 +18,21 @@ async def get_metadata_schema() -> dict[str, list[dict]]:
 
     """
     return {"fields": load_schema()}
+
+
+@router.post("/extract", name="metadata_schema_extract")
+async def extract_metadata_payload(payload: schemas.MetadataExtractRequest) -> schemas.MetadataExtractResponse:
+    """
+    Extract metadata values from a filename.
+
+    Args:
+        payload: Filename payload to inspect.
+
+    Returns:
+        dict: A dictionary containing the extracted metadata.
+
+    """
+    return schemas.MetadataExtractResponse(metadata=extract_metadata_from_filename(payload.filename))
 
 
 @router.post("/validate", name="metadata_schema_validate")

@@ -22,5 +22,17 @@ export function useMetadata() {
     }
   }
 
-  return { isLoading, metadataSchema, fetchMetadata };
+  async function extractMetadata(filename: string): Promise<Record<string, any>> {
+    try {
+      const data = await $fetch<{ metadata: Record<string, any> }>('/api/metadata/extract', {
+        method: 'POST',
+        body: { filename },
+      });
+      return data.metadata || {};
+    } catch {
+      return {};
+    }
+  }
+
+  return { isLoading, metadataSchema, fetchMetadata, extractMetadata };
 }

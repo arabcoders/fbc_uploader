@@ -116,10 +116,16 @@ func runUploadCommand(ctx context.Context, args []string) error {
 	selectedChunkSize := configuredChunkSize
 	recommendedChunkSize := int64(0)
 	if resolvedUploadID == "" {
+		extractedMetadata, err := client.ExtractMetadata(ctx, filepath.Base(*filePath))
+		if err != nil {
+			return err
+		}
+
 		metadata, err := loadCombinedMetadata(*metadataFile, *metadataJSON, []string(metadataEntries))
 		if err != nil {
 			return err
 		}
+		metadata = mergeMetadata(extractedMetadata, metadata)
 
 		initResponse, err := client.InitiateUpload(ctx, *token, UploadRequest{
 			MetaData:  metadata,

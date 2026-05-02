@@ -100,6 +100,14 @@ class UploadRequest(BaseModel):
     size_bytes: int | None = Field(None, gt=0)
 
 
+class MetadataExtractRequest(BaseModel):
+    filename: str = Field(..., min_length=1)
+
+
+class MetadataExtractResponse(BaseModel):
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class TokenListResponse(BaseModel):
     tokens: list[TokenAdmin]
     total: int

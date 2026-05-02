@@ -69,6 +69,14 @@ type UploadRequest struct {
 	SizeBytes int64          `json:"size_bytes"`
 }
 
+type MetadataExtractRequest struct {
+	Filename string `json:"filename"`
+}
+
+type MetadataExtractResponse struct {
+	Metadata map[string]any `json:"metadata"`
+}
+
 type CancelResponse struct {
 	Message          string `json:"message"`
 	RemainingUploads int    `json:"remaining_uploads"`
