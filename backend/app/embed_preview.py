@@ -64,9 +64,9 @@ async def render_embed_preview(request: Request, db: AsyncSession, token_row: mo
     if preview_url and embed_media_url == preview_url:
         used_generated_preview = True
 
-    description = f"{len(uploads)} file(s) shared" if len(uploads) > 1 else "Shared file"
+    description: str = f"{len(uploads)} file(s) shared" if len(uploads) > 1 else "Shared file"
     if used_generated_preview:
-        description = f"{description}. Click watch the full-length video."
+        description: str = "A video preview. Click to watch the full-length video."
 
     return templates.TemplateResponse(
         request=request,
