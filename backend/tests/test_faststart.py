@@ -12,6 +12,7 @@ from backend.app.utils import (
     generate_video_thumbnail,
     get_thumbnail_path,
     is_web_safe_webm,
+    should_generate_video_preview,
     should_remux_to_mp4,
 )
 
@@ -202,3 +203,22 @@ def test_should_not_remux_streams_with_non_web_tracks():
     }
 
     assert should_remux_to_mp4("video/x-matroska", ffprobe_data) is False, "Subtitle streams should prevent copy-remux to MP4"
+
+
+def test_should_generate_video_preview_uses_file_size_threshold():
+    """Preview generation should be gated by source file size, not media duration."""
+    min_size_bytes = 195 * 1024 * 1024
+
+    assert should_generate_video_preview(min_size_bytes - 1, min_size_bytes=min_size_bytes) is False, (
+        "Files smaller than the configured size threshold should not get bot preview sidecars"
+    )
+    assert should_generate_video_preview(min_size_bytes, min_size_bytes=min_size_bytes) is True, (
+        "Files at the configured size threshold should get bot preview sidecars"
+    )
+
+
+def test_should_generate_video_preview_can_be_disabled_with_zero_threshold():
+    """A zero size threshold should disable generated bot preview clips."""
+    assert should_generate_video_preview(195 * 1024 * 1024, min_size_bytes=0) is False, (
+        "Zero preview size threshold should disable preview generation entirely"
+    )

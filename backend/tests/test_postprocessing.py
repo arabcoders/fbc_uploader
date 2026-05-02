@@ -14,7 +14,7 @@ from sqlalchemy import select
 from backend.app import models
 from backend.app.db import SessionLocal
 from backend.app.postprocessing import ProcessingQueue, backfill_missing_video_thumbnails, process_upload
-from backend.app.utils import get_thumbnail_path
+from backend.app.utils import get_preview_path, get_thumbnail_path
 from backend.tests.utils import create_token, initiate_upload, upload_file_via_tus
 
 
@@ -460,13 +460,15 @@ async def test_processing_queue_can_run_multiple_uploads_concurrently():
 
 @pytest.mark.asyncio
 async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_path):
-    """Startup thumbnail backfill should skip expired videos and only process eligible missing sidecars."""
+    """Startup sidecar backfill should skip expired videos and only process eligible missing sidecars."""
     video_path = tmp_path / "video.mp4"
     video_path.write_bytes(b"video-bytes")
     existing_path = tmp_path / "existing.mp4"
     existing_path.write_bytes(b"existing-video-bytes")
     existing_thumbnail = get_thumbnail_path(existing_path)
     existing_thumbnail.write_bytes(b"thumb")
+    existing_preview = get_preview_path(existing_path)
+    existing_preview.write_bytes(b"preview")
     expired_path = tmp_path / "expired.mp4"
     expired_path.write_bytes(b"expired-video-bytes")
     text_path = tmp_path / "doc.txt"
@@ -502,6 +504,7 @@ async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_
                     mimetype="video/mp4",
                     status="completed",
                     storage_path=str(video_path),
+                    meta_data={"ffprobe": {"format": {"duration": "600.0"}}},
                 ),
                 models.UploadRecord(
                     public_id="has-thumb",
@@ -510,6 +513,7 @@ async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_
                     mimetype="video/mp4",
                     status="completed",
                     storage_path=str(existing_path),
+                    meta_data={"ffprobe": {"format": {"duration": "600.0"}}},
                 ),
                 models.UploadRecord(
                     public_id="expired-video",
@@ -518,6 +522,7 @@ async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_
                     mimetype="video/mp4",
                     status="completed",
                     storage_path=str(expired_path),
+                    meta_data={"ffprobe": {"format": {"duration": "600.0"}}},
                 ),
                 models.UploadRecord(
                     public_id="not-video",
@@ -532,8 +537,20 @@ async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_
         await session.commit()
 
     generated_thumbnail = get_thumbnail_path(video_path)
-    with patch("backend.app.postprocessing.ensure_video_thumbnail", new=AsyncMock(return_value=generated_thumbnail)) as ensure_thumb:
+    generated_preview = get_preview_path(video_path)
+    with (
+        patch("backend.app.postprocessing.settings.embed_preview_clip_seconds", 10),
+        patch("backend.app.postprocessing.settings.embed_preview_min_size_bytes", 195 * 1024 * 1024),
+        patch("backend.app.postprocessing.ensure_video_thumbnail", new=AsyncMock(return_value=generated_thumbnail)) as ensure_thumb,
+        patch("backend.app.postprocessing.ensure_video_preview", new=AsyncMock(return_value=generated_preview)) as ensure_preview,
+    ):
         generated_count = await backfill_missing_video_thumbnails()
 
-    assert generated_count == 1, "Backfill should only generate thumbnails for completed videos missing a sidecar"
+    assert generated_count == 1, "Backfill should only generate sidecars for eligible completed videos"
     ensure_thumb.assert_awaited_once_with(video_path)
+    ensure_preview.assert_awaited_once_with(
+        video_path,
+        ffprobe_data={"format": {"duration": "600.0"}},
+        clip_seconds=10,
+        min_size_bytes=195 * 1024 * 1024,
+    )

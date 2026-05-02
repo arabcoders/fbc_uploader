@@ -7,7 +7,10 @@ from unittest.mock import patch
 import pytest
 from fastapi import status
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
+from backend.app import utils
+from backend.app import models
 from backend.app.main import app
 from backend.tests.utils import complete_upload, create_token
 from backend.tests.test_postprocessing import wait_for_processing
@@ -136,6 +139,7 @@ async def test_share_page_bot_preview_with_video(client):
         assert "twitter:image" in html_content, "Bot preview should expose a Twitter image"
         assert "player" in html_content, "Bot preview should use a player card"
         assert "og:video" in html_content, "Bot preview should expose playable video metadata"
+        assert "/stream/" in html_content, "Bot preview should fall back to the original stream when no preview sidecar exists"
         assert "/thumbnail" in html_content, "Bot preview should point to the thumbnail endpoint"
         assert "sample.mp4" in html_content, "Should include video filename"
 
@@ -191,6 +195,7 @@ async def test_token_embed_page_renders_preview_for_public_token(client):
         html_content = response.text
         assert "og:image" in html_content, "Embed page should include OpenGraph image metadata"
         assert "og:video" in html_content, "Embed page should still include playable video metadata"
+        assert "/stream/" in html_content, "User embed page should keep the full stream URL for playback"
         assert "/thumbnail" in html_content, "Embed page should include the thumbnail endpoint"
         assert 'preload="none"' in html_content, "Embed page should avoid eager media preloading"
         assert "autoplay" not in html_content, "Embed page should not autoplay media"
@@ -240,6 +245,135 @@ async def test_thumbnail_endpoint_returns_shared_fallback_when_no_thumbnail_exis
         assert response.headers["content-type"].startswith("image/jpeg"), "Fallback thumbnail should use the shared JPEG asset"
         assert response.headers["content-disposition"].startswith("inline;"), "Fallback thumbnail should render inline"
         assert response.content, "Thumbnail endpoint should return image bytes"
+
+
+@pytest.mark.asyncio
+async def test_share_page_bot_preview_uses_generated_preview_sidecar(client):
+    """Bot preview should prefer the generated short preview clip when one exists."""
+    with (
+        patch("backend.app.security.settings.allow_public_downloads", True),
+        patch("backend.app.embed_preview.settings.embed_preview_min_size_bytes", 1),
+    ):
+        token_data = await create_token(client, max_uploads=1)
+        token_value = token_data["token"]
+
+        video_file = Path(__file__).parent / "fixtures" / "sample.mp4"
+        file_size = video_file.stat().st_size
+
+        init_resp = await client.post(
+            app.url_path_for("initiate_upload"),
+            json={
+                "filename": "sample.mp4",
+                "filetype": "video/mp4",
+                "size_bytes": file_size,
+                "meta_data": {},
+            },
+            params={"token": token_value},
+        )
+        assert init_resp.status_code == status.HTTP_201_CREATED, "Upload initiation should succeed"
+        upload_id = init_resp.json()["upload_id"]
+
+        patch_resp = await client.patch(
+            app.url_path_for("tus_patch", upload_id=upload_id),
+            content=video_file.read_bytes(),
+            headers={
+                "Content-Type": "application/offset+octet-stream",
+                "Upload-Offset": "0",
+                "Content-Length": str(file_size),
+            },
+        )
+        assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Video upload should complete"
+
+        complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+        assert complete_status == status.HTTP_200_OK, "Completion endpoint should accept uploaded video files"
+        assert complete_data["status"] == "postprocessing", "Video should enter postprocessing after explicit completion"
+
+        completed = await wait_for_processing([upload_id], timeout=10.0)
+        assert completed, "Video processing should complete within timeout"
+
+        from backend.app.db import SessionLocal
+
+        async with SessionLocal() as session:
+            token_stmt = select(models.UploadToken).where(models.UploadToken.token == token_value)
+            token_res = await session.execute(token_stmt)
+            token_row = token_res.scalar_one()
+
+            upload_stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
+            upload_res = await session.execute(upload_stmt)
+            upload_row = upload_res.scalar_one()
+
+        preview_path = utils.get_preview_path(upload_row.storage_path or "")
+        preview_path.write_bytes(b"preview-bytes")
+
+        response = await client.get(f"/f/{token_row.download_token}", headers={"User-Agent": "Mozilla/5.0 (compatible; Discordbot/2.0)"})
+
+        assert response.status_code == status.HTTP_200_OK, "Should return 200 for Discord bot"
+        assert "/preview.mp4" in response.text, "Bot preview should prefer the short preview endpoint when available"
+
+
+@pytest.mark.asyncio
+async def test_share_page_bot_preview_ignores_sidecar_when_preview_feature_disabled(client):
+    """Bot preview should fall back to the full stream when preview sidecars are disabled by config."""
+    with (
+        patch("backend.app.security.settings.allow_public_downloads", True),
+        patch("backend.app.embed_preview.settings.embed_preview_min_size_bytes", 0),
+    ):
+        token_data = await create_token(client, max_uploads=1)
+        token_value = token_data["token"]
+
+        video_file = Path(__file__).parent / "fixtures" / "sample.mp4"
+        file_size = video_file.stat().st_size
+
+        init_resp = await client.post(
+            app.url_path_for("initiate_upload"),
+            json={
+                "filename": "sample.mp4",
+                "filetype": "video/mp4",
+                "size_bytes": file_size,
+                "meta_data": {},
+            },
+            params={"token": token_value},
+        )
+        assert init_resp.status_code == status.HTTP_201_CREATED, "Upload initiation should succeed"
+        upload_id = init_resp.json()["upload_id"]
+
+        patch_resp = await client.patch(
+            app.url_path_for("tus_patch", upload_id=upload_id),
+            content=video_file.read_bytes(),
+            headers={
+                "Content-Type": "application/offset+octet-stream",
+                "Upload-Offset": "0",
+                "Content-Length": str(file_size),
+            },
+        )
+        assert patch_resp.status_code == status.HTTP_204_NO_CONTENT, "Video upload should complete"
+
+        complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+        assert complete_status == status.HTTP_200_OK, "Completion endpoint should accept uploaded video files"
+        assert complete_data["status"] == "postprocessing", "Video should enter postprocessing after explicit completion"
+
+        completed = await wait_for_processing([upload_id], timeout=10.0)
+        assert completed, "Video processing should complete within timeout"
+
+        from backend.app.db import SessionLocal
+
+        async with SessionLocal() as session:
+            token_stmt = select(models.UploadToken).where(models.UploadToken.token == token_value)
+            token_res = await session.execute(token_stmt)
+            token_row = token_res.scalar_one()
+
+            upload_stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
+            upload_res = await session.execute(upload_stmt)
+            upload_row = upload_res.scalar_one()
+
+        preview_path = utils.get_preview_path(upload_row.storage_path or "")
+        preview_path.write_bytes(b"preview-bytes")
+
+        response = await client.get(f"/f/{token_row.download_token}", headers={"User-Agent": "Mozilla/5.0 (compatible; Discordbot/2.0)"})
+
+        assert response.status_code == status.HTTP_200_OK, "Should return 200 for Discord bot"
+        assert "/preview.mp4" not in response.text, "Disabled preview feature should not advertise preview sidecars"
+        assert "/stream/" in response.text, "Disabled preview feature should fall back to the original stream"
 
 
 @pytest.mark.asyncio

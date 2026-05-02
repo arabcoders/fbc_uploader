@@ -28,6 +28,8 @@ MP4_SAFE_VIDEO_CODECS: set[str] = {"h264"}
 MP4_SAFE_AUDIO_CODECS: set[str] = {"aac"}
 THUMBNAIL_SUFFIX = ".thumb.jpg"
 THUMBNAIL_MEDIA_TYPE = "image/jpeg"
+PREVIEW_SUFFIX = ".preview.mp4"
+PREVIEW_MEDIA_TYPE = "video/mp4"
 THUMBNAIL_SAMPLE_FRAMES = 200
 THUMBNAIL_DEFAULT_SEEK_SECONDS = 3.0
 THUMBNAIL_MIN_SEEK_SECONDS = 1.0
@@ -41,6 +43,12 @@ def get_thumbnail_path(file_path: str | Path) -> Path:
     return path.with_name(f"{path.name}{THUMBNAIL_SUFFIX}")
 
 
+def get_preview_path(file_path: str | Path) -> Path:
+    """Return the deterministic sidecar preview path for an upload file."""
+    path = Path(file_path)
+    return path.with_name(f"{path.name}{PREVIEW_SUFFIX}")
+
+
 def thumbnail_exists(file_path: str | Path) -> bool:
     """Return True when a non-empty thumbnail sidecar exists for the given upload file."""
     thumbnail_path = get_thumbnail_path(file_path)
@@ -50,39 +58,65 @@ def thumbnail_exists(file_path: str | Path) -> bool:
     return False
 
 
+def preview_exists(file_path: str | Path) -> bool:
+    """Return True when a non-empty preview sidecar exists for the given upload file."""
+    preview_path = get_preview_path(file_path)
+    with contextlib.suppress(OSError):
+        return preview_path.exists() and preview_path.stat().st_size > 0
+
+    return False
+
+
 def delete_upload_artifacts(file_path: str | Path | None) -> None:
-    """Delete an upload file and any derived thumbnail sidecar."""
+    """Delete an upload file and any derived preview or thumbnail sidecars."""
     if not file_path:
         return
 
     path = Path(file_path)
-    for candidate in (get_thumbnail_path(path), path):
+    for candidate in (get_preview_path(path), get_thumbnail_path(path), path):
         if candidate.exists():
             with contextlib.suppress(OSError):
                 candidate.unlink()
 
 
-def _get_thumbnail_seek_seconds(ffprobe_data: dict | None) -> float | None:
-    """Pick a seek offset that avoids intros without jumping past short videos."""
+def _get_media_duration_seconds(ffprobe_data: dict | None) -> float | None:
     if not ffprobe_data:
-        return THUMBNAIL_DEFAULT_SEEK_SECONDS
+        return None
 
     format_data = ffprobe_data.get("format")
     if not isinstance(format_data, dict):
-        return THUMBNAIL_DEFAULT_SEEK_SECONDS
+        return None
 
     with contextlib.suppress(TypeError, ValueError):
         duration = float(format_data.get("duration"))
-        if duration <= THUMBNAIL_END_MARGIN_SECONDS:
-            return None
+        if duration > 0:
+            return duration
 
-        return min(
-            max(duration * 0.1, THUMBNAIL_MIN_SEEK_SECONDS),
-            THUMBNAIL_MAX_SEEK_SECONDS,
-            duration - THUMBNAIL_END_MARGIN_SECONDS,
-        )
+    return None
 
-    return THUMBNAIL_DEFAULT_SEEK_SECONDS
+
+def _get_thumbnail_seek_seconds(ffprobe_data: dict | None) -> float | None:
+    """Pick a seek offset that avoids intros without jumping past short videos."""
+    duration = _get_media_duration_seconds(ffprobe_data)
+    if duration is None:
+        return THUMBNAIL_DEFAULT_SEEK_SECONDS
+
+    if duration <= THUMBNAIL_END_MARGIN_SECONDS:
+        return None
+
+    return min(
+        max(duration * 0.1, THUMBNAIL_MIN_SEEK_SECONDS),
+        THUMBNAIL_MAX_SEEK_SECONDS,
+        duration - THUMBNAIL_END_MARGIN_SECONDS,
+    )
+
+
+def should_generate_video_preview(size_bytes: int | None, *, min_size_bytes: int) -> bool:
+    """Return True when a video file is large enough to warrant a generated bot preview."""
+    if min_size_bytes <= 0:
+        return False
+
+    return size_bytes is not None and size_bytes >= min_size_bytes
 
 
 def _build_thumbnail_command(
@@ -106,6 +140,54 @@ def _build_thumbnail_command(
             "1",
             "-q:v",
             "3",
+            str(output_path),
+        ]
+    )
+    return command
+
+
+def _build_preview_command(
+    ffmpeg_bin: str,
+    source_path: Path,
+    output_path: Path,
+    *,
+    seek_seconds: float | None,
+    clip_seconds: int,
+) -> list[str]:
+    command = [ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y"]
+    if seek_seconds is not None and seek_seconds > 0:
+        command.extend(["-ss", f"{seek_seconds:.3f}"])
+
+    command.extend(
+        [
+            "-i",
+            str(source_path),
+            "-t",
+            str(clip_seconds),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0?",
+            "-sn",
+            "-dn",
+            "-vf",
+            "scale=1280:-2:force_original_aspect_ratio=decrease",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "30",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "96k",
+            "-movflags",
+            "+faststart",
+            "-f",
+            "mp4",
             str(output_path),
         ]
     )
@@ -187,6 +269,115 @@ async def ensure_video_thumbnail(source_path: str | Path, *, ffmpeg_bin: str = "
         return get_thumbnail_path(source_path)
 
     return await generate_video_thumbnail(source_path, ffmpeg_bin=ffmpeg_bin)
+
+
+async def generate_video_preview(
+    source_path: str | Path,
+    *,
+    ffmpeg_bin: str = "ffmpeg",
+    ffprobe_data: dict | None = None,
+    clip_seconds: int = 10,
+    min_size_bytes: int = 195 * 1024 * 1024,
+) -> Path | None:
+    """Generate a short MP4 preview sidecar for bot embeds when the source file is large enough."""
+    src = Path(source_path)
+    if not src.exists():
+        raise FileNotFoundError(src)
+
+    preview_path = get_preview_path(src)
+    if preview_exists(src):
+        return preview_path
+
+    if preview_path.exists():
+        preview_path.unlink(missing_ok=True)
+
+    if clip_seconds < 1 or shutil.which(ffmpeg_bin) is None:
+        return None
+
+    if not should_generate_video_preview(src.stat().st_size, min_size_bytes=min_size_bytes):
+        return None
+
+    if ffprobe_data is None:
+        ffprobe_data = await extract_ffprobe_metadata(src)
+
+    seek_seconds = _get_thumbnail_seek_seconds(ffprobe_data)
+    attempt_seek_offsets = [seek_seconds]
+    if seek_seconds is not None and seek_seconds > 0:
+        attempt_seek_offsets.append(None)
+
+    fd, tmp_out = tempfile.mkstemp(prefix=preview_path.name + ".", suffix=".part.mp4", dir=src.parent)
+    os.close(fd)
+    tmp_out_path = Path(tmp_out)
+    proc: asyncio.subprocess.Process | None = None
+    generated_preview: Path | None = None
+
+    try:
+        last_error = "ffmpeg produced an empty preview file"
+        for attempt_seek_seconds in attempt_seek_offsets:
+            tmp_out_path.unlink(missing_ok=True)
+            cmd = _build_preview_command(
+                ffmpeg_bin,
+                src,
+                tmp_out_path,
+                seek_seconds=attempt_seek_seconds,
+                clip_seconds=clip_seconds,
+            )
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await proc.communicate()
+
+            if proc.returncode == 0 and tmp_out_path.exists() and tmp_out_path.stat().st_size > 0:
+                tmp_out_path.replace(preview_path)
+                generated_preview = preview_path
+                break
+
+            if proc.returncode != 0:
+                last_error = (
+                    f"ffmpeg preview generation failed (rc={proc.returncode}).\n"
+                    f"stdout:\n{out.decode(errors='replace')}\n"
+                    f"stderr:\n{err.decode(errors='replace')}"
+                )
+            else:
+                last_error = "ffmpeg produced an empty preview file"
+
+        if generated_preview is None:
+            raise RuntimeError(last_error)
+
+    except asyncio.CancelledError:
+        if proc is not None:
+            await _terminate_subprocess(proc)
+        raise
+
+    finally:
+        with contextlib.suppress(Exception):
+            if tmp_out_path.exists():
+                tmp_out_path.unlink()
+
+    return generated_preview
+
+
+async def ensure_video_preview(
+    source_path: str | Path,
+    *,
+    ffmpeg_bin: str = "ffmpeg",
+    ffprobe_data: dict | None = None,
+    clip_seconds: int = 10,
+    min_size_bytes: int = 195 * 1024 * 1024,
+) -> Path | None:
+    """Return the existing preview sidecar or generate it when missing."""
+    if preview_exists(source_path):
+        return get_preview_path(source_path)
+
+    return await generate_video_preview(
+        source_path,
+        ffmpeg_bin=ffmpeg_bin,
+        ffprobe_data=ffprobe_data,
+        clip_seconds=clip_seconds,
+        min_size_bytes=min_size_bytes,
+    )
 
 
 async def _terminate_subprocess(proc: asyncio.subprocess.Process) -> None:
@@ -468,9 +659,8 @@ def extract_video_metadata(ffprobe_data: dict | None) -> dict:
     if not ffprobe_data:
         return result
 
-    if "format" in ffprobe_data and "duration" in ffprobe_data["format"]:
-        with contextlib.suppress(ValueError, TypeError):
-            result["duration"] = int(float(ffprobe_data["format"]["duration"]))
+    if duration_seconds := _get_media_duration_seconds(ffprobe_data):
+        result["duration"] = int(duration_seconds)
 
     if "streams" in ffprobe_data:
         for stream in ffprobe_data["streams"]:

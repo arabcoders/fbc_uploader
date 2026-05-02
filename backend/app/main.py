@@ -48,9 +48,9 @@ def create_app() -> FastAPI:
         queue = ProcessingQueue()
         queue.start_worker()
         app.state.processing_queue = queue
-        app.state.thumbnail_backfill_task = asyncio.create_task(
+        app.state.media_sidecar_backfill_task = asyncio.create_task(
             backfill_missing_video_thumbnails(),
-            name="thumbnail_backfill",
+            name="media_sidecar_backfill",
         )
 
         if not settings.skip_cleanup:
@@ -58,12 +58,12 @@ def create_app() -> FastAPI:
 
         yield
 
-        thumbnail_backfill_task: asyncio.Task | None = getattr(app.state, "thumbnail_backfill_task", None)
-        if thumbnail_backfill_task:
-            if not thumbnail_backfill_task.done():
-                thumbnail_backfill_task.cancel()
+        media_sidecar_backfill_task: asyncio.Task | None = getattr(app.state, "media_sidecar_backfill_task", None)
+        if media_sidecar_backfill_task:
+            if not media_sidecar_backfill_task.done():
+                media_sidecar_backfill_task.cancel()
             with suppress(asyncio.CancelledError, Exception):
-                await thumbnail_backfill_task
+                await media_sidecar_backfill_task
 
         await queue.stop_worker()
 

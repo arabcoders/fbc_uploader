@@ -73,6 +73,8 @@ async def test_delete_upload():
             assert upload is not None, "Upload should exist before deletion"
             thumbnail_path = utils.get_thumbnail_path(upload.storage_path or "")
             thumbnail_path.write_bytes(b"thumbnail")
+            preview_path = utils.get_preview_path(upload.storage_path or "")
+            preview_path.write_bytes(b"preview")
 
         delete_resp = await client.delete(
             app.url_path_for("delete_upload", upload_id=upload_id),
@@ -88,6 +90,7 @@ async def test_delete_upload():
             assert upload is None, "Upload should be deleted from database"
 
         assert not thumbnail_path.exists(), "Upload thumbnail should be deleted with the upload"
+        assert not preview_path.exists(), "Upload preview should be deleted with the upload"
 
 
 @pytest.mark.asyncio

@@ -35,8 +35,9 @@ def _generate_token_value(num_bytes: int, prefix: str = "") -> str:
 def _get_thumbnail_fallback_path() -> Path:
     repo_root = Path(__file__).resolve().parents[3]
     candidates = (
-        Path(settings.frontend_export_path).resolve() / "images" / "thumbnail-fallback.jpg",
-        repo_root / "frontend" / "public" / "images" / "thumbnail-fallback.jpg",
+        repo_root / "frontend" / "app" / "assets" / "images" / "thumbnail-fallback.jpg",
+        repo_root / "frontend" / "public" / "assets" / "images" / "thumbnail-fallback.jpg",
+        Path(settings.frontend_export_path).resolve() / "assets" / "images" / "thumbnail-fallback.jpg",
     )
 
     for candidate in candidates:
@@ -413,7 +414,9 @@ async def get_file_info(
 
 
 @router.get("/{download_token}/uploads/{upload_id}/thumbnail", name="get_file_thumbnail", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/thumbnail", response_model=None)
 @router.get("/{download_token}/uploads/{upload_id}/thumbnail/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/thumbnail/", response_model=None)
 async def get_file_thumbnail(
     download_token: str,
     upload_id: str,
@@ -444,8 +447,35 @@ async def get_file_thumbnail(
     )
 
 
+@router.get("/{download_token}/uploads/{upload_id}/preview.mp4", name="get_file_preview")
+@router.head("/{download_token}/uploads/{upload_id}/preview.mp4", response_model=None)
+@router.get("/{download_token}/uploads/{upload_id}/preview.mp4/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/preview.mp4/", response_model=None)
+async def get_file_preview(
+    download_token: str,
+    upload_id: str,
+    is_admin: Annotated[bool, Depends(optional_admin_check)],
+) -> FileResponse:
+    """Return a generated short MP4 preview for bot embeds when available."""
+    async with SessionLocal() as db:
+        _, _, path = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+        preview_path = utils.get_preview_path(path)
+
+    if not preview_path.exists() or preview_path.stat().st_size == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Preview missing")
+
+    return FileResponse(
+        preview_path,
+        filename=preview_path.name,
+        media_type=utils.PREVIEW_MEDIA_TYPE,
+        content_disposition_type="inline",
+    )
+
+
 @router.get("/{download_token}/uploads/{upload_id}/stream", name="stream_file")
-@router.get("/{download_token}/uploads/{upload_id}/stream/")
+@router.head("/{download_token}/uploads/{upload_id}/stream", response_model=None)
+@router.get("/{download_token}/uploads/{upload_id}/stream/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/stream/", response_model=None)
 async def stream_file(
     download_token: str,
     upload_id: str,
@@ -466,7 +496,9 @@ async def stream_file(
 
 
 @router.get("/{download_token}/uploads/{upload_id}/download", name="download_file")
-@router.get("/{download_token}/uploads/{upload_id}/download/")
+@router.head("/{download_token}/uploads/{upload_id}/download", response_model=None)
+@router.get("/{download_token}/uploads/{upload_id}/download/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/download/", response_model=None)
 async def download_file(
     download_token: str,
     upload_id: str,

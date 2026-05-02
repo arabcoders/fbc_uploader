@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     max_chunk_bytes: int = Field(90 * 1024 * 1024, validation_alias="FBC_MAX_CHUNK_BYTES")
     max_remux_bytes: int = Field(5 * 1024 * 1024 * 1024, validation_alias="FBC_MAX_REMUX_BYTES")
     postprocessing_workers: int = Field(4, ge=1, validation_alias="FBC_POSTPROCESSING_WORKERS")
+    embed_preview_clip_seconds: int = Field(30, ge=0, le=60, validation_alias="FBC_EMBED_PREVIEW_CLIP_SECONDS")
+    embed_preview_min_size_bytes: int = Field(195 * 1024 * 1024, ge=0, validation_alias="FBC_EMBED_PREVIEW_MIN_SIZE_BYTES")
     allow_public_downloads: bool = Field(False, validation_alias="FBC_ALLOW_PUBLIC_DOWNLOADS")
     trust_proxy_headers: bool = Field(False, validation_alias="FBC_TRUST_PROXY_HEADERS")
     forwarded_allow_ips: str = Field("127.0.0.1,::1", validation_alias="FBC_FORWARDED_ALLOW_IPS")

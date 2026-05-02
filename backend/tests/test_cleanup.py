@@ -16,9 +16,13 @@ def _ensure_storage() -> Path:
     return storage_root
 
 
+def _unique_storage_path(name: str) -> Path:
+    return _ensure_storage() / f"{name}-{secrets.token_urlsafe(8)}"
+
+
 @pytest.mark.asyncio
 async def test_disable_expired_tokens_marks_disabled():
-    now = datetime.now(UTC)
+    now = datetime.now(UTC).replace(tzinfo=None)
     expired = models.UploadToken(
         token="expired",
         download_token="expired_dl",
@@ -51,21 +55,23 @@ async def test_disable_expired_tokens_marks_disabled():
 
 @pytest.mark.asyncio
 async def test_remove_stale_uploads_deletes_files(monkeypatch):
-    monkeypatch.setattr(settings, "incomplete_ttl_hours", 1)
+    monkeypatch.setattr(cleanup.config.settings, "incomplete_ttl_hours", 1)
+    monkeypatch.setattr(cleanup.config.settings, "disabled_tokens_ttl_days", 30)
     stale_token_value = f"stale-token-{secrets.token_urlsafe(8)}"
     stale_download_value = f"stale-dl-{secrets.token_urlsafe(8)}"
-    storage_root = _ensure_storage()
-    file_path = storage_root / "stale.bin"
+    file_path = _unique_storage_path("stale.bin")
     file_path.write_text("stale")
     thumbnail_path = utils.get_thumbnail_path(file_path)
     thumbnail_path.write_bytes(b"thumbnail")
+    preview_path = utils.get_preview_path(file_path)
+    preview_path.write_bytes(b"preview")
 
     token = models.UploadToken(
         token=stale_token_value,
         download_token=stale_download_value,
         max_uploads=1,
         max_size_bytes=10,
-        expires_at=datetime.now(UTC) + timedelta(days=1),
+        expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=1),
     )
 
     async with SessionLocal() as session:
@@ -80,7 +86,7 @@ async def test_remove_stale_uploads_deletes_files(monkeypatch):
             size_bytes=5,
             storage_path=str(file_path),
             status="pending",
-            created_at=datetime.now(UTC) - timedelta(hours=2),
+            created_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=2),
         )
         session.add(stale_upload)
         await session.commit()
@@ -95,12 +101,14 @@ async def test_remove_stale_uploads_deletes_files(monkeypatch):
     assert not remaining, "Stale upload record should be removed"
     assert not file_path.exists(), "Stale upload file should be deleted"
     assert not thumbnail_path.exists(), "Stale upload thumbnail should be deleted"
+    assert not preview_path.exists(), "Stale upload preview should be deleted"
 
 
 @pytest.mark.asyncio
 async def test_remove_disabled_tokens_cleans_records_and_storage(monkeypatch):
-    monkeypatch.setattr(settings, "disabled_tokens_ttl_days", 1)
-    monkeypatch.setattr(settings, "delete_files_on_token_cleanup", True)
+    monkeypatch.setattr(cleanup.config.settings, "incomplete_ttl_hours", 24)
+    monkeypatch.setattr(cleanup.config.settings, "disabled_tokens_ttl_days", 1)
+    monkeypatch.setattr(cleanup.config.settings, "delete_files_on_token_cleanup", True)
     old_token_value = f"old-token-{secrets.token_urlsafe(8)}"
     old_download_value = f"old-dl-{secrets.token_urlsafe(8)}"
     recent_token_value = f"recent-token-{secrets.token_urlsafe(8)}"
@@ -113,13 +121,15 @@ async def test_remove_disabled_tokens_cleans_records_and_storage(monkeypatch):
     old_file.write_text("old-data")
     old_thumbnail = utils.get_thumbnail_path(old_file)
     old_thumbnail.write_bytes(b"thumbnail")
+    old_preview = utils.get_preview_path(old_file)
+    old_preview.write_bytes(b"preview")
 
     recent_token_dir = storage_root / recent_token_value
     recent_token_dir.mkdir(parents=True, exist_ok=True)
     recent_file = recent_token_dir / "recent.txt"
     recent_file.write_text("recent-data")
 
-    now = datetime.now(UTC)
+    now = datetime.now(UTC).replace(tzinfo=None)
     old_token = models.UploadToken(
         token=old_token_value,
         download_token=old_download_value,
@@ -182,6 +192,7 @@ async def test_remove_disabled_tokens_cleans_records_and_storage(monkeypatch):
     assert all(upload.token_id == tokens[recent_token_value].id for upload in uploads), "Only recent token uploads should remain"
     assert not old_file.exists(), "Old token file should be deleted"
     assert not old_thumbnail.exists(), "Old token thumbnail should be deleted"
+    assert not old_preview.exists(), "Old token preview should be deleted"
     assert not old_token_dir.exists(), "Old token directory should be deleted"
     assert recent_file.exists(), "Recent token file should be retained"
     assert recent_token_dir.exists(), "Recent token directory should be retained"

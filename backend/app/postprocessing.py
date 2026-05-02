@@ -24,10 +24,12 @@ from .db import SessionLocal
 from .utils import (
     detect_mimetype,
     ensure_faststart_mp4,
+    ensure_video_preview,
     ensure_video_thumbnail,
     extract_ffprobe_metadata,
     get_mp4_remux_skip_reason,
     is_multimedia,
+    preview_exists,
     remux_to_mp4,
     should_remux_to_mp4,
     thumbnail_exists,
@@ -88,6 +90,7 @@ async def _apply_media_normalization(record: models.UploadRecord, path: Path) ->
             logger.exception("Failed to apply faststart to upload %s", record.public_id)
 
     await _ensure_thumbnail(record, path)
+    await _ensure_preview(record, path, ffprobe_data)
 
     return path, ffprobe_data
 
@@ -122,6 +125,26 @@ async def _ensure_thumbnail(record: models.UploadRecord | SimpleNamespace, path:
 
     if thumbnail_path is not None:
         logger.info("Thumbnail ready for upload %s", record.public_id)
+
+
+async def _ensure_preview(record: models.UploadRecord | SimpleNamespace, path: Path, ffprobe_data: dict | None) -> None:
+    mimetype = getattr(record, "mimetype", None)
+    if not mimetype or not mimetype.startswith("video/"):
+        return
+
+    try:
+        preview_path = await ensure_video_preview(
+            path,
+            ffprobe_data=ffprobe_data,
+            clip_seconds=settings.embed_preview_clip_seconds,
+            min_size_bytes=settings.embed_preview_min_size_bytes,
+        )
+    except Exception:
+        logger.exception("Failed to generate embed preview for upload %s", record.public_id)
+        return
+
+    if preview_path is not None:
+        logger.info("Embed preview ready for upload %s", record.public_id)
 
 
 async def _mark_upload_failed(upload_id: str, error_message: str) -> bool:
@@ -285,7 +308,7 @@ async def process_upload(upload_id: str) -> bool:
 
 
 async def backfill_missing_video_thumbnails() -> int:
-    """Generate thumbnails for completed video uploads that predate thumbnail support."""
+    """Generate thumbnails and embed previews for completed video uploads missing sidecars."""
     async with SessionLocal() as session:
         stmt = (
             select(models.UploadRecord, models.UploadToken.expires_at)
@@ -293,18 +316,18 @@ async def backfill_missing_video_thumbnails() -> int:
             .where(models.UploadRecord.status == "completed")
         )
         result = await session.execute(stmt)
-        upload_ids = [
-            record.public_id
+        upload_targets = [
+            (record.public_id, not thumbnail_exists(record.storage_path), not preview_exists(record.storage_path))
             for record, expires_at in result.all()
             if record.storage_path
             and record.mimetype
             and record.mimetype.startswith("video/")
             and not _token_has_expired(expires_at)
-            and not thumbnail_exists(record.storage_path)
+            and (not thumbnail_exists(record.storage_path) or not preview_exists(record.storage_path))
         ]
 
-    generated_count = 0
-    for upload_id in upload_ids:
+    updated_count = 0
+    for upload_id, needs_thumbnail, needs_preview in upload_targets:
         async with SessionLocal() as session:
             stmt = (
                 select(models.UploadRecord, models.UploadToken.expires_at)
@@ -324,21 +347,40 @@ async def backfill_missing_video_thumbnails() -> int:
                 continue
 
             path = Path(record.storage_path)
+            ffprobe_data = record.meta_data.get("ffprobe") if isinstance(record.meta_data, dict) else None
 
         if not path.exists():
-            logger.warning("Skipping thumbnail backfill for upload %s because file is missing", upload_id)
+            logger.warning("Skipping sidecar backfill for upload %s because file is missing", upload_id)
             continue
 
-        try:
-            thumbnail_path = await ensure_video_thumbnail(path)
-        except Exception:
-            logger.exception("Failed to backfill thumbnail for upload %s", upload_id)
-            continue
+        generated_any = False
+        if needs_thumbnail:
+            try:
+                thumbnail_path = await ensure_video_thumbnail(path)
+            except Exception:
+                logger.exception("Failed to backfill thumbnail for upload %s", upload_id)
+            else:
+                if thumbnail_path is not None:
+                    generated_any = True
 
-        if thumbnail_path is not None:
-            generated_count += 1
+        if needs_preview:
+            try:
+                preview_path = await ensure_video_preview(
+                    path,
+                    ffprobe_data=ffprobe_data,
+                    clip_seconds=settings.embed_preview_clip_seconds,
+                    min_size_bytes=settings.embed_preview_min_size_bytes,
+                )
+            except Exception:
+                logger.exception("Failed to backfill embed preview for upload %s", upload_id)
+            else:
+                if preview_path is not None:
+                    generated_any = True
 
-    if generated_count > 0:
-        logger.info("Backfilled thumbnails for %s upload(s)", generated_count)
+        if generated_any:
+            updated_count += 1
 
-    return generated_count
+    if updated_count > 0:
+        logger.info("Backfilled media sidecars for %s upload(s)", updated_count)
+
+    return updated_count

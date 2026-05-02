@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app import models, utils
+from backend.app.config import settings
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 
@@ -48,6 +49,15 @@ async def render_embed_preview(request: Request, db: AsyncSession, token_row: mo
     mime_type = first_media.mimetype or "application/octet-stream"
     is_video = mime_type.startswith("video/")
     is_audio = mime_type.startswith("audio/")
+    media_url = str(request.url_for("stream_file", download_token=token_row.download_token, upload_id=first_media.public_id))
+    preview_url = None
+    if is_video and utils.should_generate_video_preview(first_media.size_bytes, min_size_bytes=settings.embed_preview_min_size_bytes):
+        candidate_preview_url = str(
+            request.url_for("get_file_preview", download_token=token_row.download_token, upload_id=first_media.public_id)
+        )
+        preview_path = utils.get_preview_path(first_media.storage_path or "") if first_media.storage_path else None
+        if preview_path and preview_path.is_file() and preview_path.stat().st_size > 0:
+            preview_url = candidate_preview_url
 
     return templates.TemplateResponse(
         request=request,
@@ -58,7 +68,8 @@ async def render_embed_preview(request: Request, db: AsyncSession, token_row: mo
             "description": f"{len(uploads)} file(s) shared" if len(uploads) > 1 else "Shared file",
             "og_type": "video.other" if is_video else "music.song",
             "share_url": str(request.url_for("share_page", token=token_row.download_token)),
-            "media_url": str(request.url_for("stream_file", download_token=token_row.download_token, upload_id=first_media.public_id)),
+            "media_url": media_url,
+            "embed_media_url": preview_url if preview_url and not user else media_url,
             "download_url": str(request.url_for("download_file", download_token=token_row.download_token, upload_id=first_media.public_id)),
             "thumbnail_url": str(
                 request.url_for("get_file_thumbnail", download_token=token_row.download_token, upload_id=first_media.public_id)

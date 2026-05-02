@@ -68,6 +68,8 @@ All configuration is done via environment variables prefixed with `FBC_`:
 | `FBC_MAX_CHUNK_BYTES`               | `94371840`       | Maximum TUS chunk size. Default to (90MB)                                         |
 | `FBC_MAX_REMUX_BYTES`               | `5368709120`     | Maximum file size eligible for copy-remux to MP4 during post-processing (5GB)     |
 | `FBC_POSTPROCESSING_WORKERS`        | `4`              | Number of uploads processed concurrently in the background post-processing queue  |
+| `FBC_EMBED_PREVIEW_CLIP_SECONDS`    | `10`             | Length of generated bot preview clips in seconds (0 disables preview generation)   |
+| `FBC_EMBED_PREVIEW_MIN_SIZE_BYTES`  | `204472320`      | Only generate bot preview clips for videos at or above this size in bytes (195 MB); `0` disables the feature |
 | `FBC_ALLOW_PUBLIC_DOWNLOADS`        | `false`          | Allow public downloads without authentication                                     |
 | `FBC_TRUST_PROXY_HEADERS`           | `false`          | Trust `X-Forwarded-*` headers, but only from proxies in `FBC_FORWARDED_ALLOW_IPS` |
 | `FBC_FORWARDED_ALLOW_IPS`           | `127.0.0.1,::1`  | Comma-separated trusted proxy IPs or CIDRs allowed to supply forwarded headers    |
@@ -76,7 +78,7 @@ When running behind a reverse proxy, `FBC_TRUST_PROXY_HEADERS=true` is not enoug
 
 If you leave `FBC_FORWARDED_ALLOW_IPS` at its default, only local loopback proxies are trusted. This protects against clients forging `X-Forwarded-For`, `X-Forwarded-Proto`, or `X-Forwarded-Host` when the app is exposed directly.
 
-Uploaded multimedia files are post-processed after upload completion. Browser-safe `mp4` and `webm` files are kept as-is. Compatible non-MP4 video containers may be copy-remuxed into `mp4` for better playback compatibility without transcoding. Files larger than `FBC_MAX_REMUX_BYTES` skip remux and still complete normally. The background worker pool processes up to `FBC_POSTPROCESSING_WORKERS` uploads concurrently.
+Uploaded multimedia files are post-processed after upload completion. Browser-safe `mp4` and `webm` files are kept as-is. Compatible non-MP4 video containers may be copy-remuxed into `mp4` for better playback compatibility without transcoding. Files larger than `FBC_MAX_REMUX_BYTES` skip remux and still complete normally. Large videos can also get short MP4 bot-preview sidecars for embeds, controlled by `FBC_EMBED_PREVIEW_CLIP_SECONDS` and `FBC_EMBED_PREVIEW_MIN_SIZE_BYTES`. Setting `FBC_EMBED_PREVIEW_MIN_SIZE_BYTES=0` disables bot preview sidecars entirely. The background worker pool processes up to `FBC_POSTPROCESSING_WORKERS` uploads concurrently.
 
 ## Dynamic Metadata Schema
 

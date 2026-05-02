@@ -25,6 +25,7 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [GET /api/tokens/{token\_value}/uploads](#get-apitokenstoken_valueuploads)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}](#get-apitokensdownload_tokenuploadsupload_id)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/stream](#get-apitokensdownload_tokenuploadsupload_idstream)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/preview.mp4](#get-apitokensdownload_tokenuploadsupload_idpreviewmp4)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/thumbnail](#get-apitokensdownload_tokenuploadsupload_idthumbnail)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
     - [POST /api/uploads/initiate](#post-apiuploadsinitiate)
@@ -435,6 +436,8 @@ Get metadata information about a completed upload.
 
 ### GET /api/tokens/{download_token}/uploads/{upload_id}/stream
 
+`HEAD` is also supported.
+
 Stream a completed file inline for browser playback.
 
 **Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
@@ -459,7 +462,37 @@ Returns the file with headers:
 
 ---
 
+### GET /api/tokens/{download_token}/uploads/{upload_id}/preview.mp4
+
+`HEAD` is also supported.
+
+Return a short MP4 preview clip for bot embeds when one has been generated.
+
+**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+
+**Path Parameters:**
+- `download_token` (string): The download token
+- `upload_id` (integer): The upload record ID
+
+**Response (200):**
+Returns the file with headers:
+- `Content-Type`: `video/mp4`
+- `Content-Disposition`: `inline; filename="..."`
+
+**Error Responses:**
+- `404 Not Found` - Download token, upload, or preview not found
+- `409 Conflict` - Upload not yet completed
+
+**Notes:**
+- Bot embed metadata may use this endpoint instead of the full stream for large videos that meet the preview size threshold.
+- Setting `FBC_EMBED_PREVIEW_MIN_SIZE_BYTES=0` disables preview sidecars and keeps embed metadata on the original `/stream` URL.
+- If no preview sidecar exists, embed metadata falls back to the original `/stream` URL.
+
+---
+
 ### GET /api/tokens/{download_token}/uploads/{upload_id}/thumbnail
+
+`HEAD` is also supported.
 
 Return a preview image for a completed upload.
 
@@ -486,6 +519,8 @@ Returns an image with headers:
 ---
 
 ### GET /api/tokens/{download_token}/uploads/{upload_id}/download
+
+`HEAD` is also supported.
 
 Download a completed file.
 

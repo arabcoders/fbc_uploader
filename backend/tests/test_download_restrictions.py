@@ -85,6 +85,25 @@ async def test_download_allowed_for_disabled_token_with_admin_key(client):
 
 
 @pytest.mark.asyncio
+async def test_download_supports_head_requests(client):
+    """Download endpoint should expose file metadata over HEAD without returning the file body."""
+    token_data = await create_token(client, max_uploads=1)
+    upload_token = token_data["token"]
+    download_token = token_data["download_token"]
+
+    upload_data = await initiate_upload(client, upload_token, "test.txt", 12)
+    upload_id = upload_data["upload_id"]
+    await upload_file_via_tus(client, upload_id, b"test content", upload_token)
+
+    download_url = app.url_path_for("download_file", download_token=download_token, upload_id=upload_id)
+    response = await client.head(download_url, headers={"Authorization": f"Bearer {settings.admin_api_key}"})
+
+    assert response.status_code == status.HTTP_200_OK, "HEAD should succeed for download endpoint"
+    assert response.headers["content-disposition"].startswith("attachment;"), "HEAD should preserve attachment disposition"
+    assert response.content == b"", "HEAD responses should not include a body"
+
+
+@pytest.mark.asyncio
 async def test_download_file_does_not_depend_on_request_scoped_db_session(client):
     """Download endpoint should resolve metadata before returning FileResponse."""
     from backend.app.db import get_db

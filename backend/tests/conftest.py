@@ -108,7 +108,7 @@ def setup_frontend(test_run_dir):
     index_html = TEST_FRONTEND_DIR / "index.html"
     index_html.write_text("<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>")
 
-    fallback_image = TEST_FRONTEND_DIR / "images" / "thumbnail-fallback.jpg"
+    fallback_image = TEST_FRONTEND_DIR / "assets" / "images" / "thumbnail-fallback.jpg"
     fallback_image.parent.mkdir(parents=True, exist_ok=True)
     fallback_image.write_bytes(TEST_FALLBACK_THUMBNAIL_BYTES)
 
