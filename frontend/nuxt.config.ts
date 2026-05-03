@@ -89,6 +89,7 @@ export default defineNuxtConfig({
       include: [
         '@vue/devtools-core',
         '@vue/devtools-kit',
+        'assjs',
         'marked',
         'marked-base-url',
         'marked-alert',

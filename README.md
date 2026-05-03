@@ -59,6 +59,7 @@ All configuration is done via environment variables prefixed with `FBC_`:
 | ----------------------------------- | ---------------- | --------------------------------------------------------------------------------- |
 | `FBC_CONFIG_PATH`                   | `./data/config`  | Configuration directory                                                           |
 | `FBC_STORAGE_PATH`                  | `./data/uploads` | Directory for uploaded files                                                      |
+| `FBC_SUBTITLE_PATH`                 | unset            | Optional external subtitle directory scanned recursively for matching `.vtt`, `.srt`, and `.ass` files |
 | `FBC_ADMIN_API_KEY`                 | Auto-generated   | Admin API key (stored in `{config_path}/secret.key` if not set)                   |
 | `FBC_DEFAULT_TOKEN_TTL_HOURS`       | `24`             | Default token expiration in hours (1-720)                                         |
 | `FBC_CLEANUP_INTERVAL_SECONDS`      | `3600`           | Interval between cleanup job runs                                                 |
@@ -77,6 +78,19 @@ All configuration is done via environment variables prefixed with `FBC_`:
 When running behind a reverse proxy, `FBC_TRUST_PROXY_HEADERS=true` is not enough on its own. You must also set `FBC_FORWARDED_ALLOW_IPS` to the proxy IPs or networks that connect directly to FBC Uploader, such as a Docker bridge subnet like `172.23.0.0/16`.
 
 If you leave `FBC_FORWARDED_ALLOW_IPS` at its default, only local loopback proxies are trusted.
+
+## External Subtitles
+
+Set `FBC_SUBTITLE_PATH` to an existing directory to enable subtitle discovery on the `/f/{token}` share page.
+
+- The directory is scanned recursively.
+- v1 uses exact filename stem matching only. `movie.mkv` matches `movie.vtt`, `movie.srt`, or `movie.ass`.
+- Names such as `movie.en.ass` are ignored in v1.
+- If more than one file with the same stem and extension exists in different subfolders, that extension is treated as ambiguous and skipped.
+- Subtitle preference order is native browser tracks first: `.vtt`, then `.srt` converted to WebVTT, then `.ass` rendered with ASS.js.
+- If `FBC_SUBTITLE_PATH` is unset, the feature is disabled.
+
+ASS subtitles use an overlay renderer in the browser. The share page provides a custom fullscreen button so ASS subtitles can remain visible in fullscreen on a best-effort basis.
 
 ## Dynamic Metadata Schema
 

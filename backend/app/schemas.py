@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -70,6 +70,17 @@ class UploadRecordResponse(BaseModel):
     recommended_chunk_bytes: int | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class SubtitleTrackResponse(BaseModel):
+    source_format: Literal["vtt", "srt", "ass"]
+    delivery_format: Literal["vtt", "ass"]
+    renderer: Literal["native", "assjs"]
+    url: str
+
+
+class SubtitleManifestResponse(BaseModel):
+    subtitles: list[SubtitleTrackResponse] = Field(default_factory=list)
 
 
 class TokenPublicInfo(BaseModel):

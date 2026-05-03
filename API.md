@@ -467,6 +467,76 @@ Returns the file with headers:
 
 ---
 
+### GET /api/tokens/{download_token}/uploads/{upload_id}/subtitles
+
+List external subtitle tracks that match a completed upload filename.
+
+**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+
+**Path Parameters:**
+- `download_token` (string): The download token
+- `upload_id` (integer): The upload record ID
+
+**Response (200):**
+```json
+{
+  "subtitles": [
+    {
+      "source_format": "vtt",
+      "delivery_format": "vtt",
+      "renderer": "native",
+      "url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/subtitles/vtt"
+    },
+    {
+      "source_format": "ass",
+      "delivery_format": "ass",
+      "renderer": "assjs",
+      "url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/subtitles/ass"
+    }
+  ]
+}
+```
+
+**Notes:**
+- This endpoint only returns tracks discovered under `FBC_SUBTITLE_PATH`.
+- Results are ordered by renderer preference: `.vtt`, then `.srt`, then `.ass`.
+- `.srt` files are exposed here with `source_format: "srt"`, `delivery_format: "vtt"`, and `renderer: "native"`.
+- Duplicate matches for the same stem and extension are treated as ambiguous and omitted.
+
+**Error Responses:**
+- `404 Not Found` - Download token or upload not found
+- `409 Conflict` - Upload not yet completed
+
+---
+
+### GET /api/tokens/{download_token}/uploads/{upload_id}/subtitles/{source_format}
+
+`HEAD` is also supported.
+
+Return the selected subtitle content for a completed upload.
+
+**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+
+**Path Parameters:**
+- `download_token` (string): The download token
+- `upload_id` (integer): The upload record ID
+- `source_format` (string): One of `vtt`, `srt`, or `ass`
+
+**Response (200):**
+- `vtt`: `Content-Type: text/vtt`
+- `srt`: Converted on the fly and returned as `Content-Type: text/vtt`
+- `ass`: Returned as `Content-Type: text/x-ssa`
+
+**Error Responses:**
+- `404 Not Found` - Download token, upload, or subtitle not found
+- `409 Conflict` - Upload not yet completed
+
+**Notes:**
+- The share page uses `vtt` and converted `srt` as native browser subtitle tracks.
+- `.ass` subtitles are intended for ASS.js-based browser rendering.
+
+---
+
 ### GET /api/tokens/{download_token}/uploads/{upload_id}/preview.mp4
 
 `HEAD` is also supported.

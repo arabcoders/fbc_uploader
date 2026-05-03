@@ -12,6 +12,7 @@
         "@nuxt/ui": "4.7.0",
         "@vueuse/core": "^14.2.1",
         "@vueuse/nuxt": "^14.2.1",
+        "assjs": "^0.1.6",
         "marked": "^18.0.2",
         "marked-alert": "^2.1.2",
         "marked-base-url": "^1.1.9",
@@ -896,6 +897,8 @@
     "argparse": ["argparse@2.0.1", "", {}, "sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q=="],
 
     "aria-hidden": ["aria-hidden@1.2.6", "", { "dependencies": { "tslib": "^2.0.0" } }, "sha512-ik3ZgC9dY/lYVVM++OISsaYDeg1tb0VtP5uL3ouh1koGOaUMDPpbFIei4JkFimWUFPn90sbMNMXQAIVOlnYKJA=="],
+
+    "assjs": ["assjs@0.1.6", "", {}, "sha512-sHdLRIsZsXEdURGKlyJf+AbgoHhhOELh8Wl6K6TL/au9p4b4EQed62OPKayWFeFIj8W7I9OzvYtHV/+/MwDvkg=="],
 
     "ast-kit": ["ast-kit@2.2.0", "", { "dependencies": { "@babel/parser": "^7.28.5", "pathe": "^2.0.3" } }, "sha512-m1Q/RaVOnTp9JxPX+F+Zn7IcLYMzM8kZofDImfsKZd8MbR+ikdOzTeztStWqfrqIxZnYWryyI9ePm3NGjnZgGw=="],
 

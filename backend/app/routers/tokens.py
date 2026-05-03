@@ -11,7 +11,7 @@ from sqlalchemy.engine.result import Result
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Select
 
-from backend.app import models, schemas, utils
+from backend.app import models, schemas, subtitles, utils
 from backend.app.config import settings
 from backend.app.db import SessionLocal, get_db
 from backend.app.security import optional_admin_check, verify_admin
@@ -96,6 +96,32 @@ def _set_upload_urls(request: Request, item: schemas.UploadRecordResponse, downl
     item.upload_url = str(request.app.url_path_for("tus_head", upload_id=upload_id))
     item.info_url = str(request.app.url_path_for("get_file_info", download_token=download_token, upload_id=upload_id))
     item.recommended_chunk_bytes = utils.recommend_chunk_size(item.upload_length, settings.max_chunk_bytes)
+
+
+def _build_subtitle_manifest(
+    request: Request,
+    download_token: str,
+    upload_id: str,
+    filename: str | None,
+) -> schemas.SubtitleManifestResponse:
+    subtitle_items = [
+        schemas.SubtitleTrackResponse(
+            source_format=track.source_format,
+            delivery_format=track.delivery_format,
+            renderer=track.renderer,
+            url=str(
+                request.app.url_path_for(
+                    "get_file_subtitle",
+                    download_token=download_token,
+                    upload_id=upload_id,
+                    source_format=track.source_format,
+                )
+            ),
+        )
+        for track in subtitles.list_subtitle_tracks(filename)
+    ]
+
+    return schemas.SubtitleManifestResponse(subtitles=subtitle_items)
 
 
 @router.get("/", response_model=schemas.TokenListResponse, name="list_tokens")
@@ -413,6 +439,51 @@ async def get_file_info(
     item: schemas.UploadRecordResponse = schemas.UploadRecordResponse.model_validate(record, from_attributes=True)
     _set_upload_urls(request, item, download_token, upload_id)
     return item
+
+
+@router.get(
+    "/{download_token}/uploads/{upload_id}/subtitles",
+    response_model=schemas.SubtitleManifestResponse,
+    name="list_file_subtitles",
+    summary="List upload subtitle tracks",
+)
+@router.get("/{download_token}/uploads/{upload_id}/subtitles/", response_model=schemas.SubtitleManifestResponse)
+async def list_file_subtitles(
+    request: Request,
+    download_token: str,
+    upload_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    is_admin: Annotated[bool, Depends(optional_admin_check)],
+) -> schemas.SubtitleManifestResponse:
+    """List external subtitle tracks that match a completed upload filename."""
+    _, record, _ = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+    return _build_subtitle_manifest(request, download_token, upload_id, record.filename)
+
+
+@router.get("/{download_token}/uploads/{upload_id}/subtitles/{source_format}", name="get_file_subtitle", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/subtitles/{source_format}", response_model=None)
+@router.get("/{download_token}/uploads/{upload_id}/subtitles/{source_format}/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/subtitles/{source_format}/", response_model=None)
+async def get_file_subtitle(
+    download_token: str,
+    upload_id: str,
+    source_format: str,
+    is_admin: Annotated[bool, Depends(optional_admin_check)],
+) -> Response:
+    """Return a matching subtitle file, converting SRT to WebVTT on demand."""
+    async with SessionLocal() as db:
+        _, record, _ = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+        track = subtitles.get_subtitle_track(record.filename, source_format)
+
+    if track is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtitle not found")
+
+    try:
+        subtitle_content = subtitles.get_delivery_content(track)
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtitle not found") from exc
+
+    return Response(content=subtitle_content, media_type=subtitles.get_delivery_media_type(track))
 
 
 @router.get("/{download_token}/uploads/{upload_id}/thumbnail", name="get_file_thumbnail", response_model=None)

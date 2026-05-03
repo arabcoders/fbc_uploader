@@ -134,27 +134,13 @@
                       ? selectedIsVideo
                         ? 'Now playing'
                         : 'Now listening'
-                      : 'Ready to preview'
+                      : 'Click to play'
                   }}</span>
                 </div>
-                <h2 class="mt-1 truncate text-lg font-semibold text-highlighted">
+                <h2 class="mt-1 text-lg font-semibold text-highlighted">
                   {{ selectedUpload.filename || 'Untitled media' }}
                 </h2>
               </div>
-              <a
-                v-if="selectedUpload.download_url"
-                :href="selectedUpload.download_url"
-                class="w-full sm:w-auto"
-              >
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  icon="i-heroicons-arrow-down-tray-20-solid"
-                  size="sm"
-                >
-                  Download
-                </UButton>
-              </a>
             </div>
 
             <div v-if="selectedIsVideo" class="min-w-0 max-w-full overflow-hidden bg-black">
@@ -187,7 +173,7 @@
                   >
                     <div class="min-w-0">
                       <div class="text-xs uppercase tracking-[0.2em] text-white/70">
-                        Video Preview
+                        Click to play
                       </div>
                       <div class="mt-1 truncate text-lg font-semibold text-white">
                         {{ selectedUpload.filename || 'Untitled media' }}
@@ -200,23 +186,54 @@
                     </div>
                   </div>
                 </button>
-                <video
+                <div
                   v-else
-                  ref="mediaElement"
-                  :key="selectedUpload.public_id"
-                  class="block h-auto max-h-[70vh] w-full max-w-full bg-black object-contain sm:max-h-[72vh]"
-                  controls
-                  playsinline
-                  preload="metadata"
-                  :poster="selectedThumbnailUrl || undefined"
-                  @error="handleMediaPlaybackError"
-                  @loadedmetadata="clearMediaPlaybackError"
-                  @play="clearMediaPlaybackError"
-                  @volumechange="handleMediaVolumeChange"
+                  ref="videoPlayerContainer"
+                  class="relative flex w-full overflow-hidden bg-black"
+                  :class="
+                    isPlayerFullscreen
+                      ? 'h-screen w-screen max-h-screen max-w-none items-center justify-center'
+                      : 'max-h-[70vh] max-w-full items-center justify-center sm:max-h-[72vh]'
+                  "
                 >
-                  <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined" />
-                  Your browser does not support the video tag.
-                </video>
+                  <video
+                    ref="videoElement"
+                    :key="selectedUpload.public_id"
+                    class="block bg-black object-contain"
+                    :class="
+                      isPlayerFullscreen
+                        ? 'h-full w-full max-h-screen max-w-screen'
+                        : 'h-auto w-full max-w-full max-h-[70vh] sm:max-h-[72vh]'
+                    "
+                    controls
+                    :controlslist="usesAssSubtitleTrack ? 'nofullscreen' : undefined"
+                    playsinline
+                    preload="metadata"
+                    :poster="selectedThumbnailUrl || undefined"
+                    @error="handleMediaPlaybackError"
+                    @loadedmetadata="clearMediaPlaybackError"
+                    @play="clearMediaPlaybackError"
+                    @volumechange="handleMediaVolumeChange"
+                  >
+                    <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined" />
+                    <track
+                      v-if="nativeSubtitleTrack && subtitleEnabled"
+                      :key="nativeSubtitleTrack.url"
+                      kind="subtitles"
+                      srclang="und"
+                      label="Subtitles"
+                      default
+                      :src="nativeSubtitleTrack.url"
+                    />
+                    Your browser does not support the video tag.
+                  </video>
+                  <div
+                    v-if="usesAssSubtitleTrack"
+                    ref="assOverlayElement"
+                    class="pointer-events-none absolute inset-0 z-10 overflow-hidden"
+                    aria-hidden="true"
+                  />
+                </div>
               </div>
             </div>
 
@@ -248,7 +265,7 @@
                     >
                       <div class="min-w-0">
                         <div class="text-xs uppercase tracking-[0.2em] text-muted">
-                          Audio Preview
+                          Click to play
                         </div>
                         <div class="mt-1 truncate text-lg font-semibold text-highlighted">
                           {{ selectedUpload.filename || 'Untitled audio' }}
@@ -269,7 +286,7 @@
                     <UIcon name="i-heroicons-musical-note-20-solid" class="size-6" />
                   </div>
                   <div>
-                    <div class="text-xs uppercase tracking-wide text-muted">Audio Preview</div>
+                    <div class="text-xs uppercase tracking-wide text-muted">Now listening</div>
                     <div class="text-lg font-semibold">
                       {{ selectedUpload.filename || 'Untitled audio' }}
                     </div>
@@ -277,7 +294,7 @@
                 </div>
                 <audio
                   v-if="shouldRenderSelectedMedia"
-                  ref="mediaElement"
+                  ref="audioElement"
                   :key="selectedUpload.public_id"
                   class="mt-6 w-full"
                   controls
@@ -299,7 +316,7 @@
             >
               <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div class="space-y-1">
-                  <div class="text-sm font-medium text-highlighted">Playback issue</div>
+                  <div class="text-sm font-medium text-highlighted">Can't play this file here</div>
                   <p class="text-sm text-muted">{{ mediaPlaybackError }}</p>
                 </div>
                 <a
@@ -313,7 +330,7 @@
                     icon="i-heroicons-arrow-down-tray-20-solid"
                     size="sm"
                   >
-                    Download Original
+                    Download file
                   </UButton>
                 </a>
               </div>
@@ -323,12 +340,56 @@
           <div class="min-w-0 bg-default/60">
             <div class="space-y-6 p-4 sm:p-5">
               <div class="space-y-3">
+                <div class="grid gap-2" :class="showActionPair ? 'grid-cols-2' : 'grid-cols-1'">
+                  <a
+                    v-if="selectedUpload.download_url"
+                    :href="selectedUpload.download_url"
+                    class="w-full"
+                  >
+                    <UButton
+                      color="neutral"
+                      variant="outline"
+                      icon="i-heroicons-arrow-down-tray-20-solid"
+                      size="sm"
+                      class="w-full justify-center"
+                    >
+                      Download
+                    </UButton>
+                  </a>
+                  <UButton
+                    v-if="canShowPlayerFullscreenButton"
+                    color="neutral"
+                    variant="outline"
+                    :icon="
+                      isPlayerFullscreen
+                        ? 'i-heroicons-arrows-pointing-in-20-solid'
+                        : 'i-heroicons-arrows-pointing-out-20-solid'
+                    "
+                    size="sm"
+                    class="w-full justify-center"
+                    :aria-label="isPlayerFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
+                    @click="togglePlayerFullscreen"
+                  >
+                    {{ isPlayerFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}
+                  </UButton>
+                </div>
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between rounded-lg border border-default bg-default px-3 py-2 text-left text-xs text-muted transition-colors hover:bg-elevated"
+                  @click="showShortcutHelp = true"
+                >
+                  <span>Keyboard shortcuts</span>
+                  <span class="font-medium text-highlighted">? /</span>
+                </button>
+              </div>
+
+              <div class="space-y-3">
                 <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
                   <UIcon
                     name="i-heroicons-information-circle-20-solid"
                     class="size-5 text-primary"
                   />
-                  <span>Current Source</span>
+                  <span>About this file</span>
                 </div>
                 <div class="grid gap-3 text-sm">
                   <div class="flex items-center justify-between gap-4">
@@ -364,6 +425,34 @@
               </div>
 
               <div
+                v-if="selectedIsVideo && (hasSubtitles || subtitleLoading || subtitleLoadError)"
+                class="space-y-3 border-t border-default pt-5"
+              >
+                <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
+                  <UIcon
+                    name="i-heroicons-chat-bubble-left-right-20-solid"
+                    class="size-5 text-primary"
+                  />
+                  <span>Subtitles</span>
+                </div>
+                <div class="space-y-3 text-sm">
+                  <div v-if="subtitleLoading" class="text-muted">
+                    Looking for matching subtitles...
+                  </div>
+                  <div v-else-if="hasSubtitles" class="flex items-center justify-between gap-4">
+                    <div class="font-medium text-highlighted">Show subtitles</div>
+                    <USwitch v-model="subtitleEnabled" :label="subtitleEnabled ? 'On' : 'Off'" />
+                  </div>
+                  <div v-else-if="subtitleLoadError" class="text-warning">
+                    {{ subtitleLoadError }}
+                  </div>
+                  <div v-else class="text-muted">
+                    No matching subtitles were found for this video.
+                  </div>
+                </div>
+              </div>
+
+              <div
                 v-if="hasMetadata(selectedUpload.meta_data)"
                 class="space-y-3 border-t border-default pt-5"
               >
@@ -386,7 +475,7 @@
               <div v-if="playableUploads.length > 1" class="space-y-3 border-t border-default pt-5">
                 <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
                   <UIcon name="i-heroicons-queue-list-20-solid" class="size-5 text-primary" />
-                  <span>Available Sources</span>
+                  <span>Other files</span>
                 </div>
                 <div class="space-y-2">
                   <button
@@ -444,8 +533,8 @@
         v-else-if="uploads.length > 0 && !loading && !tokenInfo?.allow_public_downloads"
         color="neutral"
         variant="outline"
-        title="Inline playback unavailable"
-        description="Public downloads are disabled for this token, so media playback is not available on the share page."
+        title="Can't play files on this page"
+        description="Downloads are turned off for this link, so video and audio can't be played here."
         icon="i-heroicons-lock-closed-20-solid"
       />
 
@@ -458,8 +547,8 @@
         "
         color="neutral"
         variant="outline"
-        title="No playable media found"
-        description="This share contains files, but none of the completed uploads are video or audio."
+        title="No video or audio files found"
+        description="This link has files, but none of them can be played on this page."
         icon="i-heroicons-document-20-solid"
       />
 
@@ -676,15 +765,102 @@
       <div v-if="loading" class="flex justify-center py-12">
         <UIcon name="i-heroicons-arrow-path" class="size-8 animate-spin text-primary" />
       </div>
+
+      <UModal v-model:open="showShortcutHelp" title="Keyboard Shortcuts">
+        <template #body>
+          <div class="grid gap-5 text-sm sm:grid-cols-2">
+            <div class="space-y-3">
+              <div class="font-semibold text-highlighted">Playback</div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Play or pause</span>
+                <span class="text-muted">Space, K</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Back 10 seconds</span>
+                <span class="text-muted">J</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Forward 10 seconds</span>
+                <span class="text-muted">L</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Mute</span>
+                <span class="text-muted">M</span>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <div class="font-semibold text-highlighted">Navigation</div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Back 5 seconds</span>
+                <span class="text-muted">Left</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Forward 5 seconds</span>
+                <span class="text-muted">Right</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Go to start or end</span>
+                <span class="text-muted">Home, End</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Jump through the timeline</span>
+                <span class="text-muted">0-9</span>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <div class="font-semibold text-highlighted">Volume & Speed</div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Volume up or down</span>
+                <span class="text-muted">Up, Down</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Faster</span>
+                <span class="text-muted">'</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Slower</span>
+                <span class="text-muted">;</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Step frame by frame</span>
+                <span class="text-muted">, .</span>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <div class="font-semibold text-highlighted">Display</div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Fullscreen</span>
+                <span class="text-muted">F</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Show or hide subtitles</span>
+                <span class="text-muted">C</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span>Open this help</span>
+                <span class="text-muted">?, /</span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </UModal>
     </div>
   </UContainer>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useStorage } from '@vueuse/core';
 import { useRoute } from 'vue-router';
+import { useSharePlayerShortcuts } from '~/composables/useSharePlayerShortcuts';
 import { useTokenInfo } from '~/composables/useTokenInfo';
+import { useShareSubtitles } from '~/composables/useShareSubtitles';
+import {
+  canRequestFullscreen,
+  exitDocumentFullscreen,
+  getFullscreenElement,
+  requestElementFullscreen,
+} from '~/utils/fullscreen';
 import type { UploadRow } from '~/types/uploads';
 import { copyText, formatBytes, formatDate, formatKey, formatValue } from '~/utils';
 
@@ -701,7 +877,11 @@ const mediaVolume = useStorage<number>('share_media_volume', 1);
 const selectedUploadId = ref<string>('');
 const activeUploadId = ref<string>('');
 const mediaPlaybackError = ref('');
-const mediaElement = ref<HTMLMediaElement | null>(null);
+const audioElement = ref<HTMLAudioElement | null>(null);
+const videoElement = ref<HTMLVideoElement | null>(null);
+const videoPlayerContainer = ref<HTMLElement | null>(null);
+const assOverlayElement = ref<HTMLElement | null>(null);
+const isPlayerFullscreen = ref(false);
 
 const uploads = computed(
   () => tokenInfo.value?.uploads?.filter((upload) => upload.status === 'completed') || [],
@@ -715,7 +895,8 @@ const selectedUpload = computed(() => {
   if (!playableUploads.value.length) return null;
   return (
     playableUploads.value.find((upload) => upload.public_id === selectedUploadId.value) ||
-    playableUploads.value[0]
+    playableUploads.value[0] ||
+    null
   );
 });
 
@@ -731,6 +912,15 @@ const selectedMediaUrl = computed(() => selectedUpload.value?.stream_url || '');
 const selectedThumbnailUrl = computed(() => selectedUpload.value?.thumbnail_url || '');
 const shouldRenderSelectedMedia = computed(() => {
   return Boolean(selectedUpload.value && activeUploadId.value === selectedUpload.value.public_id);
+});
+const canShowPlayerFullscreenButton = computed(() => {
+  return Boolean(selectedIsVideo.value && canPlaySelectedMedia.value);
+});
+const showActionPair = computed(() => {
+  return Boolean(selectedUpload.value?.download_url && canShowPlayerFullscreenButton.value);
+});
+const currentMediaElement = computed<HTMLMediaElement | null>(() => {
+  return selectedIsVideo.value ? videoElement.value : audioElement.value;
 });
 
 const selectedFfprobe = computed<Record<string, any> | null>(() => {
@@ -751,6 +941,23 @@ const selectedResolutionLabel = computed(() => {
 const shareUrl = computed(() => {
   if (!token.value) return '';
   return `${window.location.origin}/f/${token.value}`;
+});
+
+const {
+  subtitleLoading,
+  subtitleLoadError,
+  subtitleEnabled,
+  nativeSubtitleTrack,
+  usesAssSubtitleTrack,
+  hasSubtitles,
+} = useShareSubtitles({
+  downloadToken: computed(() => tokenInfo.value?.download_token || ''),
+  selectedUpload,
+  selectedIsVideo,
+  canPlaySelectedMedia,
+  shouldRenderSelectedMedia,
+  videoElement,
+  overlayElement: assOverlayElement,
 });
 
 watch(
@@ -783,7 +990,7 @@ watch(
 );
 
 watch(
-  mediaElement,
+  currentMediaElement,
   (element) => {
     applyStoredMediaVolume(element);
   },
@@ -799,7 +1006,7 @@ watch(
       return;
     }
 
-    applyStoredMediaVolume(mediaElement.value);
+    applyStoredMediaVolume(currentMediaElement.value);
   },
   { immediate: true },
 );
@@ -825,7 +1032,7 @@ async function activateSelectedMedia() {
   await nextTick();
 
   try {
-    await mediaElement.value?.play();
+    await currentMediaElement.value?.play();
   } catch {}
 }
 
@@ -971,6 +1178,44 @@ function hasMetadata(meta_data: Record<string, any> | undefined): boolean {
   return Object.keys(filtered).length > 0;
 }
 
+function syncPlayerFullscreenState() {
+  const fullscreenElement = getFullscreenElement();
+  isPlayerFullscreen.value = Boolean(
+    fullscreenElement &&
+    videoPlayerContainer.value &&
+    fullscreenElement === videoPlayerContainer.value,
+  );
+}
+
+async function togglePlayerFullscreen() {
+  if (!isPlayerFullscreen.value && selectedUpload.value && !shouldRenderSelectedMedia.value) {
+    activeUploadId.value = selectedUpload.value.public_id;
+    clearMediaPlaybackError();
+    await nextTick();
+  }
+
+  if (!videoPlayerContainer.value || !canRequestFullscreen(videoPlayerContainer.value)) return;
+
+  try {
+    if (isPlayerFullscreen.value) {
+      await exitDocumentFullscreen();
+    } else {
+      await requestElementFullscreen(videoPlayerContainer.value);
+    }
+  } catch {}
+}
+
+const { showShortcutHelp } = useSharePlayerShortcuts({
+  enabled: computed(() => canPlaySelectedMedia.value && Boolean(currentMediaElement.value)),
+  mediaElement: currentMediaElement,
+  videoElement,
+  canToggleSubtitles: computed(() => selectedIsVideo.value && hasSubtitles.value),
+  toggleSubtitles: () => {
+    subtitleEnabled.value = !subtitleEnabled.value;
+  },
+  toggleFullscreen: togglePlayerFullscreen,
+});
+
 onMounted(async () => {
   if (!token.value) {
     notFound.value = true;
@@ -987,6 +1232,18 @@ onMounted(async () => {
       notice.value = noticeData.notice;
     }
   } catch {}
+
+  document.addEventListener('fullscreenchange', syncPlayerFullscreenState);
+  document.addEventListener('webkitfullscreenchange', syncPlayerFullscreenState as EventListener);
+  syncPlayerFullscreenState();
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', syncPlayerFullscreenState);
+  document.removeEventListener(
+    'webkitfullscreenchange',
+    syncPlayerFullscreenState as EventListener,
+  );
 });
 
 useHead({
