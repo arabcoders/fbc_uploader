@@ -292,6 +292,7 @@ async def generate_video_preview(
     ffprobe_data: dict | None = None,
     clip_seconds: int = 10,
     min_size_bytes: int = 195 * 1024 * 1024,
+    ignore_size_threshold: bool = False,
 ) -> Path | None:
     """Generate a short MP4 preview sidecar for bot embeds when the source file is large enough."""
     src = Path(source_path)
@@ -305,10 +306,10 @@ async def generate_video_preview(
     if preview_path.exists():
         preview_path.unlink(missing_ok=True)
 
-    if clip_seconds < 1 or shutil.which(ffmpeg_bin) is None:
+    if clip_seconds < 1 or min_size_bytes <= 0 or shutil.which(ffmpeg_bin) is None:
         return None
 
-    if not should_generate_video_preview(src.stat().st_size, min_size_bytes=min_size_bytes):
+    if not ignore_size_threshold and not should_generate_video_preview(src.stat().st_size, min_size_bytes=min_size_bytes):
         return None
 
     if ffprobe_data is None:
@@ -380,6 +381,7 @@ async def ensure_video_preview(
     ffprobe_data: dict | None = None,
     clip_seconds: int = 10,
     min_size_bytes: int = 195 * 1024 * 1024,
+    ignore_size_threshold: bool = False,
 ) -> Path | None:
     """Return the existing preview sidecar or generate it when missing."""
     if preview_exists(source_path):
@@ -391,6 +393,7 @@ async def ensure_video_preview(
         ffprobe_data=ffprobe_data,
         clip_seconds=clip_seconds,
         min_size_bytes=min_size_bytes,
+        ignore_size_threshold=ignore_size_threshold,
     )
 
 
@@ -569,6 +572,17 @@ def is_web_safe_webm(ffprobe_data: dict | None) -> bool:
         WEBM_SAFE_AUDIO_CODECS,
         require_stream=False,
     )
+
+
+def is_directly_embeddable_video(mimetype: str | None, ffprobe_data: dict | None) -> bool:
+    """Return True when a video can be embedded directly without a generated preview."""
+    if mimetype == "video/mp4":
+        return True
+
+    if mimetype == "video/webm":
+        return is_web_safe_webm(ffprobe_data)
+
+    return False
 
 
 def get_mp4_remux_skip_reason(mimetype: str | None, ffprobe_data: dict | None) -> str | None:

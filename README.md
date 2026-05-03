@@ -76,14 +76,12 @@ All configuration is done via environment variables prefixed with `FBC_`:
 
 When running behind a reverse proxy, `FBC_TRUST_PROXY_HEADERS=true` is not enough on its own. You must also set `FBC_FORWARDED_ALLOW_IPS` to the proxy IPs or networks that connect directly to FBC Uploader, such as a Docker bridge subnet like `172.23.0.0/16`.
 
-If you leave `FBC_FORWARDED_ALLOW_IPS` at its default, only local loopback proxies are trusted. This protects against clients forging `X-Forwarded-For`, `X-Forwarded-Proto`, or `X-Forwarded-Host` when the app is exposed directly.
-
-Uploaded multimedia files are post-processed after upload completion. Browser-safe `mp4` and `webm` files are kept as-is. Compatible non-MP4 video containers may be copy-remuxed into `mp4` for better playback compatibility without transcoding. Files larger than `FBC_MAX_REMUX_BYTES` skip remux and still complete normally. Large videos can also get short MP4 bot-preview sidecars for embeds, controlled by `FBC_EMBED_PREVIEW_CLIP_SECONDS` and `FBC_EMBED_PREVIEW_MIN_SIZE_BYTES`. Setting `FBC_EMBED_PREVIEW_MIN_SIZE_BYTES=0` disables bot preview sidecars entirely. The background worker pool processes up to `FBC_POSTPROCESSING_WORKERS` uploads concurrently.
+If you leave `FBC_FORWARDED_ALLOW_IPS` at its default, only local loopback proxies are trusted.
 
 ## Dynamic Metadata Schema
 
 Upload metadata is configurable via `{config_path}/metadata.json`. Define custom fields with validation rules, types, and UI hints.
-The schema is validated on both client and server. See [metadata.md](metadata.md) for full documentation.
+The schema is validated on server. See [metadata.md](metadata.md) for full documentation.
 
 ## yt-dlp Extractor
 

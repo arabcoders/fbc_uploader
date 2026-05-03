@@ -36,6 +36,7 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [DELETE /api/uploads/{upload\_id}/cancel](#delete-apiuploadsupload_idcancel)
     - [POST /api/uploads/{upload\_id}/complete](#post-apiuploadsupload_idcomplete)
     - [GET /api/metadata/](#get-apimetadata)
+    - [POST /api/metadata/extract](#post-apimetadataextract)
     - [POST /api/metadata/validate](#post-apimetadatavalidate)
     - [GET /api/notice/](#get-apinotice)
     - [GET /api/admin/validate](#get-apiadminvalidate)
@@ -1058,8 +1059,6 @@ Typical upload flow:
     GET /api/tokens/{download_token}/uploads/rT72ZKGMPdldiEmA9eDI7kik
     Authorization: Bearer YOUR_API_KEY
     ```
-
-After upload data is received, multimedia files enter background post-processing before they become `completed`. Browser-safe `video/mp4` and `video/webm` files are kept as-is. Compatible non-MP4 video containers may be copy-remuxed into MP4 without transcoding, which updates the stored filename, extension, MIME type, size, and ffprobe metadata to match the final file. Files larger than `FBC_MAX_REMUX_BYTES` skip remux and still complete normally.
 
 ---
 

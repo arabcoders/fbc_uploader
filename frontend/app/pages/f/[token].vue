@@ -955,7 +955,15 @@ function getFileIcon(filename: string): string {
 function filterMetadata(meta_data: Record<string, any> | undefined): Record<string, any> {
   if (!meta_data) return {};
   const { ffprobe, upload_checksums, ...filtered } = meta_data;
-  return filtered;
+
+  return Object.fromEntries(
+    Object.entries(filtered).filter(([, value]) => {
+      if (value === null || value === undefined) return false;
+      if (typeof value === 'string') return value.trim().length > 0;
+      if (Array.isArray(value)) return value.length > 0;
+      return true;
+    }),
+  );
 }
 
 function hasMetadata(meta_data: Record<string, any> | undefined): boolean {

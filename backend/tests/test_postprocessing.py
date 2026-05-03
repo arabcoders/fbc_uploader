@@ -416,12 +416,79 @@ async def test_postprocessing_logs_reason_when_remux_is_rejected(caplog):
 
             log_messages = [record.message for record in caplog.records if record.name == "backend.app.postprocessing"]
             assert any(
-                "Skipping MP4 remux for upload postprocess_remux_skip_reason_test because it contains unsupported non-audio/video streams: subtitle (ass)"
+                "Skipping MP4 remux because it contains unsupported non-audio/video streams: subtitle (ass) [upload=postprocess_remux_skip_reason_test dir="
                 in message
                 for message in log_messages
             ), "Rejected remuxes should log the unsupported subtitle stream reason"
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_postprocessing_logs_directory_name_for_success_and_refusal(caplog):
+    """Post-processing logs should include the upload directory name for successful operations and refusals."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        token_dir = Path(tmp_dir) / "token-dir-abc"
+        token_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = token_dir / "sample.mkv"
+        temp_path.write_bytes(b"fake mkv bytes")
+
+        ffprobe_with_subtitles = {
+            "format": {"format_name": "matroska,webm", "duration": "1.0"},
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264", "width": 1280, "height": 720},
+                {"codec_type": "audio", "codec_name": "aac"},
+                {"codec_type": "subtitle", "codec_name": "ass"},
+            ],
+        }
+
+        async with SessionLocal() as session:
+            expires_at = datetime.now(UTC) + timedelta(days=1)
+            token = models.UploadToken(
+                token="test_token_log_dir",
+                download_token="test_download_log_dir",
+                max_uploads=1,
+                max_size_bytes=1000000,
+                expires_at=expires_at,
+            )
+            session.add(token)
+            await session.flush()
+
+            record = models.UploadRecord(
+                public_id="postprocess_log_dir_test",
+                token_id=token.id,
+                filename="sample.mkv",
+                ext="mkv",
+                mimetype="video/x-matroska",
+                size_bytes=temp_path.stat().st_size,
+                status="postprocessing",
+                storage_path=str(temp_path),
+            )
+            session.add(record)
+            await session.commit()
+
+            with (
+                patch("backend.app.postprocessing.extract_ffprobe_metadata", new=AsyncMock(return_value=ffprobe_with_subtitles)),
+                patch("backend.app.postprocessing.ensure_video_thumbnail", new=AsyncMock(return_value=None)),
+                patch("backend.app.postprocessing.ensure_video_preview", new=AsyncMock(return_value=None)),
+                caplog.at_level(logging.INFO, logger="backend.app.postprocessing"),
+            ):
+                success = await process_upload(record.public_id)
+
+            assert success is True, "Processing should still complete when remux is refused"
+
+        log_messages = [record.message for record in caplog.records if record.name == "backend.app.postprocessing"]
+        assert any(
+            "Processing multimedia upload [upload=postprocess_log_dir_test dir=token-dir-abc]" in message for message in log_messages
+        ), "Processing start logs should include the directory name"
+        assert any(
+            "Skipping MP4 remux because it contains unsupported non-audio/video streams: subtitle (ass) [upload=postprocess_log_dir_test dir=token-dir-abc]"
+            in message
+            for message in log_messages
+        ), "Refusal logs should include the directory name"
+        assert any(
+            "Completed processing upload [upload=postprocess_log_dir_test dir=token-dir-abc]" in message for message in log_messages
+        ), "Success logs should include the directory name"
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,10 @@
 """Test share view endpoint returns appropriate data based on token type."""
 
 import asyncio
+import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import status
@@ -393,6 +395,197 @@ async def test_share_page_bot_preview_ignores_sidecar_when_preview_feature_disab
         assert 'name="fbc:preview-mode" content="generated-short-clip"' not in response.text, (
             "Bot preview should not expose the generated-preview marker when it falls back to the full stream"
         )
+
+
+@pytest.mark.asyncio
+async def test_share_page_bot_preview_prefers_generated_preview_for_small_incompatible_video(client):
+    """Bot preview should use a generated MP4 sidecar for small incompatible videos."""
+    with (
+        patch("backend.app.security.settings.allow_public_downloads", True),
+        patch("backend.app.embed_preview.settings.embed_preview_min_size_bytes", 195 * 1024 * 1024),
+    ):
+        from backend.app.db import SessionLocal
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source_path = Path(tmp_dir) / "sample.mkv"
+            source_path.write_bytes(b"fake mkv bytes")
+            preview_path = utils.get_preview_path(source_path)
+            preview_path.write_bytes(b"preview-bytes")
+
+            async with SessionLocal() as session:
+                expires_at = datetime.now(UTC) + timedelta(days=1)
+                token = models.UploadToken(
+                    token="test_token_embed_incompatible",
+                    download_token="fbc_test_download_embed_incompatible",
+                    max_uploads=1,
+                    max_size_bytes=1000000,
+                    expires_at=expires_at,
+                )
+                session.add(token)
+                await session.flush()
+
+                record = models.UploadRecord(
+                    public_id="embed_incompatible_preview_test",
+                    token_id=token.id,
+                    filename="sample.mkv",
+                    ext="mkv",
+                    mimetype="video/x-matroska",
+                    size_bytes=source_path.stat().st_size,
+                    status="completed",
+                    storage_path=str(source_path),
+                    meta_data={
+                        "ffprobe": {
+                            "format": {"format_name": "matroska,webm", "duration": "1.0"},
+                            "streams": [
+                                {"codec_type": "video", "codec_name": "h264", "width": 1280, "height": 720},
+                                {"codec_type": "audio", "codec_name": "aac"},
+                                {"codec_type": "subtitle", "codec_name": "ass"},
+                            ],
+                        }
+                    },
+                )
+                session.add(record)
+                await session.commit()
+
+            response = await client.get(
+                "/f/fbc_test_download_embed_incompatible",
+                headers={"User-Agent": "Mozilla/5.0 (compatible; Discordbot/2.0)"},
+            )
+
+            assert response.status_code == status.HTTP_200_OK, "Should return 200 for Discord bot"
+            assert "/preview.mp4" in response.text, "Bot preview should use the generated MP4 sidecar for incompatible media"
+            assert 'property="og:video:type" content="video/mp4"' in response.text, "Generated preview should advertise an MP4 embed type"
+            assert 'name="fbc:preview-mode" content="generated-short-clip"' in response.text, (
+                "Bot preview should mark generated preview usage for incompatible media"
+            )
+
+
+@pytest.mark.asyncio
+async def test_share_page_bot_preview_falls_back_to_image_only_for_incompatible_video_without_preview(client):
+    """Bot preview should degrade to image-only metadata when incompatible video has no preview sidecar."""
+    with (
+        patch("backend.app.security.settings.allow_public_downloads", True),
+        patch("backend.app.embed_preview.settings.embed_preview_min_size_bytes", 195 * 1024 * 1024),
+    ):
+        from backend.app.db import SessionLocal
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source_path = Path(tmp_dir) / "sample.mkv"
+            source_path.write_bytes(b"fake mkv bytes")
+
+            async with SessionLocal() as session:
+                expires_at = datetime.now(UTC) + timedelta(days=1)
+                token = models.UploadToken(
+                    token="test_token_embed_incompatible_no_preview",
+                    download_token="fbc_test_download_embed_incompatible_no_preview",
+                    max_uploads=1,
+                    max_size_bytes=1000000,
+                    expires_at=expires_at,
+                )
+                session.add(token)
+                await session.flush()
+
+                record = models.UploadRecord(
+                    public_id="embed_incompatible_no_preview_test",
+                    token_id=token.id,
+                    filename="sample.mkv",
+                    ext="mkv",
+                    mimetype="video/x-matroska",
+                    size_bytes=source_path.stat().st_size,
+                    status="completed",
+                    storage_path=str(source_path),
+                    meta_data={
+                        "ffprobe": {
+                            "format": {"format_name": "matroska,webm", "duration": "1.0"},
+                            "streams": [
+                                {"codec_type": "video", "codec_name": "h264", "width": 1280, "height": 720},
+                                {"codec_type": "audio", "codec_name": "aac"},
+                                {"codec_type": "subtitle", "codec_name": "ass"},
+                            ],
+                        }
+                    },
+                )
+                session.add(record)
+                await session.commit()
+
+            response = await client.get(
+                "/f/fbc_test_download_embed_incompatible_no_preview",
+                headers={"User-Agent": "Mozilla/5.0 (compatible; Discordbot/2.0)"},
+            )
+
+            assert response.status_code == status.HTTP_200_OK, "Should return 200 for Discord bot"
+            assert '<meta property="og:image"' in response.text, "Bot preview should keep image metadata"
+            assert '<meta property="og:video"' not in response.text, "Bot preview should avoid unplayable video metadata"
+            assert 'name="twitter:player"' not in response.text, "Bot preview should avoid player metadata when no playable preview exists"
+            assert 'name="twitter:card" content="player"' in response.text, "Current card type should remain unchanged for this fallback"
+            assert 'name="fbc:preview-mode" content="generated-short-clip"' not in response.text, (
+                "Fallback image-only embeds should not claim a generated preview clip"
+            )
+
+
+@pytest.mark.asyncio
+async def test_incompatible_small_video_forces_preview_generation_during_postprocessing():
+    """Incompatible videos should force preview generation even when below the normal preview threshold."""
+    with tempfile.NamedTemporaryFile(suffix=".mkv", delete=False) as temp_file:
+        temp_file.write(b"fake mkv bytes")
+        temp_path = Path(temp_file.name)
+
+    ffprobe_with_subtitles = {
+        "format": {"format_name": "matroska,webm", "duration": "1.0"},
+        "streams": [
+            {"codec_type": "video", "codec_name": "h264", "width": 1280, "height": 720},
+            {"codec_type": "audio", "codec_name": "aac"},
+            {"codec_type": "subtitle", "codec_name": "ass"},
+        ],
+    }
+
+    try:
+        from backend.app.db import SessionLocal
+        from backend.app.postprocessing import process_upload
+
+        async with SessionLocal() as session:
+            expires_at = datetime.now(UTC) + timedelta(days=1)
+            token = models.UploadToken(
+                token="test_token_forced_preview",
+                download_token="test_download_forced_preview",
+                max_uploads=1,
+                max_size_bytes=1000000,
+                expires_at=expires_at,
+            )
+            session.add(token)
+            await session.flush()
+
+            record = models.UploadRecord(
+                public_id="forced_preview_test",
+                token_id=token.id,
+                filename="sample.mkv",
+                ext="mkv",
+                mimetype="video/x-matroska",
+                size_bytes=temp_path.stat().st_size,
+                status="postprocessing",
+                storage_path=str(temp_path),
+            )
+            session.add(record)
+            await session.commit()
+
+            with (
+                patch("backend.app.postprocessing.extract_ffprobe_metadata", new=AsyncMock(return_value=ffprobe_with_subtitles)),
+                patch("backend.app.postprocessing.ensure_video_thumbnail", new=AsyncMock(return_value=None)),
+                patch("backend.app.postprocessing.ensure_video_preview", new=AsyncMock(return_value=None)) as ensure_preview,
+                patch("backend.app.postprocessing.settings.embed_preview_min_size_bytes", 195 * 1024 * 1024),
+            ):
+                success = await process_upload(record.public_id)
+
+            assert success is True, "Incompatible videos should still complete when forced preview generation produces no sidecar"
+            ensure_preview.assert_awaited_once_with(
+                temp_path,
+                ffprobe_data=ffprobe_with_subtitles,
+                clip_seconds=180,
+                min_size_bytes=195 * 1024 * 1024,
+                ignore_size_threshold=True,
+            )
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 @pytest.mark.asyncio
