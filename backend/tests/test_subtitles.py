@@ -189,6 +189,94 @@ async def test_list_file_subtitles_supports_duplicate_leading_prefixes(client, t
 
 
 @pytest.mark.asyncio
+async def test_list_file_subtitles_uses_bracket_stripping_as_last_resort(client, test_run_dir):
+    subtitle_root = test_run_dir / "subtitles-bracket-fallback"
+    _write_subtitle_file(subtitle_root, "260602 foo [fbc-bar].ass", "[Script Info]\nTitle: Bracket Fallback\n")
+
+    with (
+        patch("backend.app.config.settings.subtitle_path", str(subtitle_root)),
+        patch("backend.app.security.settings.allow_public_downloads", True),
+    ):
+        token_data = await create_token(client, max_uploads=1)
+        upload_token = token_data["token"]
+        download_token = token_data["download_token"]
+
+        upload_data = await initiate_upload(client, upload_token, "260602 foo [youtube-bar].mkv", 5, "video/mp4")
+        upload_id = upload_data["upload_id"]
+        status_code = await upload_file_via_tus(client, upload_id, b"hello", upload_token)
+
+        assert status_code == status.HTTP_200_OK, "Upload should complete successfully"
+
+        response = await client.get(
+            app.url_path_for("get_file_subtitle", download_token=download_token, upload_id=upload_id, source_format="ass")
+        )
+
+        assert response.status_code == status.HTTP_200_OK, "Bracket-stripped fallback should recover subtitle matches as a last resort"
+        assert "Title: Bracket Fallback" in response.text, (
+            "When normal matching fails, differing bracketed source tags should be ignored for subtitle matching"
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_file_subtitles_uses_bracket_stripping_with_contains_fallback(client, test_run_dir):
+    subtitle_root = test_run_dir / "subtitles-bracket-contains"
+    _write_subtitle_file(subtitle_root, "260602 260602 foo [fbc-bar] [REQUEST].ass", "[Script Info]\nTitle: Bracket Contains\n")
+
+    with (
+        patch("backend.app.config.settings.subtitle_path", str(subtitle_root)),
+        patch("backend.app.security.settings.allow_public_downloads", True),
+    ):
+        token_data = await create_token(client, max_uploads=1)
+        upload_token = token_data["token"]
+        download_token = token_data["download_token"]
+
+        upload_data = await initiate_upload(client, upload_token, "260602 foo [youtube-bar].mkv", 5, "video/mp4")
+        upload_id = upload_data["upload_id"]
+        status_code = await upload_file_via_tus(client, upload_id, b"hello", upload_token)
+
+        assert status_code == status.HTTP_200_OK, "Upload should complete successfully"
+
+        response = await client.get(
+            app.url_path_for("get_file_subtitle", download_token=download_token, upload_id=upload_id, source_format="ass")
+        )
+
+        assert response.status_code == status.HTTP_200_OK, (
+            "Bracket stripping should still use the same bounded contains logic as the normal subtitle matcher"
+        )
+        assert "Title: Bracket Contains" in response.text, (
+            "Bracket-stripped fallback should support duplicate leading prefixes and bracket suffixes together"
+        )
+
+
+@pytest.mark.asyncio
+async def test_list_file_subtitles_prefers_normal_match_over_bracket_stripping_fallback(client, test_run_dir):
+    subtitle_root = test_run_dir / "subtitles-bracket-precedence"
+    _write_subtitle_file(subtitle_root, "260602 foo [youtube-bar].ass", "[Script Info]\nTitle: Exact Bracket\n")
+    _write_subtitle_file(subtitle_root, "260602 foo [fbc-bar].ass", "[Script Info]\nTitle: Fallback Bracket\n")
+
+    with (
+        patch("backend.app.config.settings.subtitle_path", str(subtitle_root)),
+        patch("backend.app.security.settings.allow_public_downloads", True),
+    ):
+        token_data = await create_token(client, max_uploads=1)
+        upload_token = token_data["token"]
+        download_token = token_data["download_token"]
+
+        upload_data = await initiate_upload(client, upload_token, "260602 foo [youtube-bar].mkv", 5, "video/mp4")
+        upload_id = upload_data["upload_id"]
+        status_code = await upload_file_via_tus(client, upload_id, b"hello", upload_token)
+
+        assert status_code == status.HTTP_200_OK, "Upload should complete successfully"
+
+        response = await client.get(
+            app.url_path_for("get_file_subtitle", download_token=download_token, upload_id=upload_id, source_format="ass")
+        )
+
+        assert response.status_code == status.HTTP_200_OK, "Subtitle should still be returned when an exact bracketed match exists"
+        assert "Title: Exact Bracket" in response.text, "Bracket stripping should only run after normal subtitle matching fails"
+
+
+@pytest.mark.asyncio
 async def test_list_file_subtitles_prefers_exact_stem_over_prefix_matches(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-exact-first"
     _write_subtitle_file(subtitle_root, "show/episode.ass", "[Script Info]\nTitle: Exact\n")

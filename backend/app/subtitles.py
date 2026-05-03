@@ -26,6 +26,8 @@ DELIVERY_MEDIA_TYPE_BY_FORMAT: dict[str, str] = {
 }
 TEXT_DECODING_CANDIDATES: tuple[str, ...] = ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "cp1252")
 SRT_TIMESTAMP_RE = re.compile(r"(?P<time>\d{1,2}:\d{2}:\d{2}),(?P<millis>\d{3})")
+BRACKETED_SEGMENT_RE = re.compile(r"\[[^\[\]]*\]")
+WHITESPACE_RE = re.compile(r"\s+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,22 +95,7 @@ def list_subtitle_tracks(upload_id: str | None, filename: str | None) -> list[Su
     if not target_stem:
         return []
 
-    matches_by_format = _collect_matching_subtitles(subtitle_root, target_stem)
-    subtitle_tracks: list[SubtitleTrack] = []
-
-    for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS:
-        matches = matches_by_format.get(source_format, [])
-        if len(matches) != 1:
-            continue
-
-        subtitle_tracks.append(
-            SubtitleTrack(
-                path=matches[0],
-                source_format=source_format,
-                delivery_format=DELIVERY_FORMAT_BY_SOURCE_FORMAT[source_format],
-                renderer=RENDERER_BY_SOURCE_FORMAT[source_format],
-            )
-        )
+    subtitle_tracks = _build_subtitle_tracks(_collect_matching_subtitles(subtitle_root, target_stem))
 
     _store_cached_subtitle_tracks(cache_key, subtitle_tracks, cache_ttl_seconds)
     return subtitle_tracks
@@ -185,10 +172,36 @@ def _store_cached_subtitle_tracks(
     )
 
 
+def _build_subtitle_tracks(matches_by_format: dict[str, list[Path]]) -> list[SubtitleTrack]:
+    subtitle_tracks: list[SubtitleTrack] = []
+
+    for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS:
+        matches = matches_by_format.get(source_format, [])
+        if len(matches) != 1:
+            continue
+
+        subtitle_tracks.append(
+            SubtitleTrack(
+                path=matches[0],
+                source_format=source_format,
+                delivery_format=DELIVERY_FORMAT_BY_SOURCE_FORMAT[source_format],
+                renderer=RENDERER_BY_SOURCE_FORMAT[source_format],
+            )
+        )
+
+    return subtitle_tracks
+
+
 def _collect_matching_subtitles(subtitle_root: Path, target_stem: str) -> dict[str, list[Path]]:
     matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
     exact_matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
     prefix_matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
+    stripped_exact_matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
+    stripped_prefix_matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
+    stripped_target_stem = _strip_bracketed_segments(target_stem)
+
+    if not target_stem:
+        return matches_by_format
 
     for candidate in subtitle_root.rglob("*"):
         source_format = normalize_source_format(candidate.suffix.lstrip("."))
@@ -196,25 +209,32 @@ def _collect_matching_subtitles(subtitle_root: Path, target_stem: str) -> dict[s
             continue
 
         candidate_stem = normalize_subtitle_stem(candidate.stem)
+        if not candidate_stem:
+            continue
+
         resolved_candidate = _resolve_within_root(candidate, subtitle_root)
         if resolved_candidate is None:
             continue
 
         if candidate_stem == target_stem:
             exact_matches_by_format[source_format].append(resolved_candidate)
+        elif _contains_subtitle_stem(candidate_stem, target_stem):
+            prefix_matches_by_format[source_format].append(resolved_candidate)
+
+        stripped_candidate_stem = _strip_bracketed_segments(candidate_stem)
+        if not stripped_target_stem or not stripped_candidate_stem:
             continue
 
-        if not _contains_subtitle_stem(candidate_stem, target_stem):
-            continue
+        if stripped_candidate_stem == stripped_target_stem:
+            stripped_exact_matches_by_format[source_format].append(resolved_candidate)
+        elif _contains_subtitle_stem(stripped_candidate_stem, stripped_target_stem):
+            stripped_prefix_matches_by_format[source_format].append(resolved_candidate)
 
-        prefix_matches_by_format[source_format].append(resolved_candidate)
+    matches_by_format = _merge_matching_subtitles(exact_matches_by_format, prefix_matches_by_format)
+    if _build_subtitle_tracks(matches_by_format):
+        return matches_by_format
 
-    for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS:
-        exact_matches = exact_matches_by_format[source_format]
-        prefix_matches = prefix_matches_by_format[source_format]
-        matches_by_format[source_format] = exact_matches or prefix_matches
-
-    return matches_by_format
+    return _merge_matching_subtitles(stripped_exact_matches_by_format, stripped_prefix_matches_by_format)
 
 
 def _resolve_within_root(candidate: Path, subtitle_root: Path) -> Path | None:
@@ -237,3 +257,22 @@ def _contains_subtitle_stem(candidate_stem: str, target_stem: str) -> bool:
         match_start = candidate_stem.find(target_stem, match_start + 1)
 
     return False
+
+
+def _strip_bracketed_segments(stem: str) -> str:
+    stripped_stem = BRACKETED_SEGMENT_RE.sub(" ", stem)
+    return WHITESPACE_RE.sub(" ", stripped_stem).strip()
+
+
+def _merge_matching_subtitles(
+    exact_matches_by_format: dict[str, list[Path]],
+    prefix_matches_by_format: dict[str, list[Path]],
+) -> dict[str, list[Path]]:
+    matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
+
+    for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS:
+        exact_matches = exact_matches_by_format[source_format]
+        prefix_matches = prefix_matches_by_format[source_format]
+        matches_by_format[source_format] = exact_matches or prefix_matches
+
+    return matches_by_format
