@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     admin_api_key: str = Field("change-me", validation_alias="FBC_ADMIN_API_KEY")
     storage_path: str = Field("./data/uploads", validation_alias="FBC_STORAGE_PATH")
     subtitle_path: str | None = Field(None, validation_alias="FBC_SUBTITLE_PATH")
+    subtitle_cache_ttl_seconds: int = Field(600, ge=0, validation_alias="FBC_SUBTITLE_CACHE_TTL_SECONDS")
     frontend_export_path: str = Field("./frontend/exported", validation_alias="FBC_FRONTEND_EXPORT_PATH")
     public_base_url: str | None = Field(default=None, validation_alias="FBC_PUBLIC_BASE_URL")
     default_token_ttl_hours: int = Field(24, ge=1, le=24 * 30)

@@ -499,6 +499,7 @@ List external subtitle tracks that match a completed upload filename.
 
 **Notes:**
 - This endpoint only returns tracks discovered under `FBC_SUBTITLE_PATH`.
+- Discovery results are cached per upload for `FBC_SUBTITLE_CACHE_TTL_SECONDS`, including cases where no subtitles are found.
 - Results are ordered by renderer preference: `.vtt`, then `.srt`, then `.ass`.
 - `.srt` files are exposed here with `source_format: "srt"`, `delivery_format: "vtt"`, and `renderer: "native"`.
 - Duplicate matches for the same stem and extension are treated as ambiguous and omitted.
@@ -534,6 +535,7 @@ Return the selected subtitle content for a completed upload.
 **Notes:**
 - The share page uses `vtt` and converted `srt` as native browser subtitle tracks.
 - `.ass` subtitles are intended for ASS.js-based browser rendering.
+- Subtitle discovery is cached per upload, so newly added or removed subtitle files may take up to `FBC_SUBTITLE_CACHE_TTL_SECONDS` to appear.
 
 ---
 

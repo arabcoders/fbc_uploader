@@ -45,11 +45,15 @@ ENV PYDEVD_DISABLE_FILE_VALIDATION=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONFAULTHANDLER=1
 ENV FBC_DEV_MODE=0
+ENV PYTHONUTF8=1
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-  apt-get install -y --no-install-recommends libmagic1 && \
+  apt-get install -y --no-install-recommends locales libmagic1 && \
+  sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
+  dpkg-reconfigure --frontend=noninteractive locales && \
+  update-locale LANG=en_US.UTF-8 && \
   rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /config /downloads && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime && echo ${TZ} > /etc/timezone && \
@@ -68,6 +72,9 @@ COPY ./backend/bin/fbc /usr/bin/fbc
 RUN chmod +x /usr/bin/fbc
 
 ENV PATH="/opt/python/bin:$PATH"
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
 VOLUME /config
 VOLUME /downloads

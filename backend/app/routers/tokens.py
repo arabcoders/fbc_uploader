@@ -118,7 +118,7 @@ def _build_subtitle_manifest(
                 )
             ),
         )
-        for track in subtitles.list_subtitle_tracks(filename)
+        for track in subtitles.list_subtitle_tracks(upload_id, filename)
     ]
 
     return schemas.SubtitleManifestResponse(subtitles=subtitle_items)
@@ -473,7 +473,7 @@ async def get_file_subtitle(
     """Return a matching subtitle file, converting SRT to WebVTT on demand."""
     async with SessionLocal() as db:
         _, record, _ = await _get_accessible_upload(download_token, upload_id, db, is_admin)
-        track = subtitles.get_subtitle_track(record.filename, source_format)
+        track = subtitles.get_subtitle_track(upload_id, record.filename, source_format)
 
     if track is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtitle not found")
