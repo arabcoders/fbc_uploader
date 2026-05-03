@@ -158,6 +158,37 @@ async def test_list_file_subtitles_supports_prefix_language_suffixes(client, tes
 
 
 @pytest.mark.asyncio
+async def test_list_file_subtitles_supports_duplicate_leading_prefixes(client, test_run_dir):
+    subtitle_root = test_run_dir / "subtitles-duplicate-prefix"
+    _write_subtitle_file(
+        subtitle_root, "260503 260503 Rajira! Sunday 川﨑桜、梅澤美波 [REQUEST].ass", "[Script Info]\nTitle: Duplicate Prefix\n"
+    )
+
+    with (
+        patch("backend.app.config.settings.subtitle_path", str(subtitle_root)),
+        patch("backend.app.security.settings.allow_public_downloads", True),
+    ):
+        token_data = await create_token(client, max_uploads=1)
+        upload_token = token_data["token"]
+        download_token = token_data["download_token"]
+
+        upload_data = await initiate_upload(client, upload_token, "260503 Rajira! Sunday 川﨑桜、梅澤美波.mp4", 5, "video/mp4")
+        upload_id = upload_data["upload_id"]
+        status_code = await upload_file_via_tus(client, upload_id, b"hello", upload_token)
+
+        assert status_code == status.HTTP_200_OK, "Upload should complete successfully"
+
+        response = await client.get(
+            app.url_path_for("get_file_subtitle", download_token=download_token, upload_id=upload_id, source_format="ass")
+        )
+
+        assert response.status_code == status.HTTP_200_OK, "Repeated leading prefixes should still allow subtitle matching"
+        assert "Title: Duplicate Prefix" in response.text, (
+            "Subtitle matching should tolerate duplicate leading date prefixes before the shared filename stem"
+        )
+
+
+@pytest.mark.asyncio
 async def test_list_file_subtitles_prefers_exact_stem_over_prefix_matches(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-exact-first"
     _write_subtitle_file(subtitle_root, "show/episode.ass", "[Script Info]\nTitle: Exact\n")
@@ -183,6 +214,31 @@ async def test_list_file_subtitles_prefers_exact_stem_over_prefix_matches(client
 
         assert response.status_code == status.HTTP_200_OK, "Exact stem subtitle should be returned"
         assert "Title: Exact" in response.text, "Exact stem matches should win over language-suffixed prefix matches"
+
+
+@pytest.mark.asyncio
+async def test_list_file_subtitles_ignores_midword_contains_matches(client, test_run_dir):
+    subtitle_root = test_run_dir / "subtitles-midword"
+    _write_subtitle_file(subtitle_root, "myepisode.ass", "[Script Info]\nTitle: Midword\n")
+
+    with (
+        patch("backend.app.config.settings.subtitle_path", str(subtitle_root)),
+        patch("backend.app.security.settings.allow_public_downloads", True),
+    ):
+        token_data = await create_token(client, max_uploads=1)
+        upload_token = token_data["token"]
+        download_token = token_data["download_token"]
+
+        upload_data = await initiate_upload(client, upload_token, "episode.mkv", 5, "video/mp4")
+        upload_id = upload_data["upload_id"]
+        status_code = await upload_file_via_tus(client, upload_id, b"hello", upload_token)
+
+        assert status_code == status.HTTP_200_OK, "Upload should complete successfully"
+
+        response = await client.get(app.url_path_for("list_file_subtitles", download_token=download_token, upload_id=upload_id))
+
+        assert response.status_code == status.HTTP_200_OK, "Subtitle manifest should still be returned"
+        assert response.json()["subtitles"] == [], "Contains matching should not match unrelated mid-word stems"
 
 
 @pytest.mark.asyncio

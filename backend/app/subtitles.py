@@ -196,15 +196,15 @@ def _collect_matching_subtitles(subtitle_root: Path, target_stem: str) -> dict[s
             continue
 
         candidate_stem = normalize_subtitle_stem(candidate.stem)
-        if not candidate_stem.startswith(target_stem):
-            continue
-
         resolved_candidate = _resolve_within_root(candidate, subtitle_root)
         if resolved_candidate is None:
             continue
 
         if candidate_stem == target_stem:
             exact_matches_by_format[source_format].append(resolved_candidate)
+            continue
+
+        if not _contains_subtitle_stem(candidate_stem, target_stem):
             continue
 
         prefix_matches_by_format[source_format].append(resolved_candidate)
@@ -224,3 +224,16 @@ def _resolve_within_root(candidate: Path, subtitle_root: Path) -> Path | None:
             return resolved_candidate
 
     return None
+
+
+def _contains_subtitle_stem(candidate_stem: str, target_stem: str) -> bool:
+    match_start = candidate_stem.find(target_stem)
+    while match_start != -1:
+        match_end = match_start + len(target_stem)
+        has_left_boundary = match_start == 0 or not candidate_stem[match_start - 1].isalnum()
+        has_right_boundary = match_end == len(candidate_stem) or not candidate_stem[match_end].isalnum()
+        if has_left_boundary and has_right_boundary:
+            return True
+        match_start = candidate_stem.find(target_stem, match_start + 1)
+
+    return False
