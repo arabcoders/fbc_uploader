@@ -185,7 +185,7 @@ def _build_preview_command(
             "-sn",
             "-dn",
             "-vf",
-            "scale=1280:-2:force_original_aspect_ratio=decrease",
+            "scale='trunc(min(1280,iw*min(1280/iw,720/ih))/2)*2':'trunc(min(720,ih*min(1280/iw,720/ih))/2)*2'",
             "-c:v",
             "libx264",
             "-preset",

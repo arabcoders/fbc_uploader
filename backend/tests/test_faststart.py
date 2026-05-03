@@ -278,3 +278,52 @@ async def test_generate_video_preview_can_bypass_size_threshold_for_incompatible
     finally:
         path.with_name(f"{path.name}.preview.mp4").unlink(missing_ok=True)
         path.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_generate_video_preview_uses_even_dimension_scale_filter():
+    """Preview generation should force even output dimensions for x264 compatibility."""
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".mkv", delete=False) as f:
+        f.write(b"fake video bytes")
+        f.flush()
+        path = Path(f.name)
+
+    commands: list[tuple[str, ...]] = []
+
+    class DummyProcess:
+        def __init__(self, output_path: Path) -> None:
+            self.returncode = 0
+            self._output_path = output_path
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            self._output_path.write_bytes(b"preview-bytes")
+            return b"", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        del kwargs
+        commands.append(tuple(str(arg) for arg in args))
+        return DummyProcess(Path(args[-1]))
+
+    try:
+        create_subprocess_exec = AsyncMock(side_effect=fake_create_subprocess_exec)
+        with (
+            patch("backend.app.utils.shutil.which", return_value="/usr/bin/ffmpeg"),
+            patch("backend.app.utils.extract_ffprobe_metadata", new=AsyncMock(return_value={"format": {"duration": "120.0"}})),
+            patch("backend.app.utils.asyncio.create_subprocess_exec", new=create_subprocess_exec),
+        ):
+            preview_path = await generate_video_preview(
+                path,
+                min_size_bytes=1,
+            )
+
+        assert preview_path is not None and preview_path.exists(), "Preview generation should succeed with the even-dimension scale filter"
+        assert len(commands) == 1, "Preview generation should only need one ffmpeg invocation on success"
+
+        command = commands[0]
+        filter_index = command.index("-vf")
+        assert command[filter_index + 1] == (
+            "scale='trunc(min(1280,iw*min(1280/iw,720/ih))/2)*2':'trunc(min(720,ih*min(1280/iw,720/ih))/2)*2'"
+        ), "Preview generation should force even output dimensions after aspect-ratio-constrained scaling"
+    finally:
+        path.with_name(f"{path.name}.preview.mp4").unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
