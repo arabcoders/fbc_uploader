@@ -27,6 +27,7 @@ type UseShareSubtitlesOptions = {
   selectedIsVideo: MaybeRefOrGetter<boolean>;
   canPlaySelectedMedia: MaybeRefOrGetter<boolean>;
   shouldRenderSelectedMedia: MaybeRefOrGetter<boolean>;
+  assLayoutVersion?: MaybeRefOrGetter<number>;
   videoElement: MaybeRefOrGetter<HTMLVideoElement | null>;
   overlayElement: MaybeRefOrGetter<HTMLElement | null>;
   fetchSubtitleText?: (url: string) => Promise<string>;
@@ -66,6 +67,8 @@ export function useShareSubtitles(options: UseShareSubtitlesOptions) {
   let assRenderer: AssRendererInstance | null = null;
   let subtitleRequestId = 0;
   let assRequestId = 0;
+  let cachedAssSubtitleUrl = '';
+  let cachedAssSubtitleContent = '';
 
   function destroyAssRenderer() {
     assRenderer?.destroy();
@@ -138,9 +141,17 @@ export function useShareSubtitles(options: UseShareSubtitlesOptions) {
     }
 
     try {
-      const subtitleContent = await fetchSubtitleText(track.url);
+      const subtitleContent =
+        cachedAssSubtitleUrl === track.url
+          ? cachedAssSubtitleContent
+          : await fetchSubtitleText(track.url);
       if (requestId !== assRequestId) {
         return;
+      }
+
+      if (cachedAssSubtitleUrl !== track.url) {
+        cachedAssSubtitleUrl = track.url;
+        cachedAssSubtitleContent = subtitleContent;
       }
 
       const ASS = await loadAssRenderer();
@@ -153,6 +164,10 @@ export function useShareSubtitles(options: UseShareSubtitlesOptions) {
         resampling: 'video_height',
       }) as AssRendererInstance;
       assRenderer.show();
+      videoElement.dispatchEvent(new Event('seeking'));
+      if (!videoElement.paused) {
+        videoElement.dispatchEvent(new Event('playing'));
+      }
       subtitleLoadError.value = '';
     } catch {
       if (requestId === assRequestId) {
@@ -182,6 +197,7 @@ export function useShareSubtitles(options: UseShareSubtitlesOptions) {
       selectedSubtitleTrack.value?.renderer || '',
       subtitleEnabled.value,
       toValue(options.shouldRenderSelectedMedia),
+      toValue(options.assLayoutVersion) || 0,
       toValue(options.videoElement),
       toValue(options.overlayElement),
     ],

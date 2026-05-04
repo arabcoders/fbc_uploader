@@ -125,4 +125,35 @@ describe('useSharePlayerShortcuts', () => {
     dispatchKey('/');
     expect(showShortcutHelp.value).toBe(false);
   });
+
+  it('uses custom volume and mute handlers when provided', async () => {
+    const { useSharePlayerShortcuts } = await import('~/composables/useSharePlayerShortcuts');
+    const media = document.createElement('audio');
+    media.volume = 0.5;
+    media.muted = false;
+
+    const adjustVolume = mock(() => {});
+    const toggleMute = mock(() => {});
+
+    useSharePlayerShortcuts({
+      enabled: ref(true),
+      mediaElement: ref(media),
+      videoElement: ref(null),
+      adjustVolume,
+      canToggleSubtitles: ref(false),
+      toggleSubtitles: mock(() => {}),
+      toggleFullscreen: mock(async () => {}),
+      toggleMute,
+    });
+
+    dispatchKey('ArrowUp');
+    dispatchKey('ArrowDown');
+    dispatchKey('m');
+
+    expect(adjustVolume).toHaveBeenNthCalledWith(1, 0.1);
+    expect(adjustVolume).toHaveBeenNthCalledWith(2, -0.1);
+    expect(toggleMute).toHaveBeenCalledTimes(1);
+    expect(media.volume).toBeCloseTo(0.5, 5);
+    expect(media.muted).toBe(false);
+  });
 });

@@ -10,9 +10,11 @@ type UseSharePlayerShortcutsOptions = {
   enabled: MaybeRefOrGetter<boolean>;
   mediaElement: MaybeRefOrGetter<HTMLMediaElement | null>;
   videoElement: MaybeRefOrGetter<HTMLVideoElement | null>;
+  adjustVolume?: (delta: number) => void;
   canToggleSubtitles: MaybeRefOrGetter<boolean>;
   toggleSubtitles: () => void;
   toggleFullscreen: () => Promise<void> | void;
+  toggleMute?: () => void;
 };
 
 export function useSharePlayerShortcuts(options: UseSharePlayerShortcutsOptions) {
@@ -122,12 +124,22 @@ export function useSharePlayerShortcuts(options: UseSharePlayerShortcutsOptions)
       case 'arrowup':
         event.preventDefault();
         event.stopPropagation();
+        if (options.adjustVolume) {
+          options.adjustVolume(0.1);
+          break;
+        }
+
         media.volume = clampMediaVolume(media.volume + 0.1);
         media.muted = false;
         break;
       case 'arrowdown':
         event.preventDefault();
         event.stopPropagation();
+        if (options.adjustVolume) {
+          options.adjustVolume(-0.1);
+          break;
+        }
+
         media.volume = clampMediaVolume(media.volume - 0.1);
         if (media.volume <= 0) {
           media.muted = true;
@@ -136,6 +148,11 @@ export function useSharePlayerShortcuts(options: UseSharePlayerShortcutsOptions)
       case 'm':
         event.preventDefault();
         event.stopPropagation();
+        if (options.toggleMute) {
+          options.toggleMute();
+          break;
+        }
+
         media.muted = !media.muted;
         break;
       case ';':

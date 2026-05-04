@@ -199,21 +199,33 @@
                   <video
                     ref="videoElement"
                     :key="selectedUpload.public_id"
-                    class="block bg-black object-contain"
+                    class="share-video-element block bg-black object-contain"
                     :class="
                       isPlayerFullscreen
                         ? 'h-full w-full max-h-screen max-w-screen'
                         : 'h-auto w-full max-w-full max-h-[70vh] sm:max-h-[72vh]'
                     "
-                    controls
-                    :controlslist="usesAssSubtitleTrack ? 'nofullscreen' : undefined"
+                    :controls="!usesCustomAssControls"
+                    :controlslist="
+                      usesAssSubtitleTrack && !usesCustomAssControls ? 'nofullscreen' : undefined
+                    "
                     playsinline
+                    webkit-playsinline
                     preload="metadata"
                     :poster="selectedThumbnailUrl || undefined"
                     @error="handleMediaPlaybackError"
-                    @loadedmetadata="clearMediaPlaybackError"
-                    @play="clearMediaPlaybackError"
+                    @loadeddata="syncCustomVideoState"
+                    @loadedmetadata="handleVideoLoadedMetadata"
+                    @timeupdate="handleVideoTimeUpdate"
+                    @play="handleVideoPlay"
+                    @pause="handleVideoPause"
+                    @click="toggleCustomControlsVisibility"
+                    @dblclick="handleVideoDoubleClick"
+                    @pointermove="showCustomControls"
+                    @resize="scheduleAssLayoutRefresh"
                     @volumechange="handleMediaVolumeChange"
+                    @webkitbeginfullscreen="handleVideoWebkitBeginFullscreen"
+                    @webkitendfullscreen="handleVideoWebkitEndFullscreen"
                   >
                     <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined" />
                     <track
@@ -233,6 +245,83 @@
                     class="pointer-events-none absolute inset-0 z-10 overflow-hidden"
                     aria-hidden="true"
                   />
+                  <div
+                    v-if="usesCustomAssControls"
+                    class="absolute inset-x-0 bottom-0 z-20 bg-linear-to-t from-black/85 via-black/45 to-transparent px-3 pb-3 pt-8 text-white transition-opacity duration-200"
+                    :class="customControlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'"
+                    @click.self="toggleCustomControlsVisibility"
+                    @pointermove="showCustomControls"
+                  >
+                    <div class="space-y-3">
+                      <input
+                        :value="customVideoProgress"
+                        type="range"
+                        min="0"
+                        max="1000"
+                        step="1"
+                        class="h-1.5 w-full accent-white"
+                        aria-label="Seek video"
+                        @input="handleCustomVideoSeek"
+                      />
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                          <UButton
+                            color="neutral"
+                            variant="soft"
+                            size="sm"
+                            :icon="
+                              isCustomVideoPaused
+                                ? 'i-heroicons-play-20-solid'
+                                : 'i-heroicons-pause-20-solid'
+                            "
+                            :aria-label="isCustomVideoPaused ? 'Play video' : 'Pause video'"
+                            @click="toggleCustomVideoPlayback"
+                          />
+                          <div class="min-w-0 text-xs font-medium text-white/85">
+                            {{ customVideoTimeLabel }}
+                          </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <UButton
+                            color="neutral"
+                            variant="soft"
+                            size="sm"
+                            :icon="
+                              customVideoVolume <= 0
+                                ? 'i-heroicons-speaker-x-mark-20-solid'
+                                : 'i-heroicons-speaker-wave-20-solid'
+                            "
+                            :aria-label="customVideoVolume <= 0 ? 'Unmute video' : 'Mute video'"
+                            @click="toggleCurrentMediaMute"
+                          />
+                          <input
+                            :value="Math.round(customVideoVolume * 100)"
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            class="w-20 accent-white"
+                            aria-label="Video volume"
+                            @input="handleCustomVideoVolumeChange"
+                          />
+                          <UButton
+                            color="neutral"
+                            variant="soft"
+                            size="sm"
+                            :icon="
+                              isPlayerFullscreen
+                                ? 'i-heroicons-arrows-pointing-in-20-solid'
+                                : 'i-heroicons-arrows-pointing-out-20-solid'
+                            "
+                            :aria-label="
+                              isPlayerFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'
+                            "
+                            @click="togglePlayerFullscreen"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -300,13 +389,43 @@
                   controls
                   preload="metadata"
                   @error="handleMediaPlaybackError"
-                  @loadedmetadata="clearMediaPlaybackError"
-                  @play="clearMediaPlaybackError"
+                  @loadedmetadata="handleAudioLoadedMetadata"
+                  @play="handleAudioPlay"
                   @volumechange="handleMediaVolumeChange"
                 >
                   <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined" />
                   Your browser does not support the audio tag.
                 </audio>
+                <div
+                  v-if="usesCustomAudioVolumeControl"
+                  class="mt-4 flex items-center gap-3 rounded-xl border border-default bg-default/80 px-4 py-3"
+                >
+                  <UButton
+                    color="neutral"
+                    variant="soft"
+                    size="sm"
+                    :icon="
+                      effectiveStoredMediaVolume <= 0
+                        ? 'i-heroicons-speaker-x-mark-20-solid'
+                        : 'i-heroicons-speaker-wave-20-solid'
+                    "
+                    :aria-label="effectiveStoredMediaVolume <= 0 ? 'Unmute audio' : 'Mute audio'"
+                    @click="toggleCurrentMediaMute"
+                  />
+                  <div class="min-w-0 flex-1 space-y-2">
+                    <div class="text-xs font-medium uppercase tracking-wide text-muted">Volume</div>
+                    <input
+                      :value="Math.round(effectiveStoredMediaVolume * 100)"
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      class="w-full accent-primary"
+                      aria-label="Audio volume"
+                      @input="handleCustomAudioVolumeChange"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -375,7 +494,7 @@
                 </div>
                 <button
                   type="button"
-                  class="flex w-full items-center justify-between rounded-lg border border-default bg-default px-3 py-2 text-left text-xs text-muted transition-colors hover:bg-elevated"
+                  class="hidden w-full items-center justify-between rounded-lg border border-default bg-default px-3 py-2 text-left text-xs text-muted transition-colors hover:bg-elevated md:flex"
                   @click="showShortcutHelp = true"
                 >
                   <span>Keyboard shortcuts</span>
@@ -874,6 +993,7 @@ const loading = ref(true);
 const notice = ref<string>('');
 const showNotice = useStorage<boolean>('show_notice', true);
 const mediaVolume = useStorage<number>('share_media_volume', 1);
+const mediaMuted = useStorage<boolean>('share_media_muted', false);
 const selectedUploadId = ref<string>('');
 const activeUploadId = ref<string>('');
 const mediaPlaybackError = ref('');
@@ -882,6 +1002,18 @@ const videoElement = ref<HTMLVideoElement | null>(null);
 const videoPlayerContainer = ref<HTMLElement | null>(null);
 const assOverlayElement = ref<HTMLElement | null>(null);
 const isPlayerFullscreen = ref(false);
+const assLayoutVersion = ref(0);
+const customControlsVisible = ref(true);
+const customVideoCurrentTime = ref(0);
+const customVideoDuration = ref(0);
+const customVideoVolume = ref(mediaVolume.value);
+const isCustomVideoPaused = ref(true);
+let assLayoutRefreshFrame = 0;
+let customControlsHideTimeout = 0;
+let mediaGainAudioContext: AudioContext | null = null;
+let mediaGainSourceNode: MediaElementAudioSourceNode | null = null;
+let mediaGainNode: GainNode | null = null;
+let mediaGainElement: HTMLMediaElement | null = null;
 
 const uploads = computed(
   () => tokenInfo.value?.uploads?.filter((upload) => upload.status === 'completed') || [],
@@ -913,6 +1045,28 @@ const selectedThumbnailUrl = computed(() => selectedUpload.value?.thumbnail_url 
 const shouldRenderSelectedMedia = computed(() => {
   return Boolean(selectedUpload.value && activeUploadId.value === selectedUpload.value.public_id);
 });
+const isIosDevice = computed(() => {
+  if (!import.meta.client) return false;
+
+  const userAgent = window.navigator.userAgent || '';
+  const platform = window.navigator.platform || '';
+  const maxTouchPoints = window.navigator.maxTouchPoints || 0;
+  return /iPad|iPhone|iPod/.test(userAgent) || (platform === 'MacIntel' && maxTouchPoints > 1);
+});
+const effectiveStoredMediaVolume = computed(() => {
+  return mediaMuted.value ? 0 : normalizeMediaVolume(mediaVolume.value);
+});
+const usesMediaGainVolumeFallback = computed(() => {
+  return Boolean(isIosDevice.value && getAudioContextConstructor());
+});
+const usesCustomAssControls = computed(() => {
+  return Boolean(isIosDevice.value && selectedIsVideo.value && usesAssSubtitleTrack.value);
+});
+const usesCustomAudioVolumeControl = computed(() => {
+  return Boolean(
+    usesMediaGainVolumeFallback.value && !selectedIsVideo.value && shouldRenderSelectedMedia.value,
+  );
+});
 const canShowPlayerFullscreenButton = computed(() => {
   return Boolean(selectedIsVideo.value && canPlaySelectedMedia.value);
 });
@@ -937,6 +1091,17 @@ const selectedResolutionLabel = computed(() => {
   const resolution = getVideoResolution(selectedFfprobe.value);
   return resolution ? `${resolution.width} x ${resolution.height}` : '';
 });
+const customVideoProgress = computed(() => {
+  if (!customVideoDuration.value) return 0;
+  return Math.round((customVideoCurrentTime.value / customVideoDuration.value) * 1000);
+});
+const customVideoTimeLabel = computed(() => {
+  const currentLabel = formatDuration(Math.round(customVideoCurrentTime.value));
+  const durationLabel = customVideoDuration.value
+    ? formatDuration(Math.round(customVideoDuration.value))
+    : '--:--';
+  return `${currentLabel} / ${durationLabel}`;
+});
 
 const shareUrl = computed(() => {
   if (!token.value) return '';
@@ -956,6 +1121,7 @@ const {
   selectedIsVideo,
   canPlaySelectedMedia,
   shouldRenderSelectedMedia,
+  assLayoutVersion,
   videoElement,
   overlayElement: assOverlayElement,
 });
@@ -991,24 +1157,52 @@ watch(
 
 watch(
   currentMediaElement,
-  (element) => {
-    applyStoredMediaVolume(element);
+  (element, previousElement) => {
+    if (previousElement && previousElement !== element) {
+      disconnectMediaGainController();
+    }
+
+    applyStoredMediaState(element);
+    syncCustomVideoState();
   },
   { immediate: true },
 );
 
 watch(
-  mediaVolume,
-  (nextVolume) => {
+  [mediaVolume, mediaMuted],
+  ([nextVolume]) => {
     const normalizedVolume = normalizeMediaVolume(nextVolume);
     if (normalizedVolume !== nextVolume) {
       mediaVolume.value = normalizedVolume;
       return;
     }
 
-    applyStoredMediaVolume(currentMediaElement.value);
+    applyStoredMediaState(currentMediaElement.value);
+    syncCustomVideoState();
   },
   { immediate: true },
+);
+
+watch(
+  usesCustomAssControls,
+  (enabled) => {
+    if (!enabled) {
+      clearCustomControlsHideTimeout();
+      customControlsVisible.value = true;
+      return;
+    }
+
+    showCustomControls();
+  },
+  { immediate: true },
+);
+
+watch(
+  () => activeUploadId.value,
+  () => {
+    showCustomControls();
+    syncCustomVideoState();
+  },
 );
 
 function copyShareUrl() {
@@ -1024,12 +1218,61 @@ function clearMediaPlaybackError() {
   mediaPlaybackError.value = '';
 }
 
+function handleAudioLoadedMetadata() {
+  clearMediaPlaybackError();
+  applyStoredMediaState(audioElement.value);
+}
+
+function handleAudioPlay() {
+  clearMediaPlaybackError();
+  void resumeMediaGainController();
+}
+
+function handleVideoLoadedMetadata() {
+  clearMediaPlaybackError();
+  syncCustomVideoState();
+  showCustomControls();
+  scheduleAssLayoutRefresh();
+}
+
+function handleVideoTimeUpdate() {
+  syncCustomVideoState();
+}
+
+function handleVideoPlay() {
+  clearMediaPlaybackError();
+  void resumeMediaGainController();
+  syncCustomVideoState();
+  showCustomControls();
+}
+
+function handleVideoPause() {
+  syncCustomVideoState();
+  clearCustomControlsHideTimeout();
+  customControlsVisible.value = true;
+}
+
+function handleVideoDoubleClick() {
+  if (!selectedIsVideo.value || !canPlaySelectedMedia.value) return;
+  void togglePlayerFullscreen();
+}
+
+function handleVideoWebkitBeginFullscreen() {
+  scheduleAssLayoutRefresh();
+}
+
+function handleVideoWebkitEndFullscreen() {
+  scheduleAssLayoutRefresh();
+}
+
 async function activateSelectedMedia() {
   if (!selectedUpload.value) return;
   activeUploadId.value = selectedUpload.value.public_id;
   clearMediaPlaybackError();
 
   await nextTick();
+  applyStoredMediaState(currentMediaElement.value);
+  await resumeMediaGainController();
 
   try {
     await currentMediaElement.value?.play();
@@ -1046,19 +1289,191 @@ function handleMediaVolumeChange(event: Event) {
   const target = event.target as HTMLMediaElement | null;
   if (!target || typeof target.volume !== 'number') return;
 
-  const normalizedVolume = normalizeMediaVolume(target.volume);
-  if (Math.abs(mediaVolume.value - normalizedVolume) > 0.001) {
-    mediaVolume.value = normalizedVolume;
+  if (target.muted !== mediaMuted.value) {
+    mediaMuted.value = target.muted;
   }
+
+  if (!usesMediaGainVolumeFallback.value) {
+    const normalizedVolume = normalizeMediaVolume(target.volume);
+    if (Math.abs(mediaVolume.value - normalizedVolume) > 0.001) {
+      mediaVolume.value = normalizedVolume;
+    }
+  }
+
+  syncCustomVideoState();
 }
 
-function applyStoredMediaVolume(element: HTMLMediaElement | null) {
+function handleCustomAudioVolumeChange(event: Event) {
+  const target = event.target as HTMLInputElement | null;
+  if (!target) return;
+
+  setStoredMediaVolume(Number(target.value) / 100);
+  void resumeMediaGainController();
+}
+
+function handleCustomVideoSeek(event: Event) {
+  const target = event.target as HTMLInputElement | null;
+  if (!target || !videoElement.value || !customVideoDuration.value) return;
+
+  const sliderValue = Number(target.value);
+  if (!Number.isFinite(sliderValue)) return;
+
+  videoElement.value.currentTime = (sliderValue / 1000) * customVideoDuration.value;
+  syncCustomVideoState();
+  showCustomControls();
+}
+
+function handleCustomVideoVolumeChange(event: Event) {
+  const target = event.target as HTMLInputElement | null;
+  if (!target || !videoElement.value) return;
+
+  setStoredMediaVolume(Number(target.value) / 100);
+  syncCustomVideoState();
+  showCustomControls();
+  void resumeMediaGainController();
+}
+
+async function toggleCustomVideoPlayback() {
+  if (!videoElement.value) return;
+
+  try {
+    if (videoElement.value.paused) {
+      await resumeMediaGainController();
+      await videoElement.value.play();
+      syncCustomVideoState();
+      showCustomControls();
+      return;
+    }
+
+    videoElement.value.pause();
+    syncCustomVideoState();
+  } catch {}
+}
+
+function toggleCurrentMediaMute() {
+  const media = currentMediaElement.value;
+  if (!media) return;
+
+  if (mediaMuted.value || effectiveStoredMediaVolume.value <= 0) {
+    const restoredVolume = mediaVolume.value > 0 ? mediaVolume.value : 1;
+    mediaVolume.value = restoredVolume;
+    mediaMuted.value = false;
+  } else {
+    mediaMuted.value = true;
+  }
+
+  applyStoredMediaState(media);
+  syncCustomVideoState();
+  showCustomControls();
+  void resumeMediaGainController();
+}
+
+function setStoredMediaVolume(nextVolume: number) {
+  const normalizedVolume = normalizeMediaVolume(nextVolume);
+  mediaVolume.value = normalizedVolume;
+  mediaMuted.value = normalizedVolume <= 0;
+  applyStoredMediaState(currentMediaElement.value);
+}
+
+function adjustStoredMediaVolume(delta: number) {
+  setStoredMediaVolume(mediaVolume.value + delta);
+  syncCustomVideoState();
+  showCustomControls();
+  void resumeMediaGainController();
+}
+
+function applyStoredMediaState(element: HTMLMediaElement | null) {
   if (!element) return;
+
+  if (usesMediaGainVolumeFallback.value) {
+    // iOS Safari ignores script-driven media.volume changes, so use Web Audio gain.
+    ensureMediaGainController(element);
+    if (element.muted !== mediaMuted.value) {
+      element.muted = mediaMuted.value;
+    }
+    if (mediaGainNode) {
+      mediaGainNode.gain.value = effectiveStoredMediaVolume.value;
+    }
+    return;
+  }
 
   const normalizedVolume = normalizeMediaVolume(mediaVolume.value);
   if (Math.abs(element.volume - normalizedVolume) > 0.001) {
     element.volume = normalizedVolume;
   }
+
+  if (element.muted !== mediaMuted.value) {
+    element.muted = mediaMuted.value;
+  }
+}
+
+function ensureMediaGainController(element: HTMLMediaElement | null) {
+  if (!usesMediaGainVolumeFallback.value || !element) return;
+
+  if (mediaGainElement === element && mediaGainNode) {
+    mediaGainNode.gain.value = effectiveStoredMediaVolume.value;
+    return;
+  }
+
+  disconnectMediaGainController();
+
+  const AudioContextConstructor = getAudioContextConstructor();
+  if (!AudioContextConstructor) return;
+
+  if (!mediaGainAudioContext || mediaGainAudioContext.state === 'closed') {
+    try {
+      mediaGainAudioContext = new AudioContextConstructor();
+    } catch {
+      mediaGainAudioContext = null;
+      return;
+    }
+  }
+
+  try {
+    mediaGainSourceNode = mediaGainAudioContext.createMediaElementSource(element);
+    mediaGainNode = mediaGainAudioContext.createGain();
+    mediaGainSourceNode.connect(mediaGainNode);
+    mediaGainNode.connect(mediaGainAudioContext.destination);
+    mediaGainNode.gain.value = effectiveStoredMediaVolume.value;
+    mediaGainElement = element;
+  } catch {
+    disconnectMediaGainController();
+  }
+}
+
+async function resumeMediaGainController() {
+  if (!usesMediaGainVolumeFallback.value) return;
+
+  ensureMediaGainController(currentMediaElement.value);
+  if (!mediaGainAudioContext || mediaGainAudioContext.state !== 'suspended') return;
+
+  try {
+    await mediaGainAudioContext.resume();
+  } catch {}
+}
+
+function disconnectMediaGainController() {
+  try {
+    mediaGainSourceNode?.disconnect();
+  } catch {}
+
+  try {
+    mediaGainNode?.disconnect();
+  } catch {}
+
+  mediaGainSourceNode = null;
+  mediaGainNode = null;
+  mediaGainElement = null;
+}
+
+function getAudioContextConstructor(): typeof AudioContext | null {
+  if (!import.meta.client) return null;
+
+  const maybeWindow = window as Window &
+    typeof globalThis & {
+      webkitAudioContext?: typeof AudioContext;
+    };
+  return maybeWindow.AudioContext || maybeWindow.webkitAudioContext || null;
 }
 
 function normalizeMediaVolume(volume: number): number {
@@ -1178,6 +1593,83 @@ function hasMetadata(meta_data: Record<string, any> | undefined): boolean {
   return Object.keys(filtered).length > 0;
 }
 
+function scheduleAssLayoutRefresh() {
+  if (!usesAssSubtitleTrack.value) return;
+
+  if (assLayoutRefreshFrame) {
+    window.cancelAnimationFrame(assLayoutRefreshFrame);
+  }
+
+  void nextTick(() => {
+    assLayoutRefreshFrame = window.requestAnimationFrame(() => {
+      assLayoutRefreshFrame = 0;
+      assLayoutVersion.value += 1;
+    });
+  });
+}
+
+function syncCustomVideoState() {
+  const video = videoElement.value;
+  if (!video) {
+    customVideoCurrentTime.value = 0;
+    customVideoDuration.value = 0;
+    customVideoVolume.value = effectiveStoredMediaVolume.value;
+    isCustomVideoPaused.value = true;
+    return;
+  }
+
+  const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+  const currentTime =
+    Number.isFinite(video.currentTime) && video.currentTime > 0 ? video.currentTime : 0;
+
+  customVideoDuration.value = duration;
+  customVideoCurrentTime.value = currentTime;
+  customVideoVolume.value = usesMediaGainVolumeFallback.value
+    ? effectiveStoredMediaVolume.value
+    : video.muted
+      ? 0
+      : normalizeMediaVolume(video.volume);
+  isCustomVideoPaused.value = video.paused;
+}
+
+function showCustomControls() {
+  if (!usesCustomAssControls.value) return;
+
+  customControlsVisible.value = true;
+  clearCustomControlsHideTimeout();
+
+  if (videoElement.value?.paused) {
+    return;
+  }
+
+  customControlsHideTimeout = window.setTimeout(() => {
+    customControlsVisible.value = false;
+  }, 2500);
+}
+
+function toggleCustomControlsVisibility() {
+  if (!usesCustomAssControls.value) return;
+
+  if (!customControlsVisible.value) {
+    showCustomControls();
+    return;
+  }
+
+  if (videoElement.value?.paused) {
+    return;
+  }
+
+  clearCustomControlsHideTimeout();
+  customControlsVisible.value = false;
+}
+
+function clearCustomControlsHideTimeout() {
+  if (customControlsHideTimeout) {
+    window.clearTimeout(customControlsHideTimeout);
+    customControlsHideTimeout = 0;
+  }
+}
+
 function syncPlayerFullscreenState() {
   const fullscreenElement = getFullscreenElement();
   isPlayerFullscreen.value = Boolean(
@@ -1185,6 +1677,7 @@ function syncPlayerFullscreenState() {
     videoPlayerContainer.value &&
     fullscreenElement === videoPlayerContainer.value,
   );
+  scheduleAssLayoutRefresh();
 }
 
 async function togglePlayerFullscreen() {
@@ -1210,10 +1703,12 @@ const { showShortcutHelp } = useSharePlayerShortcuts({
   mediaElement: currentMediaElement,
   videoElement,
   canToggleSubtitles: computed(() => selectedIsVideo.value && hasSubtitles.value),
+  adjustVolume: adjustStoredMediaVolume,
   toggleSubtitles: () => {
     subtitleEnabled.value = !subtitleEnabled.value;
   },
   toggleFullscreen: togglePlayerFullscreen,
+  toggleMute: toggleCurrentMediaMute,
 });
 
 onMounted(async () => {
@@ -1235,6 +1730,8 @@ onMounted(async () => {
 
   document.addEventListener('fullscreenchange', syncPlayerFullscreenState);
   document.addEventListener('webkitfullscreenchange', syncPlayerFullscreenState as EventListener);
+  window.addEventListener('resize', scheduleAssLayoutRefresh);
+  window.addEventListener('orientationchange', scheduleAssLayoutRefresh);
   syncPlayerFullscreenState();
 });
 
@@ -1244,9 +1741,27 @@ onBeforeUnmount(() => {
     'webkitfullscreenchange',
     syncPlayerFullscreenState as EventListener,
   );
+  window.removeEventListener('resize', scheduleAssLayoutRefresh);
+  window.removeEventListener('orientationchange', scheduleAssLayoutRefresh);
+  if (assLayoutRefreshFrame) {
+    window.cancelAnimationFrame(assLayoutRefreshFrame);
+  }
+
+  clearCustomControlsHideTimeout();
+  disconnectMediaGainController();
+  if (mediaGainAudioContext && mediaGainAudioContext.state !== 'closed') {
+    void mediaGainAudioContext.close().catch(() => {});
+  }
+  mediaGainAudioContext = null;
 });
 
 useHead({
   title: 'Shared Files',
 });
 </script>
+
+<style scoped>
+.share-video-element::-webkit-media-controls-fullscreen-button {
+  display: none;
+}
+</style>
