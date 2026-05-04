@@ -212,6 +212,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import type { SubtitleTrack } from '~/types/subtitles';
 import type { UploadRow } from '~/types/uploads';
 import { useSharePlayerShortcuts } from '~/composables/useSharePlayerShortcuts';
 import { useShareSubtitles } from '~/composables/useShareSubtitles';
@@ -242,6 +243,7 @@ const emit = defineEmits<{
       subtitleLoadError: string;
       subtitleEnabled: boolean;
       hasSubtitles: boolean;
+      selectedSubtitleTrack: SubtitleTrack | null;
       isFullscreen: boolean;
     },
   ];
@@ -298,6 +300,7 @@ const {
   subtitleLoading,
   subtitleLoadError,
   subtitleEnabled,
+  selectedSubtitleTrack,
   nativeSubtitleTrack,
   usesAssSubtitleTrack,
   hasSubtitles,
@@ -313,13 +316,21 @@ const {
 });
 
 watch(
-  [subtitleLoading, subtitleLoadError, subtitleEnabled, hasSubtitles, isPlayerFullscreen],
+  [
+    subtitleLoading,
+    subtitleLoadError,
+    subtitleEnabled,
+    hasSubtitles,
+    selectedSubtitleTrack,
+    isPlayerFullscreen,
+  ],
   () => {
     emit('subtitle-state-change', {
       subtitleLoading: subtitleLoading.value,
       subtitleLoadError: subtitleLoadError.value,
       subtitleEnabled: subtitleEnabled.value,
       hasSubtitles: hasSubtitles.value,
+      selectedSubtitleTrack: selectedSubtitleTrack.value,
       isFullscreen: isPlayerFullscreen.value,
     });
   },

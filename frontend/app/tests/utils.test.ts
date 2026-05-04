@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { copyText, formatBytes, formatKey, formatValue, percent } from '~/utils';
+import {
+  buildSubtitleDownloadFilename,
+  copyText,
+  formatBytes,
+  formatKey,
+  formatValue,
+  percent,
+} from '~/utils';
 
 const originalNavigator = global.navigator;
 
@@ -48,5 +55,15 @@ describe('format helpers', () => {
     expect(formatValue(null)).toBe('—');
     expect(formatValue(['a', 'b'])).toBe('a, b');
     expect(formatValue({ foo: 1 })).toBe(JSON.stringify({ foo: 1 }));
+  });
+
+  it('builds subtitle download filenames from the media filename stem', () => {
+    expect(buildSubtitleDownloadFilename('sample.mp4', 'subtitle-upload-1', 'vtt')).toBe(
+      'sample.vtt',
+    );
+    expect(buildSubtitleDownloadFilename('sample', 'subtitle-upload-1', 'ass')).toBe('sample.ass');
+    expect(buildSubtitleDownloadFilename('', 'subtitle-upload-1', 'vtt')).toBe(
+      'subtitle-upload-1.vtt',
+    );
   });
 });

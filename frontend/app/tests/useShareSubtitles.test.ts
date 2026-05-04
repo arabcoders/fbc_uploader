@@ -86,6 +86,7 @@ describe('useShareSubtitles', () => {
     );
     expect(hasSubtitles.value).toBe(true);
     expect(selectedSubtitleTrack.value?.source_format).toBe('vtt');
+    expect(selectedSubtitleTrack.value?.delivery_format).toBe('vtt');
     expect(nativeSubtitleTrack.value?.url).toBe('/subs/sample.vtt');
     expect(usesAssSubtitleTrack.value).toBe(false);
   });

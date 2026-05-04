@@ -84,6 +84,21 @@ function formatValue(val: unknown): string {
 }
 
 /**
+ * Build a download filename for a delivered subtitle track.
+ */
+function buildSubtitleDownloadFilename(
+  filename: string | undefined,
+  fallbackStem: string,
+  deliveryFormat: 'vtt' | 'ass',
+): string {
+  const trimmedFilename = filename?.trim() || '';
+  const lastDotIndex = trimmedFilename.lastIndexOf('.');
+  const filenameStem = lastDotIndex > 0 ? trimmedFilename.slice(0, lastDotIndex) : trimmedFilename;
+  const safeStem = filenameStem || fallbackStem;
+  return `${safeStem}.${deliveryFormat}`;
+}
+
+/**
  * Add admin API key to download URL if public downloads are disabled
  */
 function addAdminKeyToUrl(
@@ -96,4 +111,13 @@ function addAdminKeyToUrl(
   return `${url}${separator}api_key=${apiKey}`;
 }
 
-export { copyText, formatBytes, formatDate, percent, formatKey, formatValue, addAdminKeyToUrl };
+export {
+  addAdminKeyToUrl,
+  buildSubtitleDownloadFilename,
+  copyText,
+  formatBytes,
+  formatDate,
+  formatKey,
+  formatValue,
+  percent,
+};

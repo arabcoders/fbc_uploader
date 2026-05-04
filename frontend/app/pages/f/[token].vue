@@ -395,9 +395,26 @@
                   <div v-if="subtitleLoading" class="text-muted">
                     Looking for matching subtitles...
                   </div>
-                  <div v-else-if="hasSubtitles" class="flex items-center justify-between gap-4">
-                    <div class="font-medium text-highlighted">Show subtitles</div>
-                    <USwitch v-model="subtitleEnabled" :label="subtitleEnabled ? 'On' : 'Off'" />
+                  <div v-else-if="hasSubtitles" class="space-y-3">
+                    <div class="flex items-center justify-between gap-4">
+                      <div class="font-medium text-highlighted">Show subtitles</div>
+                      <USwitch v-model="subtitleEnabled" :label="subtitleEnabled ? 'On' : 'Off'" />
+                    </div>
+                    <a
+                      v-if="activeSubtitleDownloadUrl"
+                      :href="activeSubtitleDownloadUrl"
+                      :download="activeSubtitleDownloadFilename"
+                      class="inline-flex"
+                    >
+                      <UButton
+                        color="neutral"
+                        variant="outline"
+                        icon="i-heroicons-arrow-down-tray-20-solid"
+                        size="sm"
+                      >
+                        Download active subtitle
+                      </UButton>
+                    </a>
                   </div>
                   <div v-else-if="subtitleLoadError" class="text-warning">
                     {{ subtitleLoadError }}
@@ -813,8 +830,16 @@ import { useShareMediaVolume } from '~/composables/useShareMediaVolume';
 import { useSharePlayerShortcuts } from '~/composables/useSharePlayerShortcuts';
 import { useShareShortcutHelp } from '~/composables/useShareShortcutHelp';
 import { useTokenInfo } from '~/composables/useTokenInfo';
+import type { SubtitleTrack } from '~/types/subtitles';
 import type { UploadRow } from '~/types/uploads';
-import { copyText, formatBytes, formatDate, formatKey, formatValue } from '~/utils';
+import {
+  buildSubtitleDownloadFilename,
+  copyText,
+  formatBytes,
+  formatDate,
+  formatKey,
+  formatValue,
+} from '~/utils';
 
 type ShareVideoPlayerExpose = {
   play: () => Promise<void>;
@@ -849,6 +874,7 @@ const subtitleLoading = ref(false);
 const subtitleLoadError = ref('');
 const subtitleEnabled = ref(true);
 const hasSubtitles = ref(false);
+const activeSubtitleTrack = ref<SubtitleTrack | null>(null);
 const isPlayerFullscreen = ref(false);
 let audioGainAudioContext: AudioContext | null = null;
 let audioGainSourceNode: MediaElementAudioSourceNode | null = null;
@@ -907,6 +933,16 @@ const canShowPlayerFullscreenButton = computed(() => {
 const showActionPair = computed(() => {
   return Boolean(selectedUpload.value?.download_url && canShowPlayerFullscreenButton.value);
 });
+const activeSubtitleDownloadUrl = computed(() => activeSubtitleTrack.value?.url || '');
+const activeSubtitleDownloadFilename = computed(() => {
+  const track = activeSubtitleTrack.value;
+  if (!track) return '';
+  return buildSubtitleDownloadFilename(
+    selectedUpload.value?.filename,
+    `subtitle-${selectedUpload.value?.public_id || 'track'}`,
+    track.delivery_format,
+  );
+});
 
 const selectedFfprobe = computed<Record<string, any> | null>(() => {
   const ffprobe = selectedUpload.value?.meta_data?.ffprobe;
@@ -958,6 +994,7 @@ watch(
     subtitleLoadError.value = '';
     subtitleEnabled.value = true;
     hasSubtitles.value = false;
+    activeSubtitleTrack.value = null;
     isPlayerFullscreen.value = false;
   },
 );
@@ -1159,12 +1196,14 @@ function handleVideoSubtitleStateChange(payload: {
   subtitleLoadError: string;
   subtitleEnabled: boolean;
   hasSubtitles: boolean;
+  selectedSubtitleTrack: SubtitleTrack | null;
   isFullscreen: boolean;
 }) {
   subtitleLoading.value = payload.subtitleLoading;
   subtitleLoadError.value = payload.subtitleLoadError;
   subtitleEnabled.value = payload.subtitleEnabled;
   hasSubtitles.value = payload.hasSubtitles;
+  activeSubtitleTrack.value = payload.selectedSubtitleTrack;
   isPlayerFullscreen.value = payload.isFullscreen;
 }
 
