@@ -6,8 +6,13 @@
         <p class="text-muted mt-1">Manage upload tokens</p>
       </div>
       <div class="flex items-center gap-2">
-        <UButton color="neutral" variant="ghost" icon="i-heroicons-arrow-path" @click="fetchTokens"
-          :loading="loadingTokens">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          icon="i-heroicons-arrow-path"
+          @click="fetchTokens"
+          :loading="loadingTokens"
+        >
           Refresh
         </UButton>
       </div>
@@ -27,8 +32,13 @@
         </div>
       </template>
 
-      <AdminTokensTable :tokens="tokens" :loading="loadingTokens" @view-uploads="openUploads" @edit="openEdit"
-        @delete="askDelete" />
+      <AdminTokensTable
+        :tokens="tokens"
+        :loading="loadingTokens"
+        @view-uploads="openUploads"
+        @edit="openEdit"
+        @delete="askDelete"
+      />
 
       <template #footer>
         <div class="flex items-center justify-between px-4 py-3">
@@ -39,13 +49,21 @@
             <template v-else>&nbsp;</template>
           </div>
           <div class="flex items-center gap-2">
-            <UButton color="neutral" variant="ghost" icon="i-heroicons-chevron-left-20-solid"
-              :disabled="currentPage === 1 || !totalPages" @click="currentPage--" />
-            <div class="text-sm font-medium">
-              {{ currentPage }} / {{ totalPages }}
-            </div>
-            <UButton color="neutral" variant="ghost" icon="i-heroicons-chevron-right-20-solid"
-              :disabled="currentPage === totalPages || !totalPages" @click="currentPage++" />
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-heroicons-chevron-left-20-solid"
+              :disabled="currentPage === 1 || !totalPages"
+              @click="currentPage--"
+            />
+            <div class="text-sm font-medium">{{ currentPage }} / {{ totalPages }}</div>
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-heroicons-chevron-right-20-solid"
+              :disabled="currentPage === totalPages || !totalPages"
+              @click="currentPage++"
+            />
           </div>
         </div>
       </template>
@@ -60,16 +78,32 @@
     <UModal v-model:open="editOpen" :title="`Edit (${selectedToken?.token})`">
       <template #body>
         <div v-if="selectedToken" class="space-y-4">
-          <AdminTokenForm mode="edit" :token="selectedToken" :loading="savingEdit" submit-label="Save changes"
-            @submit="handleUpdate" />
+          <AdminTokenForm
+            mode="edit"
+            :token="selectedToken"
+            :loading="savingEdit"
+            submit-label="Save changes"
+            @submit="handleUpdate"
+          />
         </div>
       </template>
     </UModal>
 
-    <UModal v-model:open="uploadsOpen" :title="`Uploads (${uploadsToken?.token})`" scrollable :ui="{ content: 'max-w-5xl' }">
+    <UModal
+      v-model:open="uploadsOpen"
+      :title="`Uploads (${uploadsToken?.token})`"
+      scrollable
+      :ui="{ content: 'max-w-5xl' }"
+    >
       <template #body>
         <div class="space-y-3">
-          <AdminUploadsTable :uploads="uploads" :loading="loadingUploads" :allow-public-downloads="allowPublicDownloads" :admin-token="adminToken" @delete="askDeleteUpload" />
+          <AdminUploadsTable
+            :uploads="uploads"
+            :loading="loadingUploads"
+            :allow-public-downloads="allowPublicDownloads"
+            :admin-token="adminToken"
+            @delete="askDeleteUpload"
+          />
         </div>
       </template>
     </UModal>
@@ -106,14 +140,18 @@
       </template>
       <template #body>
         <p class="text-sm">
-          Are you sure you want to delete <strong>{{ deleteUploadTarget?.filename }}</strong>? This will permanently
-          delete the file.
+          Are you sure you want to delete <strong>{{ deleteUploadTarget?.filename }}</strong
+          >? This will permanently delete the file.
         </p>
       </template>
       <template #footer>
         <div class="flex items-center justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="deleteUploadOpen = false">Cancel</UButton>
-          <UButton color="error" :loading="deletingUpload" @click="confirmDeleteUpload">Delete</UButton>
+          <UButton color="neutral" variant="ghost" @click="deleteUploadOpen = false"
+            >Cancel</UButton
+          >
+          <UButton color="error" :loading="deletingUpload" @click="confirmDeleteUpload"
+            >Delete</UButton
+          >
         </div>
       </template>
     </UModal>
@@ -121,20 +159,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import AdminTokenForm from "~/components/AdminTokenForm.vue";
-import AdminTokensTable from "~/components/AdminTokensTable.vue";
-import AdminUploadsTable from "~/components/AdminUploadsTable.vue";
-import type { AdminToken } from "~/types/token";
-import type { UploadRow, ApiError } from "~/types/uploads";
+import { computed, onMounted, ref, watch } from 'vue';
+import AdminTokenForm from '~/components/AdminTokenForm.vue';
+import AdminTokensTable from '~/components/AdminTokensTable.vue';
+import AdminUploadsTable from '~/components/AdminUploadsTable.vue';
+import type { AdminToken } from '~/types/token';
+import type { UploadRow, ApiError } from '~/types/uploads';
 
-definePageMeta({ middleware: "admin" });
+definePageMeta({ middleware: 'admin' });
 
 const { $apiFetch } = useNuxtApp();
 const toast = useToast();
 const router = useRouter();
 const route = useRoute();
-const adminToken = useState<string | null>("adminToken", () => null);
+const adminToken = useState<string | null>('adminToken', () => null);
 
 const tokens = ref<AdminToken[]>([]);
 const loadingTokens = ref(false);
@@ -179,7 +217,7 @@ async function fetchTokens() {
   if (!hasAuth.value) return;
   loadingTokens.value = true;
   try {
-    const res = await $apiFetch<{ tokens: AdminToken[]; total: number }>("/api/tokens/", {
+    const res = await $apiFetch<{ tokens: AdminToken[]; total: number }>('/api/tokens/', {
       query: {
         skip: (currentPage.value - 1) * itemsPerPage,
         limit: itemsPerPage,
@@ -197,8 +235,12 @@ async function fetchTokens() {
 async function handleCreate(payload: Record<string, any>) {
   creating.value = true;
   try {
-    await $apiFetch("/api/tokens/", { method: "POST", body: payload });
-    toast.add({ title: "Token created", color: "success", icon: "i-heroicons-check-circle-20-solid" });
+    await $apiFetch('/api/tokens/', { method: 'POST', body: payload });
+    toast.add({
+      title: 'Token created',
+      color: 'success',
+      icon: 'i-heroicons-check-circle-20-solid',
+    });
     createOpen.value = false;
     await fetchTokens();
   } catch (err) {
@@ -217,8 +259,12 @@ async function handleUpdate(payload: Record<string, any>) {
   if (!selectedToken.value) return;
   savingEdit.value = true;
   try {
-    await $apiFetch(`/api/tokens/${selectedToken.value.token}`, { method: "PATCH", body: payload });
-    toast.add({ title: "Token updated", color: "success", icon: "i-heroicons-check-circle-20-solid" });
+    await $apiFetch(`/api/tokens/${selectedToken.value.token}`, { method: 'PATCH', body: payload });
+    toast.add({
+      title: 'Token updated',
+      color: 'success',
+      icon: 'i-heroicons-check-circle-20-solid',
+    });
     editOpen.value = false;
     await fetchTokens();
   } catch (err) {
@@ -239,10 +285,14 @@ async function confirmDelete() {
   deleting.value = true;
   try {
     await $apiFetch(`/api/tokens/${deleteTarget.value.token}`, {
-      method: "DELETE",
+      method: 'DELETE',
       query: { delete_files: deleteFiles.value },
     });
-    toast.add({ title: "Token deleted", color: "success", icon: "i-heroicons-check-circle-20-solid" });
+    toast.add({
+      title: 'Token deleted',
+      color: 'success',
+      icon: 'i-heroicons-check-circle-20-solid',
+    });
     deleteOpen.value = false;
     await fetchTokens();
   } catch (err) {
@@ -260,7 +310,7 @@ async function openUploads(token: AdminToken) {
     const tokenValue = ref(token.token);
     const { tokenInfo, fetchTokenInfo } = useTokenInfo(tokenValue);
     await fetchTokenInfo();
-    
+
     if (tokenInfo.value) {
       allowPublicDownloads.value = tokenInfo.value.allow_public_downloads ?? true;
       uploads.value = tokenInfo.value.uploads;
@@ -281,8 +331,14 @@ async function confirmDeleteUpload() {
   if (!deleteUploadTarget.value) return;
   deletingUpload.value = true;
   try {
-    await $apiFetch(`/api/admin/uploads/${deleteUploadTarget.value.public_id}`, { method: "DELETE" });
-    toast.add({ title: "Upload deleted", color: "success", icon: "i-heroicons-check-circle-20-solid" });
+    await $apiFetch(`/api/admin/uploads/${deleteUploadTarget.value.public_id}`, {
+      method: 'DELETE',
+    });
+    toast.add({
+      title: 'Upload deleted',
+      color: 'success',
+      icon: 'i-heroicons-check-circle-20-solid',
+    });
     deleteUploadOpen.value = false;
     // Refresh the uploads list
     if (uploadsToken.value) {
@@ -299,22 +355,25 @@ function handleAuthError(err: ApiError) {
   if (err?.response?.status === 401 || err?.status === 401) {
     adminToken.value = null;
     toast.add({
-      title: "Session expired",
-      description: "Please sign in again.",
-      color: "error",
-      icon: "i-heroicons-exclamation-triangle-20-solid",
+      title: 'Session expired',
+      description: 'Please sign in again.',
+      color: 'error',
+      icon: 'i-heroicons-exclamation-triangle-20-solid',
     });
-    navigateTo("/")
+    navigateTo('/');
   } else {
     toast.add({
-      title: "Request failed",
-      description: err?.data?.detail || err?.message || "Unexpected error",
-      color: "error",
-      icon: "i-heroicons-exclamation-triangle-20-solid",
+      title: 'Request failed',
+      description: err?.data?.detail || err?.message || 'Unexpected error',
+      color: 'error',
+      icon: 'i-heroicons-exclamation-triangle-20-solid',
     });
   }
 }
 
-watch(() => route.query.page, () => fetchTokens());
+watch(
+  () => route.query.page,
+  () => fetchTokens(),
+);
 onMounted(() => fetchTokens());
 </script>

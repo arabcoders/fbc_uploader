@@ -7,14 +7,19 @@ from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.pool import StaticPool
 
 from .config import settings
 
 url: URL = make_url(settings.database_url)
-if url.drivername.startswith("sqlite") and url.database:
-    Path(url.database).expanduser().parent.mkdir(parents=True, exist_ok=True)
+engine_kwargs: dict[str, Any] = {"future": True}
+if url.drivername.startswith("sqlite"):
+    if url.database and url.database != ":memory:":
+        Path(url.database).expanduser().parent.mkdir(parents=True, exist_ok=True)
+    else:
+        engine_kwargs["poolclass"] = StaticPool
 
-engine: AsyncEngine = create_async_engine(settings.database_url, future=True)
+engine: AsyncEngine = create_async_engine(settings.database_url, **engine_kwargs)
 SessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
 
 Base: Any = declarative_base()

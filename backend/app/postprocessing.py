@@ -24,16 +24,49 @@ from .db import SessionLocal
 from .utils import (
     detect_mimetype,
     ensure_faststart_mp4,
+    ensure_video_preview,
     ensure_video_thumbnail,
     extract_ffprobe_metadata,
     get_mp4_remux_skip_reason,
+    is_directly_embeddable_video,
     is_multimedia,
+    preview_exists,
     remux_to_mp4,
     should_remux_to_mp4,
     thumbnail_exists,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_upload_directory_name(storage_path: str | None) -> str:
+    if not storage_path:
+        return "unknown"
+
+    try:
+        return Path(storage_path).parent.name or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _log_with_upload_context(
+    level: int,
+    message: str,
+    record: models.UploadRecord | SimpleNamespace,
+    *args: object,
+    exc_info: bool = False,
+) -> None:
+    if args:
+        message = message % args
+
+    logger.log(
+        level,
+        "%s [upload=%s dir=%s]",
+        message,
+        record.public_id,
+        _get_upload_directory_name(getattr(record, "storage_path", None)),
+        exc_info=exc_info,
+    )
 
 
 def _build_remuxed_filename(filename: str | None) -> str | None:
@@ -57,14 +90,15 @@ async def _apply_media_normalization(record: models.UploadRecord, path: Path) ->
     if should_remux_to_mp4(record.mimetype, ffprobe_data):
         source_size = path.stat().st_size
         if source_size > settings.max_remux_bytes:
-            logger.info(
-                "Skipping remux for upload %s because %s bytes exceeds remux limit %s",
-                record.public_id,
+            _log_with_upload_context(
+                logging.INFO,
+                "Skipping remux because %s bytes exceeds remux limit %s",
+                record,
                 source_size,
                 settings.max_remux_bytes,
             )
         else:
-            logger.info("Remuxing upload %s into MP4 container", record.public_id)
+            _log_with_upload_context(logging.INFO, "Remuxing upload into MP4 container", record)
             path = await remux_to_mp4(path)
             record.storage_path = str(path)
             record.filename = _build_remuxed_filename(record.filename)
@@ -72,10 +106,12 @@ async def _apply_media_normalization(record: models.UploadRecord, path: Path) ->
             record.mimetype = detect_mimetype(path)
             record.size_bytes = path.stat().st_size
             ffprobe_data = await extract_ffprobe_metadata(path)
+            _log_with_upload_context(logging.INFO, "Remuxed upload into MP4 container", record)
     elif record.mimetype and record.mimetype.startswith("video/") and record.mimetype != "video/mp4":
-        logger.info(
-            "Skipping MP4 remux for upload %s because %s",
-            record.public_id,
+        _log_with_upload_context(
+            logging.INFO,
+            "Skipping MP4 remux because %s",
+            record,
             get_mp4_remux_skip_reason(record.mimetype, ffprobe_data),
         )
 
@@ -83,11 +119,14 @@ async def _apply_media_normalization(record: models.UploadRecord, path: Path) ->
         try:
             modified = await ensure_faststart_mp4(path, record.mimetype)
             if modified:
-                logger.info("Applied faststart to upload %s", record.public_id)
+                _log_with_upload_context(logging.INFO, "Applied faststart to upload", record)
+            else:
+                _log_with_upload_context(logging.INFO, "Faststart already satisfied or not needed", record)
         except Exception:
-            logger.exception("Failed to apply faststart to upload %s", record.public_id)
+            _log_with_upload_context(logging.ERROR, "Failed to apply faststart to upload", record, exc_info=True)
 
     await _ensure_thumbnail(record, path)
+    await _ensure_preview(record, path, ffprobe_data, force_generation=not is_directly_embeddable_video(record.mimetype, ffprobe_data))
 
     return path, ffprobe_data
 
@@ -117,17 +156,59 @@ async def _ensure_thumbnail(record: models.UploadRecord | SimpleNamespace, path:
     try:
         thumbnail_path = await ensure_video_thumbnail(path)
     except Exception:
-        logger.exception("Failed to generate thumbnail for upload %s", record.public_id)
+        _log_with_upload_context(logging.ERROR, "Failed to generate thumbnail", record, exc_info=True)
         return
 
     if thumbnail_path is not None:
-        logger.info("Thumbnail ready for upload %s", record.public_id)
+        _log_with_upload_context(logging.INFO, "Thumbnail ready", record)
+    else:
+        _log_with_upload_context(logging.INFO, "Thumbnail was not generated", record)
+
+
+async def _ensure_preview(
+    record: models.UploadRecord | SimpleNamespace,
+    path: Path,
+    ffprobe_data: dict | None,
+    *,
+    force_generation: bool = False,
+) -> None:
+    mimetype = getattr(record, "mimetype", None)
+    if not mimetype or not mimetype.startswith("video/"):
+        return
+
+    try:
+        preview_path = await ensure_video_preview(
+            path,
+            ffprobe_data=ffprobe_data,
+            clip_seconds=settings.embed_preview_clip_seconds,
+            min_size_bytes=settings.embed_preview_min_size_bytes,
+            ignore_size_threshold=force_generation,
+        )
+    except Exception:
+        _log_with_upload_context(logging.ERROR, "Failed to generate embed preview", record, exc_info=True)
+        return
+
+    if preview_path is not None:
+        if force_generation:
+            _log_with_upload_context(logging.INFO, "Embed preview ready for incompatible video", record)
+        else:
+            _log_with_upload_context(logging.INFO, "Embed preview ready", record)
+        return
+
+    if settings.embed_preview_clip_seconds < 1:
+        _log_with_upload_context(logging.INFO, "Skipping embed preview because preview generation is disabled", record)
+    elif settings.embed_preview_min_size_bytes <= 0:
+        _log_with_upload_context(logging.INFO, "Skipping embed preview because preview size threshold disables previews", record)
+    elif force_generation:
+        _log_with_upload_context(logging.WARNING, "Failed to produce forced embed preview for incompatible video", record)
+    else:
+        _log_with_upload_context(logging.INFO, "Skipping embed preview because upload is below preview size threshold", record)
 
 
 async def _mark_upload_failed(upload_id: str, error_message: str) -> bool:
     async with SessionLocal() as session:
         if not (record := await _get_upload_record(session, upload_id)):
-            logger.warning("Upload %s not found for processing", upload_id)
+            logger.warning("Upload %s not found for processing [dir=unknown]", upload_id)
             return False
 
         record.status = "failed"
@@ -136,13 +217,14 @@ async def _mark_upload_failed(upload_id: str, error_message: str) -> bool:
         record.meta_data["error"] = error_message
         attributes.flag_modified(record, "meta_data")
         await session.commit()
+        _log_with_upload_context(logging.ERROR, "Marked upload as failed: %s", record, error_message)
         return False
 
 
 async def _mark_upload_completed(upload_id: str, processing_state: SimpleNamespace, path: Path, ffprobe_data: dict | None) -> bool:
     async with SessionLocal() as session:
         if not (record := await _get_upload_record(session, upload_id)):
-            logger.warning("Upload %s not found for processing", upload_id)
+            logger.warning("Upload %s not found for processing [dir=unknown]", upload_id)
             return False
 
         record.storage_path = processing_state.storage_path
@@ -157,12 +239,12 @@ async def _mark_upload_completed(upload_id: str, processing_state: SimpleNamespa
 
             record.meta_data["ffprobe"] = ffprobe_data
             attributes.flag_modified(record, "meta_data")
-            logger.info("Extracted ffprobe metadata for upload %s", upload_id)
+            _log_with_upload_context(logging.INFO, "Extracted ffprobe metadata", processing_state)
 
         record.status = "completed"
         record.completed_at = datetime.now(UTC)
         await session.commit()
-        logger.info("Completed processing upload %s", upload_id)
+        _log_with_upload_context(logging.INFO, "Completed processing upload", processing_state)
         return True
 
 
@@ -182,7 +264,7 @@ class ProcessingQueue:
     async def enqueue(self, upload_id: str) -> None:
         """Add an upload to the processing queue."""
         await self._queue.put(upload_id)
-        logger.info("Enqueued upload %s for post-processing", upload_id)
+        logger.info("Enqueued upload %s for post-processing [dir=unknown]", upload_id)
 
     def start_worker(self) -> None:
         """Start the background worker pool if not already running."""
@@ -226,7 +308,7 @@ class ProcessingQueue:
                 try:
                     await self._process_upload_by_id(upload_id)
                 except Exception:
-                    logger.exception("Failed to process upload %s", upload_id)
+                    logger.exception("Failed to process upload %s [dir=unknown]", upload_id)
                 finally:
                     self._queue.task_done()
             except asyncio.CancelledError:
@@ -254,38 +336,38 @@ async def process_upload(upload_id: str) -> bool:
     """
     async with SessionLocal() as session:
         if not (record := await _get_upload_record(session, upload_id)):
-            logger.warning("Upload %s not found for processing", upload_id)
+            logger.warning("Upload %s not found for processing [dir=unknown]", upload_id)
             return False
 
         processing_state = _build_processing_state(record)
 
     if not processing_state.storage_path:
-        logger.error("Upload %s has no storage path", upload_id)
+        logger.error("Upload %s has no storage path [dir=unknown]", upload_id)
         return await _mark_upload_failed(upload_id, "No storage path")
 
     path = Path(processing_state.storage_path)
     if not path.exists():
-        logger.error("Upload %s file not found: %s", upload_id, path)
+        logger.error("Upload %s file not found: %s [dir=%s]", upload_id, path, path.parent.name or "unknown")
         return await _mark_upload_failed(upload_id, "File not found")
 
     try:
         ffprobe_data = None
         if processing_state.mimetype and is_multimedia(processing_state.mimetype):
-            logger.info("Processing multimedia upload %s", upload_id)
+            _log_with_upload_context(logging.INFO, "Processing multimedia upload", processing_state)
             path, ffprobe_data = await _apply_media_normalization(processing_state, path)
 
         if processing_state.size_bytes is None and path.exists():
             processing_state.size_bytes = path.stat().st_size
 
     except Exception:
-        logger.exception("Failed to process upload %s", upload_id)
+        _log_with_upload_context(logging.ERROR, "Failed to process upload", processing_state, exc_info=True)
         return await _mark_upload_failed(upload_id, "Post-processing failed")
 
     return await _mark_upload_completed(upload_id, processing_state, path, ffprobe_data)
 
 
 async def backfill_missing_video_thumbnails() -> int:
-    """Generate thumbnails for completed video uploads that predate thumbnail support."""
+    """Generate thumbnails and embed previews for completed video uploads missing sidecars."""
     async with SessionLocal() as session:
         stmt = (
             select(models.UploadRecord, models.UploadToken.expires_at)
@@ -293,18 +375,18 @@ async def backfill_missing_video_thumbnails() -> int:
             .where(models.UploadRecord.status == "completed")
         )
         result = await session.execute(stmt)
-        upload_ids = [
-            record.public_id
+        upload_targets = [
+            (record.public_id, not thumbnail_exists(record.storage_path), not preview_exists(record.storage_path))
             for record, expires_at in result.all()
             if record.storage_path
             and record.mimetype
             and record.mimetype.startswith("video/")
             and not _token_has_expired(expires_at)
-            and not thumbnail_exists(record.storage_path)
+            and (not thumbnail_exists(record.storage_path) or not preview_exists(record.storage_path))
         ]
 
-    generated_count = 0
-    for upload_id in upload_ids:
+    updated_count = 0
+    for upload_id, needs_thumbnail, needs_preview in upload_targets:
         async with SessionLocal() as session:
             stmt = (
                 select(models.UploadRecord, models.UploadToken.expires_at)
@@ -324,21 +406,54 @@ async def backfill_missing_video_thumbnails() -> int:
                 continue
 
             path = Path(record.storage_path)
+            ffprobe_data = record.meta_data.get("ffprobe") if isinstance(record.meta_data, dict) else None
 
         if not path.exists():
-            logger.warning("Skipping thumbnail backfill for upload %s because file is missing", upload_id)
+            logger.warning("Skipping sidecar backfill because file is missing [upload=%s dir=%s]", upload_id, path.parent.name or "unknown")
             continue
 
-        try:
-            thumbnail_path = await ensure_video_thumbnail(path)
-        except Exception:
-            logger.exception("Failed to backfill thumbnail for upload %s", upload_id)
-            continue
+        generated_any = False
+        if needs_thumbnail:
+            try:
+                thumbnail_path = await ensure_video_thumbnail(path)
+            except Exception:
+                logger.exception("Failed to backfill thumbnail [upload=%s dir=%s]", upload_id, path.parent.name or "unknown")
+            else:
+                if thumbnail_path is not None:
+                    generated_any = True
+                    logger.info("Backfilled thumbnail [upload=%s dir=%s]", upload_id, path.parent.name or "unknown")
+                else:
+                    logger.info(
+                        "Skipped thumbnail backfill because no thumbnail was generated [upload=%s dir=%s]",
+                        upload_id,
+                        path.parent.name or "unknown",
+                    )
 
-        if thumbnail_path is not None:
-            generated_count += 1
+        if needs_preview:
+            try:
+                preview_path = await ensure_video_preview(
+                    path,
+                    ffprobe_data=ffprobe_data,
+                    clip_seconds=settings.embed_preview_clip_seconds,
+                    min_size_bytes=settings.embed_preview_min_size_bytes,
+                )
+            except Exception:
+                logger.exception("Failed to backfill embed preview [upload=%s dir=%s]", upload_id, path.parent.name or "unknown")
+            else:
+                if preview_path is not None:
+                    generated_any = True
+                    logger.info("Backfilled embed preview [upload=%s dir=%s]", upload_id, path.parent.name or "unknown")
+                else:
+                    logger.info(
+                        "Skipped embed preview backfill because no preview was generated [upload=%s dir=%s]",
+                        upload_id,
+                        path.parent.name or "unknown",
+                    )
 
-    if generated_count > 0:
-        logger.info("Backfilled thumbnails for %s upload(s)", generated_count)
+        if generated_any:
+            updated_count += 1
 
-    return generated_count
+    if updated_count > 0:
+        logger.info("Backfilled media sidecars for %s upload(s)", updated_count)
+
+    return updated_count

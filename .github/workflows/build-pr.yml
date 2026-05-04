@@ -99,6 +99,10 @@ jobs:
           NODE_ENV: development
         run: bun nuxt prepare
 
+      - name: Run frontend format check
+        working-directory: frontend
+        run: bun run format:check
+
       - name: Run frontend linting
         working-directory: frontend
         run: bun run lint

@@ -15,7 +15,7 @@ async def test_create_token():
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         token_data = await create_token(client, max_uploads=2, max_size_bytes=12345)
 
-        assert "token" in token_data and "download_token" in token_data, "Response should include both token and download_token"
+        assert token_data["token"] != token_data["download_token"], "Upload and download tokens should be distinct"
         assert token_data["max_uploads"] == 2, "Token should have max_uploads set to 2"
 
         async with SessionLocal() as session:

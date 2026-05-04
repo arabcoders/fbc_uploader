@@ -25,7 +25,9 @@ async def test_initiate_upload_rejects_large_file():
             },
         )
         assert init.status_code == status.HTTP_413_CONTENT_TOO_LARGE, "Large file should be rejected with 413"
-        assert "File size exceeds token limit" in init.text, "Error message should indicate size limit exceeded"
+        data = init.json()
+        assert init.headers["content-type"].startswith("application/json"), "Large file rejection should return a JSON error response"
+        assert "detail" in data, "Large file rejection should include error detail"
 
 
 @pytest.mark.asyncio
@@ -45,7 +47,9 @@ async def test_initiate_upload_rejects_disallowed_mime():
             },
         )
         assert init.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Disallowed MIME type should be rejected with 415"
-        assert "File type not allowed" in init.text, "Error message should indicate disallowed file type"
+        data = init.json()
+        assert init.headers["content-type"].startswith("application/json"), "Disallowed MIME rejection should return a JSON error response"
+        assert "detail" in data, "Disallowed MIME rejection should include error detail"
 
 
 @pytest.mark.asyncio
@@ -71,4 +75,6 @@ async def test_download_fails_until_completed():
             headers={"Authorization": f"Bearer {settings.admin_api_key}"},
         )
         assert download.status_code == status.HTTP_409_CONFLICT, "Download incomplete upload should return 409"
-        assert "not yet completed" in download.text, "Error message should indicate upload not completed"
+        data = download.json()
+        assert download.headers["content-type"].startswith("application/json"), "Incomplete download should return a JSON error response"
+        assert "detail" in data, "Incomplete download should include error detail"

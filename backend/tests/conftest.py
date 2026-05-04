@@ -17,10 +17,11 @@ TEST_RUN_DIR = Path(tempfile.mkdtemp(prefix="run-", dir=str(TESTS_TMP_ROOT)))
 TEST_CONFIG_DIR = TEST_RUN_DIR / "config"
 TEST_STORAGE_DIR = TEST_RUN_DIR / "storage"
 TEST_FRONTEND_DIR = TEST_RUN_DIR / "frontend"
+TEST_SUBTITLE_DIR = TEST_RUN_DIR / "subtitles"
 TEST_TEMP_DIR = TEST_RUN_DIR / "tmp"
 TEST_FALLBACK_THUMBNAIL_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
 
-for path in (TEST_CONFIG_DIR, TEST_STORAGE_DIR, TEST_FRONTEND_DIR, TEST_TEMP_DIR):
+for path in (TEST_CONFIG_DIR, TEST_STORAGE_DIR, TEST_FRONTEND_DIR, TEST_SUBTITLE_DIR, TEST_TEMP_DIR):
     path.mkdir(parents=True, exist_ok=True)
 
 
@@ -38,6 +39,7 @@ tempfile.tempdir = str(TEST_TEMP_DIR)
 os.environ["FBC_CONFIG_PATH"] = str(TEST_CONFIG_DIR)
 os.environ["FBC_STORAGE_PATH"] = str(TEST_STORAGE_DIR)
 os.environ["FBC_FRONTEND_EXPORT_PATH"] = str(TEST_FRONTEND_DIR)
+os.environ["FBC_SUBTITLE_PATH"] = str(TEST_SUBTITLE_DIR)
 os.environ["FBC_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["FBC_ADMIN_API_KEY"] = "test-admin"
 os.environ["FBC_SKIP_MIGRATIONS"] = "1"

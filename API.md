@@ -25,6 +25,7 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [GET /api/tokens/{token\_value}/uploads](#get-apitokenstoken_valueuploads)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}](#get-apitokensdownload_tokenuploadsupload_id)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/stream](#get-apitokensdownload_tokenuploadsupload_idstream)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/preview.mp4](#get-apitokensdownload_tokenuploadsupload_idpreviewmp4)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/thumbnail](#get-apitokensdownload_tokenuploadsupload_idthumbnail)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
     - [POST /api/uploads/initiate](#post-apiuploadsinitiate)
@@ -35,6 +36,7 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [DELETE /api/uploads/{upload\_id}/cancel](#delete-apiuploadsupload_idcancel)
     - [POST /api/uploads/{upload\_id}/complete](#post-apiuploadsupload_idcomplete)
     - [GET /api/metadata/](#get-apimetadata)
+    - [POST /api/metadata/extract](#post-apimetadataextract)
     - [POST /api/metadata/validate](#post-apimetadatavalidate)
     - [GET /api/notice/](#get-apinotice)
     - [GET /api/admin/validate](#get-apiadminvalidate)
@@ -327,6 +329,7 @@ Get public token information including uploads.
       "meta_data": {"title": "My Document"},
       "upload_length": 1024000,
       "upload_offset": 1024000,
+      "recommended_chunk_bytes": 94371840,
       "status": "completed",
       "created_at": "2025-12-23T12:00:00Z",
       "completed_at": "2025-12-23T12:01:00Z",
@@ -344,6 +347,7 @@ Get public token information including uploads.
 - `max_chunk_bytes`: Maximum chunk size for TUS uploads (from `FBC_MAX_CHUNK_BYTES`)
 - `allow_public_downloads`: Whether public downloads are enabled
 - `uploads`: Array of upload records
+- `recommended_chunk_bytes`: Server-selected TUS chunk size to reuse for checksum-verified resume operations
 - `stream_url`: Inline media URL for browser playback when the upload is completed
 - `thumbnail_url`: Preview image URL for embeds and thumbnail-first media UIs
 
@@ -378,6 +382,7 @@ List all uploads for a specific token.
     "meta_data": {"title": "My Document"},
     "upload_length": 1024000,
     "upload_offset": 1024000,
+    "recommended_chunk_bytes": 94371840,
      "status": "completed",
       "created_at": "2025-12-23T12:00:00Z",
       "completed_at": "2025-12-23T12:01:00Z",
@@ -417,6 +422,7 @@ Get metadata information about a completed upload.
   },
   "upload_length": 1024000,
   "upload_offset": 1024000,
+  "recommended_chunk_bytes": 94371840,
   "status": "completed",
   "created_at": "2025-01-01T12:00:00Z",
   "completed_at": "2025-01-01T12:05:00Z",
@@ -434,6 +440,8 @@ Get metadata information about a completed upload.
 ---
 
 ### GET /api/tokens/{download_token}/uploads/{upload_id}/stream
+
+`HEAD` is also supported.
 
 Stream a completed file inline for browser playback.
 
@@ -459,7 +467,109 @@ Returns the file with headers:
 
 ---
 
+### GET /api/tokens/{download_token}/uploads/{upload_id}/subtitles
+
+List external subtitle tracks that match a completed upload filename.
+
+**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+
+**Path Parameters:**
+- `download_token` (string): The download token
+- `upload_id` (integer): The upload record ID
+
+**Response (200):**
+```json
+{
+  "subtitles": [
+    {
+      "source_format": "vtt",
+      "delivery_format": "vtt",
+      "renderer": "native",
+      "url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/subtitles/vtt"
+    },
+    {
+      "source_format": "ass",
+      "delivery_format": "ass",
+      "renderer": "assjs",
+      "url": "http://localhost:8000/api/tokens/fbc_token/uploads/rT72ZKGMPdldiEmA9eDI7kik/subtitles/ass"
+    }
+  ]
+}
+```
+
+**Notes:**
+- This endpoint only returns tracks discovered under `FBC_SUBTITLE_PATH`.
+- Discovery results are cached per upload for `FBC_SUBTITLE_CACHE_TTL_SECONDS`, including cases where no subtitles are found.
+- Results are ordered by renderer preference: `.vtt`, then `.srt`, then `.ass`.
+- `.srt` files are exposed here with `source_format: "srt"`, `delivery_format: "vtt"`, and `renderer: "native"`.
+- Duplicate matches for the same stem and extension are treated as ambiguous and omitted.
+
+**Error Responses:**
+- `404 Not Found` - Download token or upload not found
+- `409 Conflict` - Upload not yet completed
+
+---
+
+### GET /api/tokens/{download_token}/uploads/{upload_id}/subtitles/{source_format}
+
+`HEAD` is also supported.
+
+Return the selected subtitle content for a completed upload.
+
+**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+
+**Path Parameters:**
+- `download_token` (string): The download token
+- `upload_id` (integer): The upload record ID
+- `source_format` (string): One of `vtt`, `srt`, or `ass`
+
+**Response (200):**
+- `vtt`: `Content-Type: text/vtt`
+- `srt`: Converted on the fly and returned as `Content-Type: text/vtt`
+- `ass`: Returned as `Content-Type: text/x-ssa`
+
+**Error Responses:**
+- `404 Not Found` - Download token, upload, or subtitle not found
+- `409 Conflict` - Upload not yet completed
+
+**Notes:**
+- The share page uses `vtt` and converted `srt` as native browser subtitle tracks.
+- `.ass` subtitles are intended for ASS.js-based browser rendering.
+- Subtitle discovery is cached per upload, so newly added or removed subtitle files may take up to `FBC_SUBTITLE_CACHE_TTL_SECONDS` to appear.
+
+---
+
+### GET /api/tokens/{download_token}/uploads/{upload_id}/preview.mp4
+
+`HEAD` is also supported.
+
+Return a short MP4 preview clip for bot embeds when one has been generated.
+
+**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+
+**Path Parameters:**
+- `download_token` (string): The download token
+- `upload_id` (integer): The upload record ID
+
+**Response (200):**
+Returns the file with headers:
+- `Content-Type`: `video/mp4`
+- `Content-Disposition`: `inline; filename="..."`
+
+**Error Responses:**
+- `404 Not Found` - Download token, upload, or preview not found
+- `409 Conflict` - Upload not yet completed
+
+**Notes:**
+- Bot embed metadata may use this endpoint instead of the full stream for large videos that meet the preview size threshold.
+- Setting `FBC_EMBED_PREVIEW_MIN_SIZE_BYTES=0` disables preview sidecars and keeps embed metadata on the original `/stream` URL.
+- If no preview sidecar exists, embed metadata falls back to the original `/stream` URL.
+
+---
+
 ### GET /api/tokens/{download_token}/uploads/{upload_id}/thumbnail
+
+`HEAD` is also supported.
 
 Return a preview image for a completed upload.
 
@@ -480,12 +590,13 @@ Returns an image with headers:
 
 **Notes:**
 - Video uploads return a generated sidecar thumbnail when available
-- Uploads without a generated sidecar return the shared fallback image from the exported frontend assets
 - The same endpoint is used by social embeds and the thumbnail-first share page UI
 
 ---
 
 ### GET /api/tokens/{download_token}/uploads/{upload_id}/download
+
+`HEAD` is also supported.
 
 Download a completed file.
 
@@ -546,9 +657,12 @@ Initiate a new file upload.
     "category": "reports"
   },
   "allowed_mime": ["application/pdf"],
-  "remaining_uploads": 0
+  "remaining_uploads": 0,
+  "recommended_chunk_bytes": 1024000
 }
 ```
+
+- `recommended_chunk_bytes`: Server-selected TUS chunk size for this upload. Clients should use this value when sending checksum-verified PATCH requests and when resuming the upload.
 
 **Error Responses:**
 - `404 Not Found` - Token does not exist
@@ -777,9 +891,45 @@ Each field object can have:
 - `min`, `max` (number, optional): Numeric value constraints
 - `regex` (string, optional): Regular expression pattern for string validation
 - `default` (any, optional): Default value if not provided
+- `extract_regex` (string, optional): Python regular expression used by `/api/metadata/extract` to prefill metadata from a filename
 
 **Notes:**
 - Schema is loaded from `{config_path}/metadata.json`
+- `extract_regex` is interpreted with Python `re` syntax
+
+---
+
+### POST /api/metadata/extract
+
+Extract metadata values from a filename using the configured schema.
+
+**Authentication:** None
+
+**Request Body:**
+```json
+{
+  "filename": "240101 Example Show [youtube-dQw4w9WgXcQ].mp4"
+}
+```
+
+**Response (200):**
+```json
+{
+  "metadata": {
+    "broadcast_date": "2024-01-01",
+    "title": "Example Show",
+    "source": "youtube",
+    "source_id": "dQw4w9WgXcQ"
+  }
+}
+```
+
+**Extraction Rules:**
+1. Fields without `extract_regex` are ignored
+2. The regex is matched against the provided filename with case-insensitive search
+3. Capture group 1 is used when present; otherwise the full match is used
+4. For `date` fields, named groups `year`, `month`, and `day` are combined into `YYYY-MM-DD`
+5. Two-digit years are normalized to `20xx`
 
 ---
 
@@ -981,8 +1131,6 @@ Typical upload flow:
     GET /api/tokens/{download_token}/uploads/rT72ZKGMPdldiEmA9eDI7kik
     Authorization: Bearer YOUR_API_KEY
     ```
-
-After upload data is received, multimedia files enter background post-processing before they become `completed`. Browser-safe `video/mp4` and `video/webm` files are kept as-is. Compatible non-MP4 video containers may be copy-remuxed into MP4 without transcoding, which updates the stored filename, extension, MIME type, size, and ffprobe metadata to match the final file. Files larger than `FBC_MAX_REMUX_BYTES` skip remux and still complete normally.
 
 ---
 

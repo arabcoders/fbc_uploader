@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -67,8 +67,20 @@ class UploadRecordResponse(BaseModel):
     thumbnail_url: str | None = None
     upload_url: str | None = None
     info_url: str | None = None
+    recommended_chunk_bytes: int | None = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class SubtitleTrackResponse(BaseModel):
+    source_format: Literal["vtt", "srt", "ass"]
+    delivery_format: Literal["vtt", "ass"]
+    renderer: Literal["native", "assjs"]
+    url: str
+
+
+class SubtitleManifestResponse(BaseModel):
+    subtitles: list[SubtitleTrackResponse] = Field(default_factory=list)
 
 
 class TokenPublicInfo(BaseModel):
@@ -99,6 +111,14 @@ class UploadRequest(BaseModel):
     size_bytes: int | None = Field(None, gt=0)
 
 
+class MetadataExtractRequest(BaseModel):
+    filename: str = Field(..., min_length=1)
+
+
+class MetadataExtractResponse(BaseModel):
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class TokenListResponse(BaseModel):
     tokens: list[TokenAdmin]
     total: int
@@ -111,3 +131,4 @@ class InitiateUploadResponse(BaseModel):
     meta_data: dict[str, Any]
     allowed_mime: list[str] | None
     remaining_uploads: int
+    recommended_chunk_bytes: int

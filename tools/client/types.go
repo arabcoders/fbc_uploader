@@ -27,30 +27,32 @@ type TokenPublicInfo struct {
 }
 
 type UploadRecord struct {
-	PublicID     string          `json:"public_id"`
-	Filename     *string         `json:"filename"`
-	Ext          *string         `json:"ext"`
-	Mimetype     *string         `json:"mimetype"`
-	SizeBytes    *int64          `json:"size_bytes"`
-	MetaData     map[string]any  `json:"meta_data"`
-	UploadLength *int64          `json:"upload_length"`
-	UploadOffset int64           `json:"upload_offset"`
-	Status       string          `json:"status"`
-	CreatedAt    FlexibleTime    `json:"created_at"`
-	CompletedAt  *FlexibleTime   `json:"completed_at"`
-	DownloadURL  *string         `json:"download_url"`
-	StreamURL    *string         `json:"stream_url"`
-	UploadURL    *string         `json:"upload_url"`
-	InfoURL      *string         `json:"info_url"`
+	PublicID              string         `json:"public_id"`
+	Filename              *string        `json:"filename"`
+	Ext                   *string        `json:"ext"`
+	Mimetype              *string        `json:"mimetype"`
+	SizeBytes             *int64         `json:"size_bytes"`
+	MetaData              map[string]any `json:"meta_data"`
+	UploadLength          *int64         `json:"upload_length"`
+	UploadOffset          int64          `json:"upload_offset"`
+	RecommendedChunkBytes *int64         `json:"recommended_chunk_bytes"`
+	Status                string         `json:"status"`
+	CreatedAt             FlexibleTime   `json:"created_at"`
+	CompletedAt           *FlexibleTime  `json:"completed_at"`
+	DownloadURL           *string        `json:"download_url"`
+	StreamURL             *string        `json:"stream_url"`
+	UploadURL             *string        `json:"upload_url"`
+	InfoURL               *string        `json:"info_url"`
 }
 
 type InitiateUploadResponse struct {
-	UploadID         string         `json:"upload_id"`
-	UploadURL        string         `json:"upload_url"`
-	DownloadURL      string         `json:"download_url"`
-	MetaData         map[string]any `json:"meta_data"`
-	AllowedMime      []string       `json:"allowed_mime"`
-	RemainingUploads int            `json:"remaining_uploads"`
+	UploadID              string         `json:"upload_id"`
+	UploadURL             string         `json:"upload_url"`
+	DownloadURL           string         `json:"download_url"`
+	MetaData              map[string]any `json:"meta_data"`
+	AllowedMime           []string       `json:"allowed_mime"`
+	RemainingUploads      int            `json:"remaining_uploads"`
+	RecommendedChunkBytes int64          `json:"recommended_chunk_bytes"`
 }
 
 type CreateTokenRequest struct {
@@ -65,6 +67,14 @@ type UploadRequest struct {
 	Filename  string         `json:"filename,omitempty"`
 	Filetype  string         `json:"filetype,omitempty"`
 	SizeBytes int64          `json:"size_bytes"`
+}
+
+type MetadataExtractRequest struct {
+	Filename string `json:"filename"`
+}
+
+type MetadataExtractResponse struct {
+	Metadata map[string]any `json:"metadata"`
 }
 
 type CancelResponse struct {
@@ -89,13 +99,14 @@ type CreateCommandResult struct {
 }
 
 type UploadCommandResult struct {
-	UploadID       string       `json:"upload_id"`
-	DownloadToken  string       `json:"download_token"`
-	InfoURL        string       `json:"info_url"`
-	DownloadURL    string       `json:"download_url"`
-	ResumedFrom    int64        `json:"resumed_from"`
-	ChunkSizeBytes int64        `json:"chunk_size_bytes"`
-	Record         UploadRecord `json:"record"`
+	UploadID              string       `json:"upload_id"`
+	DownloadToken         string       `json:"download_token"`
+	InfoURL               string       `json:"info_url"`
+	DownloadURL           string       `json:"download_url"`
+	ResumedFrom           int64        `json:"resumed_from"`
+	ChunkSizeBytes        int64        `json:"chunk_size_bytes"`
+	RecommendedChunkBytes int64        `json:"recommended_chunk_bytes"`
+	Record                UploadRecord `json:"record"`
 }
 
 type DownloadCommandResult struct {

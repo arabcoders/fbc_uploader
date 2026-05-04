@@ -11,7 +11,7 @@ from sqlalchemy.engine.result import Result
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Select
 
-from backend.app import models, schemas, utils
+from backend.app import models, schemas, subtitles, utils
 from backend.app.config import settings
 from backend.app.db import SessionLocal, get_db
 from backend.app.security import optional_admin_check, verify_admin
@@ -35,8 +35,10 @@ def _generate_token_value(num_bytes: int, prefix: str = "") -> str:
 def _get_thumbnail_fallback_path() -> Path:
     repo_root = Path(__file__).resolve().parents[3]
     candidates = (
-        Path(settings.frontend_export_path).resolve() / "images" / "thumbnail-fallback.jpg",
         repo_root / "frontend" / "public" / "images" / "thumbnail-fallback.jpg",
+        repo_root / "frontend" / "app" / "assets" / "images" / "thumbnail-fallback.jpg",
+        Path(settings.frontend_export_path).resolve() / "images" / "thumbnail-fallback.jpg",
+        Path(settings.frontend_export_path).resolve() / "assets" / "images" / "thumbnail-fallback.jpg",
     )
 
     for candidate in candidates:
@@ -93,6 +95,33 @@ def _set_upload_urls(request: Request, item: schemas.UploadRecordResponse, downl
     item.thumbnail_url = str(request.app.url_path_for("get_file_thumbnail", download_token=download_token, upload_id=upload_id))
     item.upload_url = str(request.app.url_path_for("tus_head", upload_id=upload_id))
     item.info_url = str(request.app.url_path_for("get_file_info", download_token=download_token, upload_id=upload_id))
+    item.recommended_chunk_bytes = utils.recommend_chunk_size(item.upload_length, settings.max_chunk_bytes)
+
+
+def _build_subtitle_manifest(
+    request: Request,
+    download_token: str,
+    upload_id: str,
+    filename: str | None,
+) -> schemas.SubtitleManifestResponse:
+    subtitle_items = [
+        schemas.SubtitleTrackResponse(
+            source_format=track.source_format,
+            delivery_format=track.delivery_format,
+            renderer=track.renderer,
+            url=str(
+                request.app.url_path_for(
+                    "get_file_subtitle",
+                    download_token=download_token,
+                    upload_id=upload_id,
+                    source_format=track.source_format,
+                )
+            ),
+        )
+        for track in subtitles.list_subtitle_tracks(upload_id, filename)
+    ]
+
+    return schemas.SubtitleManifestResponse(subtitles=subtitle_items)
 
 
 @router.get("/", response_model=schemas.TokenListResponse, name="list_tokens")
@@ -412,8 +441,55 @@ async def get_file_info(
     return item
 
 
+@router.get(
+    "/{download_token}/uploads/{upload_id}/subtitles",
+    response_model=schemas.SubtitleManifestResponse,
+    name="list_file_subtitles",
+    summary="List upload subtitle tracks",
+)
+@router.get("/{download_token}/uploads/{upload_id}/subtitles/", response_model=schemas.SubtitleManifestResponse)
+async def list_file_subtitles(
+    request: Request,
+    download_token: str,
+    upload_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    is_admin: Annotated[bool, Depends(optional_admin_check)],
+) -> schemas.SubtitleManifestResponse:
+    """List external subtitle tracks that match a completed upload filename."""
+    _, record, _ = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+    return _build_subtitle_manifest(request, download_token, upload_id, record.filename)
+
+
+@router.get("/{download_token}/uploads/{upload_id}/subtitles/{source_format}", name="get_file_subtitle", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/subtitles/{source_format}", response_model=None)
+@router.get("/{download_token}/uploads/{upload_id}/subtitles/{source_format}/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/subtitles/{source_format}/", response_model=None)
+async def get_file_subtitle(
+    download_token: str,
+    upload_id: str,
+    source_format: str,
+    is_admin: Annotated[bool, Depends(optional_admin_check)],
+) -> Response:
+    """Return a matching subtitle file, converting SRT to WebVTT on demand."""
+    async with SessionLocal() as db:
+        _, record, _ = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+        track = subtitles.get_subtitle_track(upload_id, record.filename, source_format)
+
+    if track is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtitle not found")
+
+    try:
+        subtitle_content = subtitles.get_delivery_content(track)
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtitle not found") from exc
+
+    return Response(content=subtitle_content, media_type=subtitles.get_delivery_media_type(track))
+
+
 @router.get("/{download_token}/uploads/{upload_id}/thumbnail", name="get_file_thumbnail", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/thumbnail", response_model=None)
 @router.get("/{download_token}/uploads/{upload_id}/thumbnail/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/thumbnail/", response_model=None)
 async def get_file_thumbnail(
     download_token: str,
     upload_id: str,
@@ -444,8 +520,35 @@ async def get_file_thumbnail(
     )
 
 
+@router.get("/{download_token}/uploads/{upload_id}/preview.mp4", name="get_file_preview")
+@router.head("/{download_token}/uploads/{upload_id}/preview.mp4", response_model=None)
+@router.get("/{download_token}/uploads/{upload_id}/preview.mp4/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/preview.mp4/", response_model=None)
+async def get_file_preview(
+    download_token: str,
+    upload_id: str,
+    is_admin: Annotated[bool, Depends(optional_admin_check)],
+) -> FileResponse:
+    """Return a generated short MP4 preview for bot embeds when available."""
+    async with SessionLocal() as db:
+        _, _, path = await _get_accessible_upload(download_token, upload_id, db, is_admin)
+        preview_path = utils.get_preview_path(path)
+
+    if not preview_path.exists() or preview_path.stat().st_size == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Preview missing")
+
+    return FileResponse(
+        preview_path,
+        filename=preview_path.name,
+        media_type=utils.PREVIEW_MEDIA_TYPE,
+        content_disposition_type="inline",
+    )
+
+
 @router.get("/{download_token}/uploads/{upload_id}/stream", name="stream_file")
-@router.get("/{download_token}/uploads/{upload_id}/stream/")
+@router.head("/{download_token}/uploads/{upload_id}/stream", response_model=None)
+@router.get("/{download_token}/uploads/{upload_id}/stream/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/stream/", response_model=None)
 async def stream_file(
     download_token: str,
     upload_id: str,
@@ -466,7 +569,9 @@ async def stream_file(
 
 
 @router.get("/{download_token}/uploads/{upload_id}/download", name="download_file")
-@router.get("/{download_token}/uploads/{upload_id}/download/")
+@router.head("/{download_token}/uploads/{upload_id}/download", response_model=None)
+@router.get("/{download_token}/uploads/{upload_id}/download/", response_model=None)
+@router.head("/{download_token}/uploads/{upload_id}/download/", response_model=None)
 async def download_file(
     download_token: str,
     upload_id: str,

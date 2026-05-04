@@ -14,6 +14,25 @@ import (
 	"strings"
 )
 
+func chooseUploadChunkSize(configuredChunkSize int64, tokenMaxChunkBytes int64, preferredChunkSize int64) (int64, error) {
+	chunkSize := tokenMaxChunkBytes
+	if configuredChunkSize > 0 {
+		chunkSize = configuredChunkSize
+	}
+	if preferredChunkSize > 0 {
+		chunkSize = preferredChunkSize
+	}
+
+	if chunkSize <= 0 {
+		return 0, fmt.Errorf("chunk size must be greater than zero")
+	}
+	if chunkSize > tokenMaxChunkBytes {
+		return 0, fmt.Errorf("chunk size %d exceeds server max %d", chunkSize, tokenMaxChunkBytes)
+	}
+
+	return chunkSize, nil
+}
+
 func runUploadCommand(ctx context.Context, args []string) error {
 	var cfg CommandConfig
 	fs := flag.NewFlagSet("upload", flag.ContinueOnError)
@@ -29,7 +48,7 @@ func runUploadCommand(ctx context.Context, args []string) error {
 	var metadataEntries metadataFlag
 	fs.Var(&metadataEntries, "metadata", "Metadata entry as key=value; repeat for nested paths like series.title=Example")
 	declaredFileType := fs.String("filetype", "", "Optional MIME type to declare during initiation")
-	chunkSizeRaw := fs.String("chunk-size", defaultUploadChunkRaw, "Chunk size for each PATCH request")
+	chunkSizeRaw := fs.String("chunk-size", defaultUploadChunkRaw, "Override PATCH chunk size; defaults to the server recommendation")
 	setUsage(fs, "fbc upload --token <upload-token> --file ./path [options]", "Uses server-side HEAD responses as the source of truth for resume.", "Metadata sources can be combined. --metadata entries override keys from --metadata-file or --metadata-json.")
 
 	if err := fs.Parse(args); err != nil {
@@ -71,9 +90,13 @@ func runUploadCommand(ctx context.Context, args []string) error {
 		return fmt.Errorf("file size must be greater than zero")
 	}
 
-	configuredChunkSize, err := parseByteSize(*chunkSizeRaw)
-	if err != nil {
-		return fmt.Errorf("parse --chunk-size: %w", err)
+	chunkSizeOverride := strings.TrimSpace(*chunkSizeRaw) != ""
+	configuredChunkSize := int64(0)
+	if chunkSizeOverride {
+		configuredChunkSize, err = parseByteSize(*chunkSizeRaw)
+		if err != nil {
+			return fmt.Errorf("parse --chunk-size: %w", err)
+		}
 	}
 
 	client, err := NewClient(cfg.BaseURL, cfg.APIKey)
@@ -88,20 +111,21 @@ func runUploadCommand(ctx context.Context, args []string) error {
 	if tokenInfo.Token == nil {
 		return fmt.Errorf("token %q is not an upload token", *token)
 	}
-	if configuredChunkSize > tokenInfo.MaxChunkBytes {
-		return fmt.Errorf("chunk size %d exceeds server max %d", configuredChunkSize, tokenInfo.MaxChunkBytes)
-	}
-	chunkSize, err := intFromInt64(configuredChunkSize, "chunk size")
-	if err != nil {
-		return err
-	}
 
 	resolvedUploadID := strings.TrimSpace(*uploadID)
+	selectedChunkSize := configuredChunkSize
+	recommendedChunkSize := int64(0)
 	if resolvedUploadID == "" {
+		extractedMetadata, err := client.ExtractMetadata(ctx, filepath.Base(*filePath))
+		if err != nil {
+			return err
+		}
+
 		metadata, err := loadCombinedMetadata(*metadataFile, *metadataJSON, []string(metadataEntries))
 		if err != nil {
 			return err
 		}
+		metadata = mergeMetadata(extractedMetadata, metadata)
 
 		initResponse, err := client.InitiateUpload(ctx, *token, UploadRequest{
 			MetaData:  metadata,
@@ -114,9 +138,35 @@ func runUploadCommand(ctx context.Context, args []string) error {
 		}
 
 		resolvedUploadID = initResponse.UploadID
+		recommendedChunkSize = initResponse.RecommendedChunkBytes
 		fmt.Fprintf(os.Stderr, "Started upload %s\n", resolvedUploadID)
 	} else if strings.TrimSpace(*metadataFile) != "" || strings.TrimSpace(*metadataJSON) != "" || len(metadataEntries) > 0 {
 		fmt.Fprintln(os.Stderr, "Ignoring metadata flags because --upload-id resumes an existing upload")
+		for _, upload := range tokenInfo.Uploads {
+			if upload.PublicID == resolvedUploadID {
+				if upload.RecommendedChunkBytes != nil {
+					recommendedChunkSize = *upload.RecommendedChunkBytes
+				}
+				break
+			}
+		}
+	}
+
+	if !chunkSizeOverride {
+		selectedChunkSize, err = chooseUploadChunkSize(0, tokenInfo.MaxChunkBytes, recommendedChunkSize)
+		if err != nil {
+			return err
+		}
+	} else {
+		selectedChunkSize, err = chooseUploadChunkSize(configuredChunkSize, tokenInfo.MaxChunkBytes, 0)
+		if err != nil {
+			return err
+		}
+	}
+
+	chunkSize, err := intFromInt64(selectedChunkSize, "chunk size")
+	if err != nil {
+		return err
 	}
 
 	headInfo, err := client.HeadUpload(ctx, resolvedUploadID)
@@ -170,13 +220,14 @@ func runUploadCommand(ctx context.Context, args []string) error {
 	}
 
 	result := UploadCommandResult{
-		UploadID:       resolvedUploadID,
-		DownloadToken:  tokenInfo.DownloadToken,
-		InfoURL:        client.ResolveString(fileInfoPath(tokenInfo.DownloadToken, resolvedUploadID)),
-		DownloadURL:    client.ResolveString(fileDownloadPath(tokenInfo.DownloadToken, resolvedUploadID)),
-		ResumedFrom:    headInfo.Offset,
-		ChunkSizeBytes: configuredChunkSize,
-		Record:         record,
+		UploadID:              resolvedUploadID,
+		DownloadToken:         tokenInfo.DownloadToken,
+		InfoURL:               client.ResolveString(fileInfoPath(tokenInfo.DownloadToken, resolvedUploadID)),
+		DownloadURL:           client.ResolveString(fileDownloadPath(tokenInfo.DownloadToken, resolvedUploadID)),
+		ResumedFrom:           headInfo.Offset,
+		ChunkSizeBytes:        selectedChunkSize,
+		RecommendedChunkBytes: recommendedChunkSize,
+		Record:                record,
 	}
 
 	if cfg.JSON {

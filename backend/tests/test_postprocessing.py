@@ -14,7 +14,7 @@ from sqlalchemy import select
 from backend.app import models
 from backend.app.db import SessionLocal
 from backend.app.postprocessing import ProcessingQueue, backfill_missing_video_thumbnails, process_upload
-from backend.app.utils import get_thumbnail_path
+from backend.app.utils import get_preview_path, get_thumbnail_path
 from backend.tests.utils import create_token, initiate_upload, upload_file_via_tus
 
 
@@ -416,12 +416,79 @@ async def test_postprocessing_logs_reason_when_remux_is_rejected(caplog):
 
             log_messages = [record.message for record in caplog.records if record.name == "backend.app.postprocessing"]
             assert any(
-                "Skipping MP4 remux for upload postprocess_remux_skip_reason_test because it contains unsupported non-audio/video streams: subtitle (ass)"
+                "Skipping MP4 remux because it contains unsupported non-audio/video streams: subtitle (ass) [upload=postprocess_remux_skip_reason_test dir="
                 in message
                 for message in log_messages
             ), "Rejected remuxes should log the unsupported subtitle stream reason"
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_postprocessing_logs_directory_name_for_success_and_refusal(caplog):
+    """Post-processing logs should include the upload directory name for successful operations and refusals."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        token_dir = Path(tmp_dir) / "token-dir-abc"
+        token_dir.mkdir(parents=True, exist_ok=True)
+        temp_path = token_dir / "sample.mkv"
+        temp_path.write_bytes(b"fake mkv bytes")
+
+        ffprobe_with_subtitles = {
+            "format": {"format_name": "matroska,webm", "duration": "1.0"},
+            "streams": [
+                {"codec_type": "video", "codec_name": "h264", "width": 1280, "height": 720},
+                {"codec_type": "audio", "codec_name": "aac"},
+                {"codec_type": "subtitle", "codec_name": "ass"},
+            ],
+        }
+
+        async with SessionLocal() as session:
+            expires_at = datetime.now(UTC) + timedelta(days=1)
+            token = models.UploadToken(
+                token="test_token_log_dir",
+                download_token="test_download_log_dir",
+                max_uploads=1,
+                max_size_bytes=1000000,
+                expires_at=expires_at,
+            )
+            session.add(token)
+            await session.flush()
+
+            record = models.UploadRecord(
+                public_id="postprocess_log_dir_test",
+                token_id=token.id,
+                filename="sample.mkv",
+                ext="mkv",
+                mimetype="video/x-matroska",
+                size_bytes=temp_path.stat().st_size,
+                status="postprocessing",
+                storage_path=str(temp_path),
+            )
+            session.add(record)
+            await session.commit()
+
+            with (
+                patch("backend.app.postprocessing.extract_ffprobe_metadata", new=AsyncMock(return_value=ffprobe_with_subtitles)),
+                patch("backend.app.postprocessing.ensure_video_thumbnail", new=AsyncMock(return_value=None)),
+                patch("backend.app.postprocessing.ensure_video_preview", new=AsyncMock(return_value=None)),
+                caplog.at_level(logging.INFO, logger="backend.app.postprocessing"),
+            ):
+                success = await process_upload(record.public_id)
+
+            assert success is True, "Processing should still complete when remux is refused"
+
+        log_messages = [record.message for record in caplog.records if record.name == "backend.app.postprocessing"]
+        assert any(
+            "Processing multimedia upload [upload=postprocess_log_dir_test dir=token-dir-abc]" in message for message in log_messages
+        ), "Processing start logs should include the directory name"
+        assert any(
+            "Skipping MP4 remux because it contains unsupported non-audio/video streams: subtitle (ass) [upload=postprocess_log_dir_test dir=token-dir-abc]"
+            in message
+            for message in log_messages
+        ), "Refusal logs should include the directory name"
+        assert any(
+            "Completed processing upload [upload=postprocess_log_dir_test dir=token-dir-abc]" in message for message in log_messages
+        ), "Success logs should include the directory name"
 
 
 @pytest.mark.asyncio
@@ -460,13 +527,15 @@ async def test_processing_queue_can_run_multiple_uploads_concurrently():
 
 @pytest.mark.asyncio
 async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_path):
-    """Startup thumbnail backfill should skip expired videos and only process eligible missing sidecars."""
+    """Startup sidecar backfill should skip expired videos and only process eligible missing sidecars."""
     video_path = tmp_path / "video.mp4"
     video_path.write_bytes(b"video-bytes")
     existing_path = tmp_path / "existing.mp4"
     existing_path.write_bytes(b"existing-video-bytes")
     existing_thumbnail = get_thumbnail_path(existing_path)
     existing_thumbnail.write_bytes(b"thumb")
+    existing_preview = get_preview_path(existing_path)
+    existing_preview.write_bytes(b"preview")
     expired_path = tmp_path / "expired.mp4"
     expired_path.write_bytes(b"expired-video-bytes")
     text_path = tmp_path / "doc.txt"
@@ -502,6 +571,7 @@ async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_
                     mimetype="video/mp4",
                     status="completed",
                     storage_path=str(video_path),
+                    meta_data={"ffprobe": {"format": {"duration": "600.0"}}},
                 ),
                 models.UploadRecord(
                     public_id="has-thumb",
@@ -510,6 +580,7 @@ async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_
                     mimetype="video/mp4",
                     status="completed",
                     storage_path=str(existing_path),
+                    meta_data={"ffprobe": {"format": {"duration": "600.0"}}},
                 ),
                 models.UploadRecord(
                     public_id="expired-video",
@@ -518,6 +589,7 @@ async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_
                     mimetype="video/mp4",
                     status="completed",
                     storage_path=str(expired_path),
+                    meta_data={"ffprobe": {"format": {"duration": "600.0"}}},
                 ),
                 models.UploadRecord(
                     public_id="not-video",
@@ -532,8 +604,20 @@ async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_
         await session.commit()
 
     generated_thumbnail = get_thumbnail_path(video_path)
-    with patch("backend.app.postprocessing.ensure_video_thumbnail", new=AsyncMock(return_value=generated_thumbnail)) as ensure_thumb:
+    generated_preview = get_preview_path(video_path)
+    with (
+        patch("backend.app.postprocessing.settings.embed_preview_clip_seconds", 10),
+        patch("backend.app.postprocessing.settings.embed_preview_min_size_bytes", 195 * 1024 * 1024),
+        patch("backend.app.postprocessing.ensure_video_thumbnail", new=AsyncMock(return_value=generated_thumbnail)) as ensure_thumb,
+        patch("backend.app.postprocessing.ensure_video_preview", new=AsyncMock(return_value=generated_preview)) as ensure_preview,
+    ):
         generated_count = await backfill_missing_video_thumbnails()
 
-    assert generated_count == 1, "Backfill should only generate thumbnails for completed videos missing a sidecar"
+    assert generated_count == 1, "Backfill should only generate sidecars for eligible completed videos"
     ensure_thumb.assert_awaited_once_with(video_path)
+    ensure_preview.assert_awaited_once_with(
+        video_path,
+        ffprobe_data={"format": {"duration": "600.0"}},
+        clip_seconds=10,
+        min_size_bytes=195 * 1024 * 1024,
+    )

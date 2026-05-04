@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -177,3 +178,41 @@ def validate_metadata(values: dict[str, Any]) -> dict[str, Any]:
         cleaned[key] = val.isoformat() if isinstance(val, (datetime, date)) else val
 
     return cleaned
+
+
+def extract_metadata_from_filename(filename: str) -> dict[str, Any]:
+    """
+    Extract metadata values from a filename using the configured schema.
+
+    Args:
+        filename (str): Filename to inspect.
+
+    Returns:
+        dict[str, Any]: Extracted metadata values.
+
+    """
+    schema: list[dict] = load_schema()
+    extracted: dict[str, Any] = {}
+
+    for field in schema:
+        regex: str | None = field.get("extract_regex")
+        if not regex:
+            continue
+
+        match = re.search(regex, filename, flags=re.IGNORECASE)
+        if not match:
+            continue
+
+        value: Any = match.group(1) if match.lastindex else match.group(0)
+        if field.get("type") == "date":
+            groups = match.groupdict()
+            year = groups.get("year")
+            month = groups.get("month")
+            day = groups.get("day")
+            if year and month and day:
+                full_year = f"20{year}" if len(year) == 2 else year
+                value = f"{full_year}-{month}-{day}"
+
+        extracted[field["key"]] = value
+
+    return extracted

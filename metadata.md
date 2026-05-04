@@ -54,17 +54,19 @@ Each field supports the following properties.
 
 ---
 
-### Frontend Extraction (Optional)
+### Filename Extraction (Optional)
 
 * **`extract_regex`**
-  Optional regular expression applied to the uploaded filename to prefill the field.
+  Optional Python regular expression applied to the uploaded filename to prefill the field.
   If the pattern matches, capture group 1 is used; otherwise, the full match is used.
+  For `date` fields, named groups `year`, `month`, and `day` are combined into `YYYY-MM-DD`.
 
 ---
 
 ## Behavior
 
 * The active schema is exposed via **`GET /api/metadata`**.
+* Filename extraction is available via **`POST /api/metadata/extract`**.
 * During upload initiation, metadata is validated server-side against the schema.
-* The frontend mirrors the same validation rules and applies `extract_regex` for prefilling fields.
+* The frontend and CLI both use the extraction endpoint for filename-based prefilling.
 * Metadata is stored per upload as JSON in the `meta_data` field.

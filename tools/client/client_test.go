@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
@@ -40,6 +44,46 @@ func TestParseByteSize(t *testing.T) {
 
 			if got != testCase.want {
 				t.Fatalf("parseByteSize(%q) = %d, want %d", testCase.raw, got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestChooseUploadChunkSize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		configured int64
+		tokenMax   int64
+		preferred  int64
+		want       int64
+		wantErr    bool
+	}{
+		{name: "uses preferred chunk size", configured: 0, tokenMax: 90, preferred: 64, want: 64},
+		{name: "falls back to token max", configured: 0, tokenMax: 90, preferred: 0, want: 90},
+		{name: "uses explicit override", configured: 32, tokenMax: 90, preferred: 0, want: 32},
+		{name: "rejects oversized override", configured: 128, tokenMax: 90, preferred: 0, wantErr: true},
+	}
+
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := chooseUploadChunkSize(testCase.configured, testCase.tokenMax, testCase.preferred)
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatalf("chooseUploadChunkSize unexpectedly succeeded")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("chooseUploadChunkSize returned error: %v", err)
+			}
+			if got != testCase.want {
+				t.Fatalf("chooseUploadChunkSize = %d, want %d", got, testCase.want)
 			}
 		})
 	}
@@ -163,6 +207,72 @@ func TestLoadCombinedMetadataRejectsPathConflict(t *testing.T) {
 	_, err := loadCombinedMetadata("", `{"series":"plain"}`, []string{"series.title=Updated"})
 	if err == nil {
 		t.Fatalf("loadCombinedMetadata unexpectedly succeeded for conflicting metadata path")
+	}
+}
+
+func TestMergeMetadataUsesOverlayValues(t *testing.T) {
+	t.Parallel()
+
+	merged := mergeMetadata(
+		map[string]any{"title": "Auto", "series": map[string]any{"episode": int64(1)}},
+		map[string]any{"title": "Manual", "published": true},
+	)
+
+	if got := merged["title"]; got != "Manual" {
+		t.Fatalf("title = %#v, want Manual", got)
+	}
+	if got := merged["published"]; got != true {
+		t.Fatalf("published = %#v, want true", got)
+	}
+	series, ok := merged["series"].(map[string]any)
+	if !ok {
+		t.Fatalf("series was not an object: %#v", merged["series"])
+	}
+	if got := series["episode"]; got != int64(1) {
+		t.Fatalf("series.episode = %#v, want int64(1)", got)
+	}
+}
+
+func TestClientExtractMetadata(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/metadata/extract" {
+			t.Fatalf("path = %s, want /api/metadata/extract", r.URL.Path)
+		}
+
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll returned error: %v", err)
+		}
+
+		var payload MetadataExtractRequest
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatalf("json.Unmarshal returned error: %v", err)
+		}
+		if payload.Filename != "example.mp4" {
+			t.Fatalf("filename = %q, want example.mp4", payload.Filename)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"metadata":{"title":"Example Show"}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	metadata, err := client.ExtractMetadata(context.Background(), "example.mp4")
+	if err != nil {
+		t.Fatalf("ExtractMetadata returned error: %v", err)
+	}
+	if !reflect.DeepEqual(metadata, map[string]any{"title": "Example Show"}) {
+		t.Fatalf("metadata = %#v, want map[title:Example Show]", metadata)
 	}
 }
 

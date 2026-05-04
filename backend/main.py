@@ -19,6 +19,7 @@ def main() -> None:
         port=8000,
         reload=bool(os.getenv("FBC_DEV_MODE", "0") == "1"),
         proxy_headers=False,
+        server_header=False,
     )
 
 

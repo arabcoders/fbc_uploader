@@ -12,6 +12,9 @@
     {% if description %}
     <meta property="og:description" content="{{ description }}" />
     {% endif %}
+    {% if uses_preview_clip %}
+    <meta name="fbc:preview-mode" content="generated-short-clip" />
+    {% endif %}
 
     <meta property="og:image" content="{{ thumbnail_url }}" />
     <meta property="og:image:url" content="{{ thumbnail_url }}" />
@@ -20,9 +23,9 @@
     <meta property="og:image:height" content="630" />
 
     {% if is_video %}
-    <meta property="og:video" content="{{ media_url }}" />
-    <meta property="og:video:url" content="{{ media_url }}" />
-    <meta property="og:video:secure_url" content="{{ media_url }}" />
+    <meta property="og:video" content="{{ embed_media_url }}" />
+    <meta property="og:video:url" content="{{ embed_media_url }}" />
+    <meta property="og:video:secure_url" content="{{ embed_media_url }}" />
     <meta property="og:video:type" content="{{ mime_type }}" />
     {% if width %}
     <meta property="og:video:width" content="{{ width }}" />
@@ -46,6 +49,15 @@
     <meta name="twitter:description" content="{{ description }}" />
     {% endif %}
     <meta name="twitter:image" content="{{ thumbnail_url }}" />
+    {% if is_video %}
+    <meta name="twitter:player" content="{{ embed_media_url }}" />
+    {% if width %}
+    <meta name="twitter:player:width" content="{{ width }}" />
+    {% endif %}
+    {% if height %}
+    <meta name="twitter:player:height" content="{{ height }}" />
+    {% endif %}
+    {% endif %}
 
     <style>
         * {

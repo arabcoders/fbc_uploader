@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     database_url: str | None = Field(None, validation_alias="FBC_DATABASE_URL")
     admin_api_key: str = Field("change-me", validation_alias="FBC_ADMIN_API_KEY")
     storage_path: str = Field("./data/uploads", validation_alias="FBC_STORAGE_PATH")
+    subtitle_path: str | None = Field(None, validation_alias="FBC_SUBTITLE_PATH")
+    subtitle_cache_ttl_seconds: int = Field(600, ge=0, validation_alias="FBC_SUBTITLE_CACHE_TTL_SECONDS")
     frontend_export_path: str = Field("./frontend/exported", validation_alias="FBC_FRONTEND_EXPORT_PATH")
     public_base_url: str | None = Field(default=None, validation_alias="FBC_PUBLIC_BASE_URL")
     default_token_ttl_hours: int = Field(24, ge=1, le=24 * 30)
@@ -25,6 +27,8 @@ class Settings(BaseSettings):
     max_chunk_bytes: int = Field(90 * 1024 * 1024, validation_alias="FBC_MAX_CHUNK_BYTES")
     max_remux_bytes: int = Field(5 * 1024 * 1024 * 1024, validation_alias="FBC_MAX_REMUX_BYTES")
     postprocessing_workers: int = Field(4, ge=1, validation_alias="FBC_POSTPROCESSING_WORKERS")
+    embed_preview_clip_seconds: int = Field(180, ge=0, le=600, validation_alias="FBC_EMBED_PREVIEW_CLIP_SECONDS")
+    embed_preview_min_size_bytes: int = Field(195 * 1024 * 1024, ge=0, validation_alias="FBC_EMBED_PREVIEW_MIN_SIZE_BYTES")
     allow_public_downloads: bool = Field(False, validation_alias="FBC_ALLOW_PUBLIC_DOWNLOADS")
     trust_proxy_headers: bool = Field(False, validation_alias="FBC_TRUST_PROXY_HEADERS")
     forwarded_allow_ips: str = Field("127.0.0.1,::1", validation_alias="FBC_FORWARDED_ALLOW_IPS")
@@ -34,6 +38,13 @@ class Settings(BaseSettings):
     def model_post_init(self, _) -> None:
         cfg_dir: Path = Path(self.config_path).expanduser().resolve()
         cfg_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.subtitle_path:
+            subtitle_dir = Path(self.subtitle_path).expanduser().resolve()
+            if not subtitle_dir.exists() or not subtitle_dir.is_dir():
+                msg = "FBC_SUBTITLE_PATH must point to an existing directory"
+                raise ValueError(msg)
+            self.subtitle_path = str(subtitle_dir)
 
         if not self.database_url:
             default_db_path: Path = cfg_dir / "fbc.db"
