@@ -1,4 +1,12 @@
-import { getCurrentScope, onScopeDispose, ref, watch, type MaybeRefOrGetter, toValue } from 'vue';
+import {
+  getCurrentScope,
+  onScopeDispose,
+  ref,
+  watch,
+  type MaybeRefOrGetter,
+  type Ref,
+  toValue,
+} from 'vue';
 import {
   clampMediaTime,
   clampMediaVolume,
@@ -12,13 +20,14 @@ type UseSharePlayerShortcutsOptions = {
   videoElement: MaybeRefOrGetter<HTMLVideoElement | null>;
   adjustVolume?: (delta: number) => void;
   canToggleSubtitles: MaybeRefOrGetter<boolean>;
+  shortcutHelpOpen?: Ref<boolean>;
   toggleSubtitles: () => void;
   toggleFullscreen: () => Promise<void> | void;
   toggleMute?: () => void;
 };
 
 export function useSharePlayerShortcuts(options: UseSharePlayerShortcutsOptions) {
-  const showShortcutHelp = ref(false);
+  const showShortcutHelp = options.shortcutHelpOpen || ref(false);
 
   function togglePlayPause(media: HTMLMediaElement) {
     if (media.paused) {

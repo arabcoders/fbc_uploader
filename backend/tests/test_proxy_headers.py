@@ -106,4 +106,5 @@ def test_server_entrypoint_disables_uvicorn_proxy_headers_by_default(monkeypatch
         port=8000,
         reload=False,
         proxy_headers=False,
+        server_header=False,
     )
