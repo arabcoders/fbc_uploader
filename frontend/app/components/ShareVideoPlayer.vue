@@ -64,7 +64,7 @@
       @pause="handleVideoPause"
       @click="handleVideoClick"
       @dblclick="handleVideoDoubleClick"
-      @pointermove="showCustomControls"
+      @pointermove="handleDesktopPointerMove"
       @resize="scheduleAssLayoutRefresh"
       @volumechange="handleMediaVolumeChange"
       @webkitbeginfullscreen="handleVideoWebkitBeginFullscreen"
@@ -84,25 +84,11 @@
     </video>
 
     <button
-      v-if="active && shouldEnableMobileSeekZones"
-      type="button"
-      class="absolute inset-y-0 left-0 z-10 w-1/3"
-      aria-label="Back 10 seconds"
-      @click="seekBy(-10)"
-    />
-    <button
       v-if="active && isTouchDevice"
       type="button"
-      class="absolute inset-y-0 left-1/3 z-10 w-1/3"
+      class="absolute inset-0 z-10"
       :aria-label="customControlsVisible ? 'Hide controls' : 'Show controls'"
       @click="toggleCustomControlsVisibility"
-    />
-    <button
-      v-if="active && shouldEnableMobileSeekZones"
-      type="button"
-      class="absolute inset-y-0 right-0 z-10 w-1/3"
-      aria-label="Forward 10 seconds"
-      @click="seekBy(10)"
     />
 
     <div
@@ -113,37 +99,16 @@
     />
 
     <div
-      v-if="active && shouldEnableMobileSeekZones && customControlsVisible"
-      class="pointer-events-none absolute inset-y-0 left-0 z-20 flex w-1/3 items-center justify-start px-5"
-    >
-      <div
-        class="rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm"
-      >
-        -10s
-      </div>
-    </div>
-    <div
-      v-if="active && shouldEnableMobileSeekZones && customControlsVisible"
-      class="pointer-events-none absolute inset-y-0 right-0 z-20 flex w-1/3 items-center justify-end px-5"
-    >
-      <div
-        class="rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm"
-      >
-        +10s
-      </div>
-    </div>
-
-    <div
       v-if="active"
-      class="absolute inset-x-0 bottom-0 z-30 bg-linear-to-t from-black/65 via-black/30 to-transparent px-3 pb-3 pt-10 text-white transition-opacity duration-150"
+      class="absolute inset-x-0 bottom-0 z-30 bg-linear-to-t from-black/40 via-black/10 to-transparent px-2.5 pb-2.5 pt-6 text-white transition-opacity duration-150 sm:px-3 sm:pb-3 sm:pt-8"
       :class="customControlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'"
       @click.self="toggleCustomControlsVisibility"
       @pointermove="showCustomControls"
     >
       <div
-        class="rounded-2xl border border-white/8 bg-black/18 p-2.5 shadow-lg backdrop-blur-sm sm:p-3"
+        class="rounded-sm border border-white/6 bg-black/10 p-2 shadow-sm backdrop-blur-[2px] sm:p-2.5"
       >
-        <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <div class="sm:min-w-0 sm:flex-1">
             <input
               :value="customVideoProgress"
@@ -151,13 +116,15 @@
               min="0"
               max="1000"
               step="1"
-              class="h-1.5 w-full accent-white opacity-70 transition-opacity hover:opacity-100"
+              class="h-1.5 w-full accent-white opacity-60 transition-opacity hover:opacity-100"
               aria-label="Seek video"
               @input="handleCustomVideoSeek"
             />
           </div>
-          <div class="flex items-center justify-between gap-2 sm:shrink-0 sm:justify-end">
-            <div class="flex min-w-0 items-center gap-2">
+          <div
+            class="flex flex-col gap-2 sm:shrink-0 sm:flex-row sm:items-center sm:justify-end sm:gap-3"
+          >
+            <div class="flex min-w-0 items-center gap-2 sm:justify-start">
               <UButton
                 color="neutral"
                 variant="soft"
@@ -169,7 +136,7 @@
                 :aria-label="isCustomVideoPaused ? 'Play video' : 'Pause video'"
                 @click="toggleCustomVideoPlayback"
               />
-              <div class="min-w-0 whitespace-nowrap text-xs font-medium text-white/70">
+              <div class="min-w-0 truncate text-xs font-medium text-white/70">
                 {{ customVideoTimeLabel }}
               </div>
             </div>
@@ -193,7 +160,7 @@
                 min="0"
                 max="100"
                 step="1"
-                class="w-20 accent-white opacity-70 transition-opacity hover:opacity-100"
+                class="min-w-0 flex-1 accent-white opacity-60 transition-opacity hover:opacity-100 sm:w-20 sm:flex-none"
                 aria-label="Video volume"
                 @input="handleCustomVideoVolumeChange"
               />
@@ -298,9 +265,6 @@ const customVideoTimeLabel = computed(() => {
     ? formatDuration(Math.round(customVideoDuration.value))
     : '--:--';
   return `${currentLabel} / ${durationLabel}`;
-});
-const shouldEnableMobileSeekZones = computed(() => {
-  return Boolean(isTouchDevice.value && isPlaying.value);
 });
 const usesMediaGainVolumeFallback = computed(() => {
   return Boolean(isTouchDevice.value && getAudioContextConstructor());
@@ -457,6 +421,21 @@ function handleVideoPause() {
   customControlsVisible.value = true;
 }
 
+function handleDesktopPointerMove(event: PointerEvent) {
+  if (isTouchDevice.value || customControlsVisible.value) {
+    return;
+  }
+
+  const container = playerContainer.value;
+  if (!container) return;
+
+  const rect = container.getBoundingClientRect();
+  const distanceFromBottom = rect.bottom - event.clientY;
+  if (distanceFromBottom <= 120) {
+    showCustomControls();
+  }
+}
+
 function handleVideoClick() {
   if (isTouchDevice.value) {
     return;
@@ -546,24 +525,6 @@ function toggleCurrentMediaMute() {
   syncCustomVideoState();
   showCustomControls();
   void resumeMediaGainController();
-}
-
-function seekBy(deltaSeconds: number) {
-  if (!videoElement.value) return;
-
-  if (!isPlaying.value) {
-    showCustomControls();
-    return;
-  }
-
-  const duration = Number.isFinite(videoElement.value.duration) ? videoElement.value.duration : 0;
-  const nextTime = Math.min(
-    Math.max(videoElement.value.currentTime + deltaSeconds, 0),
-    duration || Infinity,
-  );
-  videoElement.value.currentTime = nextTime;
-  syncCustomVideoState();
-  showCustomControls();
 }
 
 function applyStoredMediaState(element: HTMLMediaElement | null) {
@@ -698,10 +659,6 @@ function showCustomControls() {
 function toggleCustomControlsVisibility() {
   if (!customControlsVisible.value) {
     showCustomControls();
-    return;
-  }
-
-  if (videoElement.value?.paused) {
     return;
   }
 

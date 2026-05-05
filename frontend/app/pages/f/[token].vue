@@ -955,7 +955,11 @@ const isLightsOutActive = computed(() => {
   );
 });
 const showActionPair = computed(() => {
-  return Boolean(selectedUpload.value?.download_url && canShowPlayerFullscreenButton.value);
+  return Boolean(
+    selectedUpload.value?.download_url &&
+    canShowPlayerFullscreenButton.value &&
+    !isPlayerFullscreen.value,
+  );
 });
 const activeSubtitleDownloadUrl = computed(() => activeSubtitleTrack.value?.url || '');
 const activeSubtitleDownloadFilename = computed(() => {
