@@ -7,14 +7,16 @@
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2 mb-1">
                 <span class="text-xs text-muted">#{{ index + 1 }}</span>
-                <UBadge
-                  :color="getStatusColor(row.status)"
-                  variant="soft"
-                  size="xs"
-                  :icon="getStatusIcon(row.status)"
-                >
-                  <span v-if="row.status === 'postprocessing'">Processing</span>
-                  <span v-else>{{ row.status }}</span>
+                <UBadge :color="getStatusColor(row.status)" variant="soft" size="xs">
+                  <span class="flex items-center gap-1.5">
+                    <UIcon
+                      :name="getStatusIcon(row.status)"
+                      class="size-3.5 shrink-0"
+                      :class="row.status === 'postprocessing' ? 'animate-spin' : ''"
+                    />
+                    <span v-if="row.status === 'postprocessing'">Processing</span>
+                    <span v-else>{{ row.status }}</span>
+                  </span>
                 </UBadge>
               </div>
               <a
@@ -219,13 +221,16 @@
               </UPopover>
             </td>
             <td class="px-4 py-3 text-sm">
-              <UBadge
-                :color="getStatusColor(row.status)"
-                variant="soft"
-                :icon="getStatusIcon(row.status)"
-              >
-                <span v-if="row.status === 'postprocessing'">Processing</span>
-                <span v-else>{{ row.status }}</span>
+              <UBadge :color="getStatusColor(row.status)" variant="soft">
+                <span class="flex items-center gap-1.5">
+                  <UIcon
+                    :name="getStatusIcon(row.status)"
+                    class="size-3.5 shrink-0"
+                    :class="row.status === 'postprocessing' ? 'animate-spin' : ''"
+                  />
+                  <span v-if="row.status === 'postprocessing'">Processing</span>
+                  <span v-else>{{ row.status }}</span>
+                </span>
               </UBadge>
             </td>
             <td class="px-4 py-3 text-sm">

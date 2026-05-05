@@ -525,7 +525,6 @@ async def mark_complete(
     upload_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     queue: Annotated[ProcessingQueue | None, Depends(get_processing_queue)],
-    token: Annotated[str, Query(description="Upload token")] = ...,
 ) -> models.UploadRecord:
     """
     Mark an upload as complete.
@@ -534,17 +533,13 @@ async def mark_complete(
         upload_id (str): The public ID of the upload.
         db (AsyncSession): Database session.
         queue (ProcessingQueue | None): The processing queue for post-processing.
-        token (str): The upload token string.
 
     Returns:
         UploadRecord: The updated upload record.
 
     """
     record: models.UploadRecord = await _get_upload_record(db, upload_id)
-    token_row: models.UploadToken = await _ensure_token(db, token_value=token, check_remaining=False)
-
-    if record.token_id != token_row.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Upload does not belong to this token")
+    await _ensure_token(db, token_id=record.token_id, check_remaining=False)
 
     return await _finalize_upload(db, record, queue)
 

@@ -62,6 +62,7 @@
       @timeupdate="handleVideoTimeUpdate"
       @play="handleVideoPlay"
       @pause="handleVideoPause"
+      @click="handleVideoClick"
       @dblclick="handleVideoDoubleClick"
       @pointermove="showCustomControls"
       @resize="scheduleAssLayoutRefresh"
@@ -134,36 +135,41 @@
 
     <div
       v-if="active"
-      class="absolute inset-x-0 bottom-0 z-30 bg-linear-to-t from-black/95 via-black/70 to-transparent px-3 pb-3 pt-10 text-white transition-opacity duration-200"
+      class="absolute inset-x-0 bottom-0 z-30 bg-linear-to-t from-black/65 via-black/30 to-transparent px-3 pb-3 pt-10 text-white transition-opacity duration-150"
       :class="customControlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'"
       @click.self="toggleCustomControlsVisibility"
       @pointermove="showCustomControls"
     >
-      <div class="rounded-2xl border border-white/10 bg-black/45 p-3 shadow-2xl backdrop-blur-md">
-        <div class="space-y-3">
-          <input
-            :value="customVideoProgress"
-            type="range"
-            min="0"
-            max="1000"
-            step="1"
-            class="h-1.5 w-full accent-white"
-            aria-label="Seek video"
-            @input="handleCustomVideoSeek"
-          />
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
+      <div
+        class="rounded-2xl border border-white/8 bg-black/18 p-2.5 shadow-lg backdrop-blur-sm sm:p-3"
+      >
+        <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
+          <div class="sm:min-w-0 sm:flex-1">
+            <input
+              :value="customVideoProgress"
+              type="range"
+              min="0"
+              max="1000"
+              step="1"
+              class="h-1.5 w-full accent-white opacity-70 transition-opacity hover:opacity-100"
+              aria-label="Seek video"
+              @input="handleCustomVideoSeek"
+            />
+          </div>
+          <div class="flex items-center justify-between gap-2 sm:shrink-0 sm:justify-end">
+            <div class="flex min-w-0 items-center gap-2">
               <UButton
                 color="neutral"
                 variant="soft"
                 size="sm"
+                class="opacity-75 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :icon="
                   isCustomVideoPaused ? 'i-heroicons-play-20-solid' : 'i-heroicons-pause-20-solid'
                 "
                 :aria-label="isCustomVideoPaused ? 'Play video' : 'Pause video'"
                 @click="toggleCustomVideoPlayback"
               />
-              <div class="min-w-0 text-xs font-medium text-white/90">
+              <div class="min-w-0 whitespace-nowrap text-xs font-medium text-white/70">
                 {{ customVideoTimeLabel }}
               </div>
             </div>
@@ -172,6 +178,7 @@
                 color="neutral"
                 variant="soft"
                 size="sm"
+                class="opacity-75 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :icon="
                   effectiveStoredMediaVolume <= 0
                     ? 'i-heroicons-speaker-x-mark-20-solid'
@@ -186,7 +193,7 @@
                 min="0"
                 max="100"
                 step="1"
-                class="w-20 accent-white"
+                class="w-20 accent-white opacity-70 transition-opacity hover:opacity-100"
                 aria-label="Video volume"
                 @input="handleCustomVideoVolumeChange"
               />
@@ -194,6 +201,7 @@
                 color="neutral"
                 variant="soft"
                 size="sm"
+                class="opacity-75 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :icon="
                   isPlayerFullscreen
                     ? 'i-heroicons-arrows-pointing-in-20-solid'
@@ -237,6 +245,7 @@ const emit = defineEmits<{
   activate: [];
   'media-error': [];
   'clear-media-error': [];
+  'playback-state-change': [isPlaying: boolean];
   'subtitle-state-change': [
     payload: {
       subtitleLoading: boolean;
@@ -272,6 +281,7 @@ const isTouchDevice = ref(false);
 
 let assLayoutRefreshFrame = 0;
 let customControlsHideTimeout = 0;
+let pendingVideoClickTimeout = 0;
 let mediaGainAudioContext: AudioContext | null = null;
 let mediaGainSourceNode: MediaElementAudioSourceNode | null = null;
 let mediaGainNode: GainNode | null = null;
@@ -314,6 +324,14 @@ const {
   videoElement,
   overlayElement: assOverlayElement,
 });
+
+watch(
+  [() => props.active, isPlaying],
+  ([active, playing]) => {
+    emit('playback-state-change', Boolean(active && playing));
+  },
+  { immediate: true },
+);
 
 watch(
   [
@@ -439,7 +457,20 @@ function handleVideoPause() {
   customControlsVisible.value = true;
 }
 
+function handleVideoClick() {
+  if (isTouchDevice.value) {
+    return;
+  }
+
+  clearPendingVideoClickTimeout();
+  pendingVideoClickTimeout = window.setTimeout(() => {
+    pendingVideoClickTimeout = 0;
+    toggleCustomControlsVisibility();
+  }, 180);
+}
+
 function handleVideoDoubleClick() {
+  clearPendingVideoClickTimeout();
   void togglePlayerFullscreen();
 }
 
@@ -685,6 +716,13 @@ function clearCustomControlsHideTimeout() {
   }
 }
 
+function clearPendingVideoClickTimeout() {
+  if (pendingVideoClickTimeout) {
+    window.clearTimeout(pendingVideoClickTimeout);
+    pendingVideoClickTimeout = 0;
+  }
+}
+
 function syncPlayerFullscreenState() {
   const fullscreenElement = getFullscreenElement();
   isPlayerFullscreen.value = Boolean(
@@ -762,6 +800,7 @@ onBeforeUnmount(() => {
   }
 
   clearCustomControlsHideTimeout();
+  clearPendingVideoClickTimeout();
   disconnectMediaGainController();
   if (mediaGainAudioContext && mediaGainAudioContext.state !== 'closed') {
     void mediaGainAudioContext.close().catch(() => {});

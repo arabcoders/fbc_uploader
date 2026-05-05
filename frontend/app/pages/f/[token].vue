@@ -1,5 +1,11 @@
 <template>
   <UContainer class="py-10">
+    <div
+      class="pointer-events-none fixed inset-0 z-10 bg-black/45 backdrop-blur-[1px] transition-opacity duration-300"
+      :class="isLightsOutActive ? 'opacity-100' : 'opacity-0'"
+      aria-hidden="true"
+    />
+
     <div class="space-y-6">
       <div v-if="notFound && !tokenInfo">
         <UAlert
@@ -115,6 +121,7 @@
         >
           <div
             class="min-w-0 max-w-full overflow-hidden border-b border-default bg-elevated/40 xl:border-b-0 xl:border-r"
+            :class="isLightsOutActive ? 'relative z-20 shadow-2xl' : ''"
           >
             <div
               class="flex flex-col gap-3 border-b border-default bg-default/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
@@ -157,6 +164,7 @@
                   :active="shouldRenderSelectedMedia"
                   @activate="activateSelectedMedia"
                   @media-error="handleMediaPlaybackError"
+                  @playback-state-change="handleVideoPlaybackStateChange"
                   @clear-media-error="clearMediaPlaybackError"
                   @subtitle-state-change="handleVideoSubtitleStateChange"
                 />
@@ -228,6 +236,8 @@
                   @error="handleMediaPlaybackError"
                   @loadedmetadata="handleAudioLoadedMetadata"
                   @play="handleAudioPlay"
+                  @pause="handleAudioPause"
+                  @ended="handleAudioPause"
                   @volumechange="handleAudioVolumeChange"
                 >
                   <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined" />
@@ -876,6 +886,8 @@ const subtitleEnabled = ref(true);
 const hasSubtitles = ref(false);
 const activeSubtitleTrack = ref<SubtitleTrack | null>(null);
 const isPlayerFullscreen = ref(false);
+const isAudioPlaying = ref(false);
+const isVideoPlaying = ref(false);
 let audioGainAudioContext: AudioContext | null = null;
 let audioGainSourceNode: MediaElementAudioSourceNode | null = null;
 let audioGainNode: GainNode | null = null;
@@ -929,6 +941,14 @@ const usesCustomAudioVolumeControl = computed(() => {
 });
 const canShowPlayerFullscreenButton = computed(() => {
   return Boolean(selectedIsVideo.value && canPlaySelectedMedia.value);
+});
+const isMediaPlaying = computed(() => {
+  return selectedIsVideo.value ? isVideoPlaying.value : isAudioPlaying.value;
+});
+const isLightsOutActive = computed(() => {
+  return Boolean(
+    shouldRenderSelectedMedia.value && isMediaPlaying.value && !isPlayerFullscreen.value,
+  );
 });
 const showActionPair = computed(() => {
   return Boolean(selectedUpload.value?.download_url && canShowPlayerFullscreenButton.value);
@@ -996,6 +1016,8 @@ watch(
     hasSubtitles.value = false;
     activeSubtitleTrack.value = null;
     isPlayerFullscreen.value = false;
+    isAudioPlaying.value = false;
+    isVideoPlaying.value = false;
   },
 );
 
@@ -1069,7 +1091,12 @@ function handleAudioLoadedMetadata() {
 function handleAudioPlay() {
   clearMediaPlaybackError();
   syncAudioVolumeState();
+  isAudioPlaying.value = true;
   void resumeAudioGainController();
+}
+
+function handleAudioPause() {
+  isAudioPlaying.value = false;
 }
 
 function handleAudioVolumeChange(event: Event) {
@@ -1205,6 +1232,10 @@ function handleVideoSubtitleStateChange(payload: {
   hasSubtitles.value = payload.hasSubtitles;
   activeSubtitleTrack.value = payload.selectedSubtitleTrack;
   isPlayerFullscreen.value = payload.isFullscreen;
+}
+
+function handleVideoPlaybackStateChange(isPlaying: boolean) {
+  isVideoPlaying.value = isPlaying;
 }
 
 async function togglePlayerFullscreen() {

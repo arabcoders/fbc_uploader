@@ -103,7 +103,7 @@ async def upload_file_via_tus(
         client: AsyncClient instance
         upload_id: Upload record ID
         content: File content bytes
-        token: Upload token used for final completion
+        token: Optional upload token kept for legacy call sites
         offset: Upload offset (default 0)
         mark_complete: Whether to call the completion endpoint after upload
 
@@ -123,13 +123,9 @@ async def upload_file_via_tus(
     if not mark_complete or resp.status_code != status.HTTP_204_NO_CONTENT:
         return resp.status_code
 
-    if not token:
-        msg = "token is required when mark_complete=True"
-        raise ValueError(msg)
-
     complete_resp = await client.post(
         app.url_path_for("mark_complete", upload_id=upload_id),
-        params={"token": token},
+        params={"token": token} if token else None,
     )
     return complete_resp.status_code
 
@@ -137,12 +133,12 @@ async def upload_file_via_tus(
 async def complete_upload(
     client: AsyncClient,
     upload_id: int,
-    token: str,
+    token: str | None = None,
 ) -> tuple[int, dict]:
     """Call the explicit completion endpoint for an upload."""
     resp = await client.post(
         app.url_path_for("mark_complete", upload_id=upload_id),
-        params={"token": token},
+        params={"token": token} if token else None,
     )
     return resp.status_code, resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
 

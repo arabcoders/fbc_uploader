@@ -25,6 +25,8 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [GET /api/tokens/{token\_value}/uploads](#get-apitokenstoken_valueuploads)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}](#get-apitokensdownload_tokenuploadsupload_id)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/stream](#get-apitokensdownload_tokenuploadsupload_idstream)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/subtitles](#get-apitokensdownload_tokenuploadsupload_idsubtitles)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/subtitles/{source\_format}](#get-apitokensdownload_tokenuploadsupload_idsubtitlessource_format)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/preview.mp4](#get-apitokensdownload_tokenuploadsupload_idpreviewmp4)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/thumbnail](#get-apitokensdownload_tokenuploadsupload_idthumbnail)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
@@ -817,7 +819,7 @@ Cancel an in-progress upload and restore the token slot.
 
 ### POST /api/uploads/{upload_id}/complete
 
-Manually mark an upload as complete.
+Mark an upload as complete.
 
 **Authentication:** None
 
@@ -844,7 +846,8 @@ Manually mark an upload as complete.
 ```
 
 **Error Responses:**
-- `404 Not Found` - Upload not found
+- `403 Forbidden` - Associated upload token expired or disabled
+- `404 Not Found` - Upload or associated token not found
 
 ---
 

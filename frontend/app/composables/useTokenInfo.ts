@@ -13,6 +13,10 @@ export function useTokenInfo(tokenValue: Ref<string>) {
     if (!tokenInfo.value) return '';
     return `${window.location.origin}/f/${tokenInfo.value.download_token}`;
   });
+  const shareLinkPath = computed(() => {
+    if (!tokenInfo.value) return '';
+    return `/f/${tokenInfo.value.download_token}`;
+  });
 
   async function fetchTokenInfo() {
     if (!tokenValue.value) {
@@ -45,5 +49,14 @@ export function useTokenInfo(tokenValue: Ref<string>) {
     }
   }
 
-  return { tokenInfo, notFound, tokenError, isExpired, isDisabled, shareLinkText, fetchTokenInfo };
+  return {
+    tokenInfo,
+    notFound,
+    tokenError,
+    isExpired,
+    isDisabled,
+    shareLinkText,
+    shareLinkPath,
+    fetchTokenInfo,
+  };
 }

@@ -37,6 +37,7 @@
           <TokenSummary
             :token-info="tokenInfo"
             :share-link="shareLinkText"
+            :share-path="shareLinkPath"
             :share-disabled="!canShare"
             @copy="copyShareLink"
             @refresh="refreshAll"
@@ -142,8 +143,16 @@ const route = useRoute();
 const toast = useToast();
 const token = ref<string>((route.params.token as string) || '');
 
-const { tokenInfo, notFound, tokenError, isExpired, isDisabled, shareLinkText, fetchTokenInfo } =
-  useTokenInfo(token);
+const {
+  tokenInfo,
+  notFound,
+  tokenError,
+  isExpired,
+  isDisabled,
+  shareLinkText,
+  shareLinkPath,
+  fetchTokenInfo,
+} = useTokenInfo(token);
 const { metadataSchema, fetchMetadata, extractMetadata } = useMetadata();
 const { startTusUpload, pauseUpload, resumeUpload } = useTusUpload();
 const { slots, seedSlots, addSlot, unintiatedSlots } = useUploadSlots(metadataSchema);

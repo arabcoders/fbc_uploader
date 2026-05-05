@@ -276,6 +276,54 @@ func TestClientExtractMetadata(t *testing.T) {
 	}
 }
 
+func TestClientCompleteUploadOmitsTokenQuery(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/api/uploads/upload123/complete" {
+			t.Fatalf("path = %s, want /api/uploads/upload123/complete", r.URL.Path)
+		}
+		if got := r.URL.RawQuery; got != "" {
+			t.Fatalf("query = %q, want empty", got)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"public_id":"upload123","meta_data":{},"upload_offset":0,"status":"completed","created_at":"2026-05-02T16:37:12Z"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "")
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+
+	record, err := client.CompleteUpload(context.Background(), "upload123")
+	if err != nil {
+		t.Fatalf("CompleteUpload returned error: %v", err)
+	}
+	if record.PublicID != "upload123" {
+		t.Fatalf("public_id = %q, want upload123", record.PublicID)
+	}
+	if record.Status != "completed" {
+		t.Fatalf("status = %q, want completed", record.Status)
+	}
+	if record.MetaData == nil {
+		t.Fatalf("meta_data should decode to an empty map, got nil")
+	}
+	if len(record.MetaData) != 0 {
+		t.Fatalf("meta_data = %#v, want empty map", record.MetaData)
+	}
+	if record.UploadOffset != 0 {
+		t.Fatalf("upload_offset = %d, want 0", record.UploadOffset)
+	}
+	if record.CreatedAt.Time.IsZero() {
+		t.Fatalf("created_at should decode, got zero time")
+	}
+}
+
 func TestFlexibleTimeUnmarshalAcceptsNaiveAndRFC3339(t *testing.T) {
 	t.Parallel()
 

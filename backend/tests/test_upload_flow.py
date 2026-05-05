@@ -46,7 +46,7 @@ async def test_token_info_and_initiate():
 
 
 @pytest.mark.asyncio
-async def test_upload_requires_explicit_completion():
+async def test_upload_requires_explicit_completion_without_resending_token():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -84,7 +84,7 @@ async def test_upload_requires_explicit_completion():
             assert record.status == "in_progress", "Upload should remain incomplete until the explicit completion call"
             assert record.completed_at is None, "Upload should not have a completion timestamp before completion"
 
-        complete_status, complete_data = await complete_upload(client, upload_id, token)
+        complete_status, complete_data = await complete_upload(client, upload_id)
         assert complete_status == status.HTTP_200_OK, "Completion endpoint should finalize uploaded files"
         assert complete_data["status"] == "completed", "Text upload should be marked completed after explicit completion"
 

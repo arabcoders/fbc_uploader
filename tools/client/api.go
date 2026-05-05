@@ -270,10 +270,9 @@ func (c *Client) ExtractMetadata(ctx context.Context, filename string) (map[stri
 	return response.Metadata, nil
 }
 
-func (c *Client) CompleteUpload(ctx context.Context, uploadID string, token string) (UploadRecord, error) {
+func (c *Client) CompleteUpload(ctx context.Context, uploadID string) (UploadRecord, error) {
 	var response UploadRecord
-	query := url.Values{"token": []string{token}}
-	err := c.doJSON(ctx, http.MethodPost, "/api/uploads/"+url.PathEscape(uploadID)+"/complete", query, nil, &response)
+	err := c.doJSON(ctx, http.MethodPost, "/api/uploads/"+url.PathEscape(uploadID)+"/complete", nil, nil, &response)
 	return response, err
 }
 

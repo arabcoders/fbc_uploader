@@ -256,10 +256,7 @@ export function useTusUpload() {
           try {
             const completedUpload = await $apiFetch<UploadRow>(
               `/api/uploads/${slot.uploadId}/complete`,
-              {
-                method: 'POST',
-                query: { token },
-              },
+              { method: 'POST' },
             );
             slot.status = completedUpload.status;
 
