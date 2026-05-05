@@ -1,7 +1,7 @@
 <template>
   <UContainer class="py-10">
     <div
-      class="pointer-events-none fixed inset-0 z-10 bg-black/45 backdrop-blur-[1px] transition-opacity duration-300"
+      class="pointer-events-none fixed inset-0 z-10 bg-black/45 backdrop-blur-[1px] transition-all duration-500 ease-out"
       :class="isLightsOutActive ? 'opacity-100' : 'opacity-0'"
       aria-hidden="true"
     />
@@ -121,7 +121,11 @@
         >
           <div
             class="min-w-0 max-w-full overflow-hidden border-b border-default bg-elevated/40 xl:border-b-0 xl:border-r"
-            :class="isLightsOutActive ? 'relative z-20 shadow-2xl' : ''"
+            :class="
+              isLightsOutActive
+                ? 'relative z-20 shadow-2xl transition-shadow duration-500 ease-out'
+                : 'transition-shadow duration-500 ease-out'
+            "
           >
             <div
               class="flex flex-col gap-3 border-b border-default bg-default/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
