@@ -65,7 +65,6 @@ export default defineNuxtConfig({
     provider: 'none',
     fallbackToApi: false,
     clientBundle: {
-      icons: ['lucide:loader-circle'],
       scan: {
         globInclude: ['app/**/*.{vue,ts,js}', 'node_modules/@nuxt/ui/dist/shared/ui*.mjs'],
         globExclude: ['dist', 'build', 'coverage', 'test', 'tests', '.*'],
