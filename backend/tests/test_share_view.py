@@ -526,6 +526,9 @@ async def test_share_page_bot_preview_falls_back_to_image_only_for_incompatible_
 @pytest.mark.asyncio
 async def test_incompatible_small_video_forces_preview_generation_during_postprocessing():
     """Incompatible videos should force preview generation even when below the normal preview threshold."""
+    configured_clip_seconds = 180
+    configured_min_size_bytes = 195 * 1024 * 1024
+
     with tempfile.NamedTemporaryFile(suffix=".mkv", delete=False) as temp_file:
         temp_file.write(b"fake mkv bytes")
         temp_path = Path(temp_file.name)
@@ -572,7 +575,8 @@ async def test_incompatible_small_video_forces_preview_generation_during_postpro
                 patch("backend.app.postprocessing.extract_ffprobe_metadata", new=AsyncMock(return_value=ffprobe_with_subtitles)),
                 patch("backend.app.postprocessing.ensure_video_thumbnail", new=AsyncMock(return_value=None)),
                 patch("backend.app.postprocessing.ensure_video_preview", new=AsyncMock(return_value=None)) as ensure_preview,
-                patch("backend.app.postprocessing.settings.embed_preview_min_size_bytes", 195 * 1024 * 1024),
+                patch("backend.app.postprocessing.settings.embed_preview_clip_seconds", configured_clip_seconds),
+                patch("backend.app.postprocessing.settings.embed_preview_min_size_bytes", configured_min_size_bytes),
             ):
                 success = await process_upload(record.public_id)
 
@@ -580,8 +584,8 @@ async def test_incompatible_small_video_forces_preview_generation_during_postpro
             ensure_preview.assert_awaited_once_with(
                 temp_path,
                 ffprobe_data=ffprobe_with_subtitles,
-                clip_seconds=180,
-                min_size_bytes=195 * 1024 * 1024,
+                clip_seconds=configured_clip_seconds,
+                min_size_bytes=configured_min_size_bytes,
                 ignore_size_threshold=True,
             )
     finally:

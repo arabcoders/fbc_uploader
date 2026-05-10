@@ -51,7 +51,7 @@ describe('useMetadata', () => {
   });
 
   it('extracts metadata from the backend endpoint', async () => {
-    const fetchMock = mock(async () => ({ metadata: { title: 'Example Show' } }));
+    const fetchMock = mock(async () => ({ metadata: { title: 'Masked Title' } }));
     testGlobals.$fetch = fetchMock;
     const { extractMetadata } = useMetadata();
 
@@ -62,7 +62,7 @@ describe('useMetadata', () => {
       method: 'POST',
       body: { filename: 'example.mp4' },
     });
-    expect(metadata).toEqual({ title: 'Example Show' });
+    expect(metadata).toEqual({ title: 'Masked Title' });
   });
 
   it('returns empty metadata when extraction fails', async () => {

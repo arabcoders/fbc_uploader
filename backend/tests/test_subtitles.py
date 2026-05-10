@@ -1,3 +1,4 @@
+import unicodedata
 from pathlib import Path
 from unittest.mock import patch
 
@@ -249,6 +250,47 @@ async def test_list_file_subtitles_uses_bracket_stripping_with_contains_fallback
 
 
 @pytest.mark.asyncio
+async def test_list_file_subtitles_matches_compatibility_punctuation_in_bracket_fallback(client, test_run_dir):
+    subtitle_root = test_run_dir / "subtitles-compatibility-punctuation"
+    _write_subtitle_file(
+        subtitle_root,
+        "260509 ＂masked special episode＂ [subject-a, subject-b] series-x [FBC-test-upload] [REQUEST].ass",
+        "[Script Info]\nTitle: Compatibility Punctuation\n",
+    )
+
+    with (
+        patch("backend.app.config.settings.subtitle_path", str(subtitle_root)),
+        patch("backend.app.security.settings.allow_public_downloads", True),
+    ):
+        token_data = await create_token(client, max_uploads=1)
+        upload_token = token_data["token"]
+        download_token = token_data["download_token"]
+
+        upload_data = await initiate_upload(
+            client,
+            upload_token,
+            '260509 "masked special episode" [subject-a, subject-b] series-x.mp4',
+            5,
+            "video/mp4",
+        )
+        upload_id = upload_data["upload_id"]
+        status_code = await upload_file_via_tus(client, upload_id, b"hello", upload_token)
+
+        assert status_code == status.HTTP_200_OK, "Upload should complete successfully"
+
+        response = await client.get(
+            app.url_path_for("get_file_subtitle", download_token=download_token, upload_id=upload_id, source_format="ass")
+        )
+
+        assert response.status_code == status.HTTP_200_OK, (
+            "Compatibility punctuation should still match once bracketed suffixes are stripped"
+        )
+        assert "Title: Compatibility Punctuation" in response.text, (
+            "Subtitle matching should treat fullwidth and ASCII quote variants as equivalent"
+        )
+
+
+@pytest.mark.asyncio
 async def test_list_file_subtitles_prefers_normal_match_over_bracket_stripping_fallback(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-bracket-precedence"
     _write_subtitle_file(subtitle_root, "260602 foo [youtube-bar].ass", "[Script Info]\nTitle: Exact Bracket\n")
@@ -360,11 +402,11 @@ async def test_list_file_subtitles_skips_ambiguous_extension_matches(client, tes
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_matches_normalized_japanese_filenames(client, test_run_dir):
-    subtitle_root = test_run_dir / "subtitles-japanese"
-    _write_subtitle_file(subtitle_root, "森川 優.ass", "[Script Info]\nTitle: Japanese\n")
+async def test_list_file_subtitles_matches_normalized_unicode_filenames(client, test_run_dir):
+    subtitle_root = test_run_dir / "subtitles-unicode"
+    _write_subtitle_file(subtitle_root, "masked-caf\u00e9.ass", "[Script Info]\nTitle: Unicode\n")
 
-    decomposed_filename = "森川 優".replace("優", "優") + ".mp4"
+    decomposed_filename = unicodedata.normalize("NFD", "masked-caf\u00e9") + ".mp4"
 
     with (
         patch("backend.app.config.settings.subtitle_path", str(subtitle_root)),
@@ -384,8 +426,8 @@ async def test_list_file_subtitles_matches_normalized_japanese_filenames(client,
             app.url_path_for("get_file_subtitle", download_token=download_token, upload_id=upload_id, source_format="ass")
         )
 
-        assert response.status_code == status.HTTP_200_OK, "Normalized Japanese subtitle stems should match"
-        assert "Title: Japanese" in response.text, "Japanese subtitle content should be returned"
+        assert response.status_code == status.HTTP_200_OK, "Normalized Unicode subtitle stems should match"
+        assert "Title: Unicode" in response.text, "Unicode subtitle content should be returned"
 
 
 @pytest.mark.asyncio
