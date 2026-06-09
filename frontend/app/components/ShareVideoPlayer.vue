@@ -84,10 +84,10 @@
     </video>
 
     <button
-      v-if="active && isTouchDevice"
+      v-if="active && isTouchDevice && !customControlsVisible"
       type="button"
       class="absolute inset-0 z-10"
-      :aria-label="customControlsVisible ? 'Hide controls' : 'Show controls'"
+      aria-label="Show controls"
       @click="toggleCustomControlsVisibility"
     />
 
@@ -116,9 +116,11 @@
               min="0"
               max="1000"
               step="1"
-              class="h-1.5 w-full accent-white opacity-70 transition-opacity hover:opacity-100"
+              class="h-1.5 w-full accent-white opacity-70 transition-opacity hover:opacity-100 seek-bar"
               aria-label="Seek video"
               @input="handleCustomVideoSeek"
+              @touchstart.prevent="handleCustomVideoSeekTouch"
+              @touchmove.prevent="handleCustomVideoSeekTouch"
             />
           </div>
           <div class="flex items-center justify-between gap-2 sm:shrink-0 sm:justify-end">
@@ -490,6 +492,18 @@ function handleCustomVideoSeek(event: Event) {
   showCustomControls();
 }
 
+function handleCustomVideoSeekTouch(event: TouchEvent) {
+  const target = event.currentTarget as HTMLInputElement | null;
+  const touch = event.touches[0];
+  if (!target || !touch || !videoElement.value || !customVideoDuration.value) return;
+
+  const rect = target.getBoundingClientRect();
+  const fraction = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+  videoElement.value.currentTime = fraction * customVideoDuration.value;
+  syncCustomVideoState();
+  showCustomControls();
+}
+
 function handleCustomVideoVolumeChange(event: Event) {
   const target = event.target as HTMLInputElement | null;
   if (!target || !videoElement.value) return;
@@ -684,6 +698,9 @@ function syncPlayerFullscreenState() {
   isPlayerFullscreen.value = Boolean(
     fullscreenElement && playerContainer.value && fullscreenElement === playerContainer.value,
   );
+  if (!isPlayerFullscreen.value && isTouchDevice.value) {
+    showCustomControls();
+  }
   scheduleAssLayoutRefresh();
 }
 
@@ -772,5 +789,9 @@ onBeforeUnmount(() => {
 
 .share-video-element::-webkit-media-controls-fullscreen-button {
   display: none;
+}
+
+.seek-bar {
+  touch-action: none;
 }
 </style>

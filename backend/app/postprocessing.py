@@ -444,7 +444,7 @@ async def backfill_missing_video_thumbnails() -> int:
                     generated_any = True
                     logger.info("Backfilled embed preview [upload=%s dir=%s]", upload_id, path.parent.name or "unknown")
                 else:
-                    logger.info(
+                    logger.debug(
                         "Skipped embed preview backfill because no preview was generated [upload=%s dir=%s]",
                         upload_id,
                         path.parent.name or "unknown",
