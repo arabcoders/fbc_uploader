@@ -100,52 +100,54 @@
 
     <div
       v-if="active"
-      class="absolute inset-x-0 bottom-0 z-30 bg-linear-to-t from-black/60 via-black/22 to-transparent px-3 pb-3 pt-10 text-white transition-opacity duration-150"
+      class="absolute inset-x-0 bottom-0 z-30 bg-linear-to-t from-black/36 via-black/8 to-transparent px-3 pb-3 pt-10 text-white transition-opacity duration-150"
       :class="customControlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'"
       @click.self="toggleCustomControlsVisibility"
       @pointermove="showCustomControls"
     >
-      <div
-        class="rounded-sm border border-white/8 bg-black/18 p-2.5 shadow-lg backdrop-blur-sm sm:p-3"
-      >
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-          <div class="sm:min-w-0 sm:flex-1">
-            <input
-              :value="customVideoProgress"
-              type="range"
-              min="0"
-              max="1000"
-              step="1"
-              class="h-1.5 w-full accent-white opacity-70 transition-opacity hover:opacity-100 seek-bar"
-              aria-label="Seek video"
-              @input="handleCustomVideoSeek"
-              @touchstart.prevent="handleCustomVideoSeekTouch"
-              @touchmove.prevent="handleCustomVideoSeekTouch"
-            />
-          </div>
-          <div class="flex items-center justify-between gap-2 sm:shrink-0 sm:justify-end">
+      <div class="rounded-sm border border-white/8 bg-black/8 p-2.5 shadow-lg backdrop-blur-sm">
+        <div
+          class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-3"
+        >
+          <div class="order-2 min-w-0 sm:order-1 sm:flex sm:items-center sm:gap-3">
             <div class="flex min-w-0 items-center gap-2">
               <UButton
                 color="neutral"
                 variant="soft"
                 size="sm"
-                class="opacity-75 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                class="opacity-65 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :icon="
                   isCustomVideoPaused ? 'i-heroicons-play-20-solid' : 'i-heroicons-pause-20-solid'
                 "
                 :aria-label="isCustomVideoPaused ? 'Play video' : 'Pause video'"
                 @click="toggleCustomVideoPlayback"
               />
-              <div class="min-w-0 truncate text-xs font-medium text-white/70">
+              <div class="min-w-0 truncate whitespace-nowrap text-xs font-medium text-white/60">
                 {{ customVideoTimeLabel }}
               </div>
             </div>
-            <div class="flex items-center gap-2">
+          </div>
+          <div class="order-1 col-span-2 sm:order-2 sm:col-span-1 sm:min-w-0 sm:flex-1">
+            <input
+              :value="customVideoProgress"
+              type="range"
+              min="0"
+              max="1000"
+              step="1"
+              class="h-1.5 w-full accent-white opacity-55 transition-opacity hover:opacity-100 seek-bar"
+              aria-label="Seek video"
+              @input="handleCustomVideoSeek"
+              @touchstart.prevent="handleCustomVideoSeekTouch"
+              @touchmove.prevent="handleCustomVideoSeekTouch"
+            />
+          </div>
+          <div class="order-3 flex items-center justify-end sm:order-3 sm:shrink-0">
+            <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <UButton
                 color="neutral"
                 variant="soft"
                 size="sm"
-                class="opacity-75 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                class="opacity-65 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :icon="
                   effectiveStoredMediaVolume <= 0
                     ? 'i-heroicons-speaker-x-mark-20-solid'
@@ -161,7 +163,7 @@
                 min="0"
                 max="100"
                 step="1"
-                class="w-16 accent-white opacity-70 transition-opacity hover:opacity-100 sm:w-20"
+                class="w-16 accent-white opacity-55 transition-opacity hover:opacity-100 sm:w-18"
                 aria-label="Video volume"
                 @input="handleCustomVideoVolumeChange"
               />
@@ -169,7 +171,7 @@
                 color="neutral"
                 variant="soft"
                 size="sm"
-                class="opacity-75 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+                class="opacity-65 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :icon="
                   isPlayerFullscreen
                     ? 'i-heroicons-arrows-pointing-in-20-solid'

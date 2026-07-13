@@ -26,7 +26,7 @@
             <span class="font-semibold">Tokens</span>
             <UBadge color="primary" variant="soft">{{ totalTokens }}</UBadge>
           </div>
-          <UButton color="primary" icon="i-heroicons-plus-20-solid" @click="createOpen = true">
+          <UButton color="primary" icon="i-heroicons-plus-20-solid" @click="openCreate">
             Create token
           </UButton>
         </div>
@@ -54,7 +54,7 @@
               variant="ghost"
               icon="i-heroicons-chevron-left-20-solid"
               :disabled="currentPage === 1 || !totalPages"
-              @click="currentPage--"
+              @click="goToPreviousPage"
             />
             <div class="text-sm font-medium">{{ currentPage }} / {{ totalPages }}</div>
             <UButton
@@ -62,7 +62,7 @@
               variant="ghost"
               icon="i-heroicons-chevron-right-20-solid"
               :disabled="currentPage === totalPages || !totalPages"
-              @click="currentPage++"
+              @click="goToNextPage"
             />
           </div>
         </div>
@@ -125,7 +125,7 @@
       </template>
       <template #footer>
         <div class="flex items-center justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="deleteOpen = false">Cancel</UButton>
+          <UButton color="neutral" variant="ghost" @click="closeDelete">Cancel</UButton>
           <UButton color="error" :loading="deleting" @click="confirmDelete">Delete token</UButton>
         </div>
       </template>
@@ -146,9 +146,7 @@
       </template>
       <template #footer>
         <div class="flex items-center justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="deleteUploadOpen = false"
-            >Cancel</UButton
-          >
+          <UButton color="neutral" variant="ghost" @click="closeDeleteUpload">Cancel</UButton>
           <UButton color="error" :loading="deletingUpload" @click="confirmDeleteUpload"
             >Delete</UButton
           >
@@ -212,6 +210,26 @@ const startIndex = computed(() => (currentPage.value - 1) * itemsPerPage);
 const endIndex = computed(() => Math.min(startIndex.value + itemsPerPage, totalTokens.value));
 
 const hasAuth = computed(() => Boolean(adminToken.value));
+
+function openCreate(): void {
+  createOpen.value = true;
+}
+
+function goToPreviousPage(): void {
+  currentPage.value--;
+}
+
+function goToNextPage(): void {
+  currentPage.value++;
+}
+
+function closeDelete(): void {
+  deleteOpen.value = false;
+}
+
+function closeDeleteUpload(): void {
+  deleteUploadOpen.value = false;
+}
 
 async function fetchTokens() {
   if (!hasAuth.value) return;
