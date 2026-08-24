@@ -4,6 +4,7 @@ import type {
   WatchRole,
   WatchRoomResponse,
   WatchState,
+  WatchHostStatus,
   WatchStatus,
 } from '~/types/watch';
 import {
@@ -23,6 +24,7 @@ export function useWatchRoom() {
   const error = ref('');
   const autoplayBlocked = ref(false);
   const wasPromoted = ref(false);
+  const hostWaiting = ref(false);
   const room = ref<WatchRoomResponse | null>(null);
   const clockOffset = ref(0);
   let socket: WebSocket | null = null;
@@ -43,6 +45,12 @@ export function useWatchRoom() {
   let mediaGeneration = 0;
   let applyGeneration = 0;
   let roomId = '';
+  let syncRequired = false;
+  let readyReceived = false;
+  let hostStatusVersion = -1;
+  let requiredSyncVersion = 0;
+  let syncSentVersion = -1;
+  let participantVersion = -1;
 
   const isHost = computed(() => role.value === 'host');
   const invitePath = computed(() => room.value?.invite_path || '');
@@ -82,6 +90,13 @@ export function useWatchRoom() {
     joinMessage = { ...message };
     roomId = id || roomIdFromUrl(url) || roomId;
     if (!reconnect) wasPromoted.value = false;
+    hostWaiting.value = false;
+    syncRequired = false;
+    readyReceived = false;
+    hostStatusVersion = -1;
+    requiredSyncVersion = 0;
+    syncSentVersion = -1;
+    participantVersion = -1;
     if (!joinMessage.host_key) {
       const stored = storedHostKey(roomId);
       if (stored) joinMessage.host_key = stored;
@@ -136,7 +151,8 @@ export function useWatchRoom() {
       10000,
     );
     snapshotTimer = window.setInterval(() => {
-      if (socket === currentSocket && isHost.value) sendSnapshot(currentSocket);
+      if (socket === currentSocket && readyReceived && isHost.value && !syncRequired)
+        sendSnapshot(currentSocket);
     }, 1000);
   }
 
@@ -153,6 +169,7 @@ export function useWatchRoom() {
       stopTimers();
       window.clearTimeout(reconnectTimer);
       status.value = 'error';
+      hostWaiting.value = false;
       if (socket === currentSocket) currentSocket?.close(1008);
     }
   }
@@ -188,18 +205,48 @@ export function useWatchRoom() {
       rememberCredential(message);
       participantId = message.participant_id;
       role.value = message.role;
+      syncRequired = message.sync_required === true;
+      requiredSyncVersion = syncRequired
+        ? isVersion(message.version)
+          ? message.version
+          : (state.value?.version ?? 0) + 1
+        : 0;
+      syncSentVersion = -1;
+      readyReceived = true;
       status.value = 'connected';
       error.value = '';
       reconnectAttempts = 0;
-      participantCount.value = message.participant_count;
+      updateParticipantCount(message.participant_count, message.participant_version);
       send({ type: 'ping', client_time: Date.now() }, currentSocket);
-      if (message.role === 'host') sendSnapshot(currentSocket);
+      if (message.role === 'host' && !syncRequired) sendSnapshot(currentSocket);
     } else if (type === 'state' && isWatchState(message)) {
-      if (!state.value || message.version >= state.value.version) state.value = message;
-      participantCount.value = message.participant_count;
-      if (!isHost.value) void applyLatest();
+      if (!state.value || message.version >= state.value.version) {
+        state.value = message;
+        updateParticipantCount(message.participant_count, message.participant_version);
+        hostStatusVersion = Math.max(hostStatusVersion, message.version);
+      }
+      if (!isHost.value || syncRequired) {
+        void applyLatest();
+      }
+    } else if (
+      type === 'synced' &&
+      isVersion(message.version) &&
+      message.version >= requiredSyncVersion
+    ) {
+      syncRequired = false;
+      syncSentVersion = -1;
+      error.value = '';
+    } else if (
+      type === 'host_status' &&
+      isWatchHostStatus(message.status) &&
+      typeof message.version === 'number' &&
+      Number.isInteger(message.version) &&
+      message.version >= hostStatusVersion
+    ) {
+      hostStatusVersion = message.version;
+      hostWaiting.value = message.status === 'waiting';
     } else if (type === 'participants' && isParticipantCount(message.participant_count)) {
-      participantCount.value = message.participant_count;
+      updateParticipantCount(message.participant_count, message.participant_version);
     } else if (
       type === 'pong' &&
       typeof message.client_time === 'number' &&
@@ -211,12 +258,12 @@ export function useWatchRoom() {
       rememberCredential(message);
       wasPromoted.value = true;
       role.value = 'host';
+      syncRequired = true;
+      requiredSyncVersion = isVersion(message.version)
+        ? message.version
+        : (state.value?.version ?? 0) + 1;
+      syncSentVersion = -1;
       window.clearTimeout(correctionTimer);
-      if (media && state.value) {
-        suppressedUntil = Date.now() + 250;
-        media.playbackRate = state.value.playback_rate;
-      }
-      sendSnapshot(currentSocket);
     } else if (type === 'error' && typeof message.message === 'string') {
       const normalized = message.message.toLowerCase();
       const hasHostCredential = Boolean(reconnectCredential || joinMessage?.host_key);
@@ -247,6 +294,23 @@ export function useWatchRoom() {
     return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 32;
   }
 
+  function isVersion(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+  }
+
+  function updateParticipantCount(count: unknown, version: unknown) {
+    if (!isParticipantCount(count)) return;
+    if (isVersion(version)) {
+      if (version < participantVersion) return;
+      participantVersion = version;
+    } else if (participantVersion >= 0) return;
+    participantCount.value = count;
+  }
+
+  function isWatchHostStatus(value: unknown): value is WatchHostStatus {
+    return value === 'waiting' || value === 'connected';
+  }
+
   function send(message: Record<string, unknown>, targetSocket: WebSocket | null = socket) {
     if (targetSocket && socket === targetSocket && targetSocket.readyState === WebSocket.OPEN)
       targetSocket.send(JSON.stringify(message));
@@ -255,19 +319,19 @@ export function useWatchRoom() {
     return media?.currentTime || 0;
   }
   function sendPlay() {
-    if (isHost.value && !isSuppressed()) send({ type: 'play', position: currentPosition() });
+    if (canControl()) send({ type: 'play', position: currentPosition() });
   }
   function sendPause() {
-    if (isHost.value && !isSuppressed()) send({ type: 'pause', position: currentPosition() });
+    if (canControl()) send({ type: 'pause', position: currentPosition() });
   }
   function sendSeek(position = currentPosition()) {
-    if (isHost.value && !isSuppressed()) send({ type: 'seek', position });
+    if (canControl()) send({ type: 'seek', position });
   }
   function sendRate(playback_rate = media?.playbackRate || 1, position = currentPosition()) {
-    if (isHost.value && !isSuppressed()) send({ type: 'rate', position, playback_rate });
+    if (canControl()) send({ type: 'rate', position, playback_rate });
   }
   function sendSnapshot(targetSocket: WebSocket | null = socket) {
-    if (isHost.value && media && !isSuppressed())
+    if (canControl() && media)
       send(
         {
           type: 'snapshot',
@@ -277,6 +341,9 @@ export function useWatchRoom() {
         },
         targetSocket,
       );
+  }
+  function canControl() {
+    return isHost.value && readyReceived && !syncRequired && !isSuppressed();
   }
   function isSuppressed() {
     return Date.now() < suppressedUntil;
@@ -330,7 +397,18 @@ export function useWatchRoom() {
   }
 
   async function applyLatest() {
-    if (!isHost.value && state.value && media) await applyState(state.value, media);
+    if (
+      (!isHost.value || syncRequired) &&
+      state.value &&
+      media &&
+      (!syncRequired || state.value.version >= requiredSyncVersion)
+    ) {
+      await applyState(state.value, media);
+      if (syncRequired && syncSentVersion !== state.value.version) {
+        syncSentVersion = state.value.version;
+        send({ type: 'synced', version: state.value.version });
+      }
+    }
   }
   function setMedia(next: WatchMedia | null) {
     if (media !== next) {
@@ -339,7 +417,7 @@ export function useWatchRoom() {
       window.clearTimeout(correctionTimer);
     }
     media = next;
-    if (!isHost.value) void applyLatest();
+    if (!isHost.value || syncRequired) void applyLatest();
   }
   function disconnect() {
     deliberateClose = true;
@@ -366,6 +444,13 @@ export function useWatchRoom() {
     clockOffset.value = 0;
     room.value = null;
     wasPromoted.value = false;
+    hostWaiting.value = false;
+    syncRequired = false;
+    readyReceived = false;
+    hostStatusVersion = -1;
+    requiredSyncVersion = 0;
+    syncSentVersion = -1;
+    participantVersion = -1;
   }
   if (getCurrentInstance()) onBeforeUnmount(disconnect);
   return {
@@ -377,6 +462,7 @@ export function useWatchRoom() {
     error,
     autoplayBlocked,
     wasPromoted,
+    hostWaiting,
     room,
     invitePath,
     clockOffset,

@@ -269,6 +269,58 @@ describe('watch room connection lifecycle', () => {
     expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({ type: 'play', position: 10 });
   });
 
+  test('gates reconnect controls', () => {
+    const room = useWatchRoom();
+    room.connect('ws://party', { download_token: 'token', upload_id: 'upload', host_key: 'key' });
+    const firstSocket = sockets[0]!;
+    firstSocket.open();
+    firstSocket.message({
+      type: 'ready',
+      role: 'host',
+      participant_id: 'host-id',
+      participant_count: 1,
+      sync_required: false,
+    });
+    const media = {
+      currentTime: 4,
+      paused: true,
+      playbackRate: 1,
+      pause() {
+        this.paused = true;
+      },
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    firstSocket.closeUnexpectedly();
+    timers[0]!();
+    const replacement = sockets[1]!;
+    replacement.open();
+    room.sendPlay();
+    room.sendPause();
+    room.sendSeek(6);
+    room.sendRate(1.5, 6);
+    room.sendSnapshot(replacement as unknown as WebSocket);
+    expect(
+      replacement.sent.filter((message) =>
+        ['play', 'pause', 'seek', 'rate', 'snapshot'].includes(JSON.parse(message).type),
+      ),
+    ).toHaveLength(0);
+    replacement.message({
+      type: 'ready',
+      role: 'host',
+      participant_id: 'new-host-id',
+      participant_count: 1,
+      sync_required: true,
+    });
+    room.sendPlay();
+    expect(replacement.sent.filter((message) => JSON.parse(message).type === 'play')).toHaveLength(
+      0,
+    );
+  });
+
   test('sends selected upload on join', () => {
     const room = useWatchRoom();
     room.connect('ws://party', { download_token: 'token', upload_id: 'upload' });
@@ -380,6 +432,65 @@ describe('watch room connection lifecycle', () => {
     expect(room.wasPromoted.value).toBe(true);
   });
 
+  test('exposes host waiting state', () => {
+    const room = useWatchRoom();
+    room.connect('ws://party', {});
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({
+      type: 'ready',
+      role: 'guest',
+      participant_id: 'guest-id',
+      participant_count: 2,
+    });
+    socket.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 5,
+      paused: true,
+      playback_rate: 1.5,
+      server_time: Date.now() / 1000,
+      participant_count: 2,
+    });
+    socket.message({ type: 'host_status', status: 'waiting', version: 1 });
+    expect(room.hostWaiting.value).toBe(true);
+    socket.message({ type: 'host_status', status: 'connected', version: 2 });
+    expect(room.hostWaiting.value).toBe(false);
+    socket.message({ type: 'host_status', status: 'waiting', version: 1 });
+    expect(room.hostWaiting.value).toBe(false);
+    room.disconnect();
+    expect(room.hostWaiting.value).toBe(false);
+  });
+
+  test('ignores stale participant counts', () => {
+    const room = useWatchRoom();
+    room.connect('ws://party', {});
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({
+      type: 'ready',
+      role: 'guest',
+      participant_id: 'guest-id',
+      participant_count: 1,
+      participant_version: 1,
+    });
+    socket.message({ type: 'participants', participant_count: 3, participant_version: 3 });
+    socket.message({ type: 'participants', participant_count: 2, participant_version: 2 });
+    expect(room.participantCount.value).toBe(3);
+    socket.message({
+      type: 'state',
+      version: 4,
+      anchor_position: 5,
+      paused: true,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      participant_count: 4,
+      participant_version: 4,
+    });
+    socket.message({ type: 'participants', participant_count: 2, participant_version: 3 });
+    expect(room.participantCount.value).toBe(4);
+  });
+
   test('does not let guests send commands', () => {
     const room = useWatchRoom();
     room.connect('ws://party', { download_token: 'token', upload_id: 'upload' });
@@ -393,6 +504,358 @@ describe('watch room connection lifecycle', () => {
     });
     room.sendRate(2, 4);
     expect(socket.sent.filter((message) => JSON.parse(message).type === 'rate')).toHaveLength(0);
+  });
+
+  test('syncs recovering host before control', async () => {
+    const room = useWatchRoom();
+    room.connect('ws://party', { host_key: 'reconnect-key' });
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({
+      type: 'ready',
+      role: 'host',
+      participant_id: 'host-id',
+      participant_count: 2,
+      sync_required: true,
+    });
+    const media = {
+      currentTime: 0,
+      paused: false,
+      playbackRate: 1,
+      pause() {
+        this.paused = true;
+      },
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    room.sendPlay();
+    expect(socket.sent.filter((message) => JSON.parse(message).type === 'play')).toHaveLength(0);
+    expect(socket.sent.filter((message) => JSON.parse(message).type === 'snapshot')).toHaveLength(
+      0,
+    );
+    socket.message({
+      type: 'state',
+      version: 3,
+      anchor_position: 12,
+      paused: true,
+      playback_rate: 1.5,
+      server_time: Date.now() / 1000,
+      participant_count: 2,
+    });
+    await Promise.resolve();
+    socket.message({ type: 'synced', version: 3 });
+    room.error.value = 'Stale synchronization error';
+    socket.message({ type: 'synced', version: 3 });
+    expect(room.error.value).toBe('');
+    const currentTime = Date.now;
+    Date.now = () => currentTime() + 600;
+    room.sendPlay();
+    Date.now = currentTime;
+    expect(media.currentTime).toBe(12);
+    expect(media.playbackRate).toBe(1.5);
+    expect(socket.sent.filter((message) => JSON.parse(message).type === 'play')).toHaveLength(1);
+  });
+
+  test('syncs promoted host before control', async () => {
+    const room = useWatchRoom();
+    room.connect('ws://party', {});
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({
+      type: 'ready',
+      role: 'guest',
+      participant_id: 'guest-id',
+      participant_count: 2,
+    });
+    socket.message({ type: 'promotion', participant_id: 'guest-id', host_key: 'new-key' });
+    room.sendPause();
+    expect(socket.sent.filter((message) => JSON.parse(message).type === 'pause')).toHaveLength(0);
+    const media = {
+      currentTime: 0,
+      paused: false,
+      playbackRate: 1,
+      pause() {
+        this.paused = true;
+      },
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    socket.message({
+      type: 'state',
+      version: 4,
+      anchor_position: 8,
+      paused: true,
+      playback_rate: 0.75,
+      server_time: Date.now() / 1000,
+      participant_count: 2,
+    });
+    await Promise.resolve();
+    socket.message({ type: 'synced', version: 4 });
+    const currentTime = Date.now;
+    Date.now = () => currentTime() + 600;
+    room.sendPause();
+    Date.now = currentTime;
+    expect(media.currentTime).toBe(8);
+    expect(media.playbackRate).toBe(0.75);
+    expect(socket.sent.filter((message) => JSON.parse(message).type === 'pause')).toHaveLength(1);
+  });
+
+  test('reconnect ignores cached state', async () => {
+    const room = useWatchRoom();
+    room.connect('ws://party', { host_key: 'old-key' });
+    const first = sockets[0]!;
+    first.open();
+    first.message({
+      type: 'ready',
+      role: 'host',
+      participant_id: 'host',
+      participant_count: 1,
+      version: 1,
+    });
+    const media = {
+      currentTime: 0,
+      paused: true,
+      playbackRate: 1,
+      pause() {
+        this.paused = true;
+      },
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    first.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 2,
+      paused: false,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      participant_count: 1,
+    });
+    first.closeUnexpectedly();
+    timers[0]!();
+    const replacement = sockets[1]!;
+    replacement.open();
+    replacement.message({
+      type: 'ready',
+      role: 'host',
+      participant_id: 'recovered',
+      participant_count: 1,
+      version: 2,
+      sync_required: true,
+    });
+    room.setMedia(media as unknown as HTMLMediaElement);
+    room.sendPlay();
+    expect(replacement.sent.filter((message) => JSON.parse(message).type === 'play')).toHaveLength(
+      0,
+    );
+    replacement.message({
+      type: 'state',
+      version: 2,
+      anchor_position: 11,
+      paused: true,
+      playback_rate: 1.5,
+      server_time: Date.now() / 1000,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    replacement.message({ type: 'synced', version: 2 });
+    const currentTime = Date.now;
+    Date.now = () => currentTime() + 600;
+    room.sendPlay();
+    Date.now = currentTime;
+    expect(media.currentTime).toBe(11);
+    expect(media.paused).toBe(true);
+    expect(media.playbackRate).toBe(1.5);
+    expect(replacement.sent.filter((message) => JSON.parse(message).type === 'play')).toHaveLength(
+      1,
+    );
+  });
+
+  test('promotion ignores cached state', async () => {
+    const room = useWatchRoom();
+    room.connect('ws://party', {});
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({
+      type: 'ready',
+      role: 'guest',
+      participant_id: 'guest',
+      participant_count: 1,
+      version: 1,
+    });
+    const media = {
+      currentTime: 0,
+      paused: true,
+      playbackRate: 1,
+      pause() {
+        this.paused = true;
+      },
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    socket.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 3,
+      paused: false,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      participant_count: 1,
+    });
+    socket.message({ type: 'promotion', participant_id: 'guest', version: 2, host_key: 'new-key' });
+    room.sendPause();
+    expect(socket.sent.filter((message) => JSON.parse(message).type === 'pause')).toHaveLength(0);
+    socket.message({
+      type: 'state',
+      version: 2,
+      anchor_position: 13,
+      paused: true,
+      playback_rate: 0.75,
+      server_time: Date.now() / 1000,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    socket.message({ type: 'synced', version: 2 });
+    const currentTime = Date.now;
+    Date.now = () => currentTime() + 600;
+    room.sendPause();
+    Date.now = currentTime;
+    expect(media.currentTime).toBe(13);
+    expect(media.paused).toBe(true);
+    expect(media.playbackRate).toBe(0.75);
+    expect(socket.sent.filter((message) => JSON.parse(message).type === 'pause')).toHaveLength(1);
+  });
+
+  test('applies late state after media attach', async () => {
+    const room = useWatchRoom();
+    room.connect('ws://party', {});
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({
+      type: 'ready',
+      role: 'guest',
+      participant_id: 'guest-id',
+      participant_count: 1,
+    });
+    socket.message({
+      type: 'state',
+      version: 2,
+      anchor_position: 6,
+      paused: true,
+      playback_rate: 1.25,
+      server_time: Date.now() / 1000,
+      participant_count: 1,
+    });
+    const media = {
+      currentTime: 0,
+      paused: false,
+      playbackRate: 1,
+      pause() {
+        this.paused = true;
+      },
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    await Promise.resolve();
+    expect(media.currentTime).toBe(6);
+    expect(media.paused).toBe(true);
+    expect(media.playbackRate).toBe(1.25);
+  });
+
+  test('late state media', async () => {
+    const room = useWatchRoom();
+    const media = {
+      currentTime: 0,
+      paused: false,
+      playbackRate: 1,
+      pause() {
+        this.paused = true;
+      },
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    room.connect('ws://party', {});
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({
+      type: 'ready',
+      role: 'guest',
+      participant_id: 'guest-id',
+      participant_count: 1,
+    });
+    socket.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 7,
+      paused: true,
+      playback_rate: 1.75,
+      server_time: Date.now() / 1000,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    expect(media.currentTime).toBe(7);
+    expect(media.paused).toBe(true);
+    expect(media.playbackRate).toBe(1.75);
+  });
+
+  test('fallback applies state', async () => {
+    const room = useWatchRoom();
+    room.connect('ws://party', { download_token: 'token', upload_id: 'upload', host_key: 'old' });
+    sockets[0]!.open();
+    sockets[0]!.message({ type: 'error', message: 'Invalid host key' });
+    timers[0]!();
+    const socket = sockets[1]!;
+    socket.open();
+    socket.message({
+      type: 'ready',
+      role: 'guest',
+      participant_id: 'guest-id',
+      participant_count: 1,
+    });
+    const media = {
+      currentTime: 0,
+      paused: false,
+      playbackRate: 1,
+      pause() {
+        this.paused = true;
+      },
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    socket.message({
+      type: 'state',
+      version: 4,
+      anchor_position: 9,
+      paused: true,
+      playback_rate: 0.5,
+      server_time: Date.now() / 1000,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    expect(media.currentTime).toBe(9);
+    expect(media.paused).toBe(true);
+    expect(media.playbackRate).toBe(0.5);
   });
 
   test('ignores stale autoplay completion', async () => {

@@ -408,6 +408,13 @@
                 </div>
                 <p class="text-sm text-muted">Watch or listen with friends in sync.</p>
                 <div v-if="watchStatus !== 'idle'" class="space-y-1 text-sm">
+                  <UAlert
+                    v-if="watchHostWaiting"
+                    color="warning"
+                    variant="soft"
+                    title="Host disconnected. Playback is paused while we wait for the host to reconnect."
+                    icon="i-heroicons-pause-circle-20-solid"
+                  />
                   <div class="flex items-center justify-between gap-4">
                     <span class="text-muted">Status</span>
                     <span :class="watchStatus === 'error' ? 'text-error' : 'text-highlighted'">
@@ -982,6 +989,7 @@ const {
   error: watchError,
   autoplayBlocked: watchAutoplayBlocked,
   wasPromoted: watchWasPromoted,
+  hostWaiting: watchHostWaiting,
   invitePath: watchInvitePath,
 } = watchRoom;
 const watchRoomId = computed(() => (typeof route.query.room === 'string' ? route.query.room : ''));

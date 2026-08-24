@@ -7,6 +7,7 @@ export type WatchState = {
   playback_rate: number;
   server_time: number;
   participant_count: number;
+  participant_version?: number;
 };
 
 export type WatchRoomResponse = {
@@ -17,6 +18,8 @@ export type WatchRoomResponse = {
 
 /** The rotated creator credential delivered in ready/promotion. */
 export type WatchCredentialMessage = { host_key?: unknown };
+
+export type WatchHostStatus = 'waiting' | 'connected';
 
 export type WatchStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error';
 
@@ -78,6 +81,10 @@ export function isWatchState(value: unknown): value is WatchState {
     typeof state.participant_count === 'number' &&
     Number.isInteger(state.participant_count) &&
     state.participant_count >= 0 &&
-    state.participant_count <= 32
+    state.participant_count <= 32 &&
+    (state.participant_version === undefined ||
+      (typeof state.participant_version === 'number' &&
+        Number.isInteger(state.participant_version) &&
+        state.participant_version >= 0))
   );
 }

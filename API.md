@@ -725,15 +725,19 @@ Guests omit `host_key`:
 
 | Type | Fields | Meaning |
 | --- | --- | --- |
-| `ready` | `participant_id`, `role`, `participant_count`, host `host_key` | Join accepted; `role` is `host` or `guest`; a host receives its rotated key |
-| `state` | `version`, `anchor_position`, `paused`, `playback_rate`, `server_time`, `participant_count` | Current server playback state |
-| `participants` | `participant_count` | Participant count changed |
+| `ready` | `participant_id`, `role`, `participant_count`, `participant_version`, `version`, `sync_required`, host `host_key` | Join accepted; `role` is `host` or `guest`; a host receives its rotated key. A reconnecting host has `sync_required: true` and must apply the state at or above `version` before controlling playback |
+| `state` | `version`, `anchor_position`, `paused`, `playback_rate`, `server_time`, `participant_count`, `participant_version` | Current server playback state |
+| `participants` | `participant_count`, `participant_version` | Participant count changed. Clients ignore messages with an older `participant_version` |
 | `promotion` | `participant_id`, `version`, `host_key` | The indicated guest became host and receives its rotated key |
+| `host_status` | `status`, `version` | `waiting` means the host disconnected and authoritative playback is paused; `connected` means the host recovered or a guest was promoted. Lifecycle `version` values are monotonic, so clients ignore older status events. Guests joining during reconnect grace receive the current `waiting` status |
+| `synced` | `version` | The server accepted the recovering or promoted host's synchronization acknowledgement |
 | `pong` | `client_time`, `server_time` | Response to a valid `ping` |
 | `error` | `message` | Request or party error |
 
 **Client Messages:**
 - Host playback commands use `type` `play`, `pause`, `seek`, `rate`, or `snapshot` and require a finite `position` in seconds.
+- A recovering or promoted host must first apply the authoritative state delivered after `ready` or `promotion`; clients must not send playback commands or snapshots until that synchronization is complete. A new host with `sync_required: false` may send its initial snapshot.
+- A recovering or promoted host acknowledges applied state with `{ "type": "synced", "version": <state version> }`. The server rejects playback commands until that participant acknowledges the current authoritative version, and resends `error` plus `state` for a stale acknowledgement.
 - `rate` and `snapshot` require `playback_rate` from `0.25` through `4`; `snapshot` also requires boolean `paused`.
 - Guests may send `ping` with numeric `client_time` or `ready` to request current state. Guests cannot control playback.
 - Example host command: `{ "type": "seek", "position": 120.5 }`
@@ -741,8 +745,8 @@ Guests omit `host_key`:
 
 **Authority and Limits:**
 - The first valid join with the creation `host_key` establishes the host. Guests may join first without taking the host role.
-- If the host disconnects, its `host_key` remains valid for a 15-second reconnect grace period. After that, the longest-connected guest is promoted and receives a rotated `host_key`.
-- A process allows at most 1000 rooms and at most 3 rooms per download token. A room allows at most 32 participants; all messages are limited to 60 per two seconds per participant, and playback commands to 20 per two seconds per host. The room also expires when its download token expires.
+- If the host disconnects, the server anchors and pauses playback, broadcasts a `waiting` status and state, and keeps its `host_key` valid for a 15-second reconnect grace period. A reconnecting host receives and must apply that paused state before controlling playback. After grace expires, the longest-connected guest is promoted, receives a rotated `host_key`, and all participants receive the authoritative paused state. A late joiner receives the current projected state, including its paused state and playback rate.
+- A process allows at most 1000 rooms and at most 3 rooms per download token. A room allows at most 32 participants; before a host is established, one participant slot is reserved for the host. All messages are limited to 60 per two seconds per participant, and playback commands to 20 per two seconds per host. The room also expires when its download token expires.
 - Messages are limited to 8192 bytes; joins must arrive within 10 seconds. Never-joined rooms are retained for 60 seconds, and rooms expire after 30 minutes of inactivity. Participants that send nothing for 90 seconds are removed. Cleanup runs approximately every second in this process.
 
 **Close Codes:**

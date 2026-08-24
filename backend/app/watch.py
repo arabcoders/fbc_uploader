@@ -41,6 +41,7 @@ ERROR_COMMAND = "command"
 ERROR_RATE = "rate"
 ERROR_PAUSED = "paused"
 ERROR_POSITION = "position"
+ERROR_SYNC = "sync"
 ERROR_UPLOAD = "upload"
 ERROR_ROOM = "room"
 
@@ -60,6 +61,7 @@ class WatchRoomError(ValueError):
         "rate": "Invalid playback rate",
         "paused": "Invalid paused state",
         "position": "Invalid position",
+        "sync": "Synchronize the current Watch Party state before controlling playback",
         "message": "Message must be an object",
         "json": "Invalid JSON message",
         "size": "Message too large",
@@ -78,6 +80,8 @@ class Participant:
     socket: WebSocket
     joined_at: int
     is_host: bool = False
+    pending_sync: bool = False
+    sync_version: int = 0
     command_window_started: float = field(default_factory=time.monotonic)
     command_count: int = 0
     last_seen: float = field(default_factory=time.monotonic)
@@ -99,6 +103,7 @@ class WatchRoom:
     anchor_server_time: float = field(default_factory=time.time)
     paused: bool = True
     playback_rate: float = 1.0
+    participant_version: int = 0
     participants: dict[str, Participant] = field(default_factory=dict)
     host_established: bool = False
     host_reconnect_until: float | None = None
@@ -116,6 +121,7 @@ class WatchRoomManager:
     def __init__(self) -> None:
         """Create an empty room manager."""
         self.rooms: dict[str, WatchRoom] = {}
+        self._superseded: dict[str, tuple[WatchRoom, WebSocket]] = {}
         self._lock = asyncio.Lock()
         self._join_sequence = 0
 
@@ -138,7 +144,10 @@ class WatchRoomManager:
     def get(self, room_id: str) -> WatchRoom | None:
         return self.rooms.get(room_id)
 
-    async def join(self, room: WatchRoom, socket: WebSocket, credential: str, host_key: str | None, upload_id: str) -> tuple[str, bool]:
+    async def join(
+        self, room: WatchRoom, socket: WebSocket, credential: str, host_key: str | None, upload_id: str
+    ) -> tuple[str, bool, bool]:
+        superseded_socket: WebSocket | None = None
         async with self._lock:
             if self.rooms.get(room.room_id) is not room:
                 raise WatchRoomError(ERROR_ROOM)
@@ -146,39 +155,122 @@ class WatchRoomManager:
                 raise WatchRoomError(ERROR_UPLOAD)
             if not secrets.compare_digest(credential, room.download_token):
                 raise WatchRoomError(ERROR_CREDENTIAL)
-            if len(room.participants) >= MAX_PARTICIPANTS:
-                raise WatchRoomError(ERROR_FULL)
             if host_key is not None and not isinstance(host_key, str):
                 raise WatchRoomError(ERROR_HOST_KEY)
             is_host = False
+            reconnected = False
             if host_key is not None:
-                if room.host_established or not secrets.compare_digest(host_key, room.host_key):
+                if not secrets.compare_digest(host_key, room.host_key):
                     raise WatchRoomError(ERROR_HOST_KEY)
                 if room.host_reconnect_until is not None and time.monotonic() > room.host_reconnect_until:
                     raise WatchRoomError(ERROR_HOST_KEY)
                 is_host = True
+                reconnected = room.host_established or room.host_reconnect_until is not None
+                old_host_id = next((key for key, value in room.participants.items() if value.is_host), None)
+                effective_count = len(room.participants) - (1 if old_host_id is not None else 0) + 1
+                if effective_count > MAX_PARTICIPANTS:
+                    raise WatchRoomError(ERROR_FULL)
+            elif len(room.participants) >= MAX_PARTICIPANTS - (0 if room.host_established else 1):
+                raise WatchRoomError(ERROR_FULL)
+            if host_key is not None:
+                if room.host_established:
+                    if old_host_id is not None:
+                        superseded_socket = room.participants.pop(old_host_id).socket
+                    timestamp = time.time()
+                    room.anchor_position = room.projected_position(timestamp)
+                    room.anchor_server_time = timestamp
+                    room.paused = True
+                if reconnected:
+                    room.version += 1
                 room.host_established = True
                 room.host_key = secrets.token_urlsafe(32)
                 room.host_reconnect_until = None
             self._join_sequence += 1
             participant_id = secrets.token_urlsafe(12)
-            room.participants[participant_id] = Participant(socket, self._join_sequence, is_host)
+            room.participants[participant_id] = Participant(
+                socket, self._join_sequence, is_host, reconnected, room.version if reconnected else 0
+            )
+            room.participant_version += 1
+            if superseded_socket is not None:
+                self._superseded[participant_id] = (room, superseded_socket)
             room.last_activity = time.monotonic()
-            return participant_id, is_host
+        return participant_id, is_host, reconnected
+
+    async def close_superseded(self, participant_id: str) -> None:
+        async with self._lock:
+            entry = self._superseded.get(participant_id)
+        if entry is None:
+            return
+        _, socket = entry
+        await self._close_socket(socket)
+        async with self._lock:
+            if self._superseded.get(participant_id) == entry:
+                self._superseded.pop(participant_id, None)
+
+    async def _drain_superseded(self, room_ids: set[str] | None = None) -> None:
+        async with self._lock:
+            participant_ids = [
+                participant_id for participant_id, (room, _) in self._superseded.items() if room_ids is None or room.room_id in room_ids
+            ]
+        for participant_id in participant_ids:
+            await self.close_superseded(participant_id)
+
+    async def participant_message(self, room: WatchRoom) -> dict[str, Any] | None:
+        async with self._lock:
+            if self.rooms.get(room.room_id) is not room:
+                return None
+            participant_count = len(room.participants)
+            participant_version = room.participant_version
+        return {
+            "type": "participants",
+            "participant_count": participant_count,
+            "participant_version": participant_version,
+        }
+
+    async def waiting_version(self, room: WatchRoom) -> int | None:
+        async with self._lock:
+            if self.rooms.get(room.room_id) is room and room.host_reconnect_until is not None:
+                return room.version
+            return None
+
+    async def synced(self, room: WatchRoom, participant_id: str, version: int) -> dict[str, Any] | None:
+        async with self._lock:
+            if self.rooms.get(room.room_id) is not room:
+                raise WatchRoomError(ERROR_ROOM)
+            participant = room.participants.get(participant_id)
+            if participant is None or not participant.is_host:
+                raise WatchRoomError(ERROR_AUTHORITY)
+            if not participant.pending_sync or version != participant.sync_version or version != room.version:
+                return self.state(room)
+            participant.pending_sync = False
+            return None
 
     async def remove(self, room: WatchRoom, participant_id: str) -> None:
+        notifications: list[dict[str, Any]] = []
         async with self._lock:
             if self.rooms.get(room.room_id) is not room:
                 return
             participant = room.participants.pop(participant_id, None)
             if participant is None:
                 return
+            room.participant_version += 1
             room.last_activity = time.monotonic()
             if participant.is_host and room.host_established:
+                timestamp = time.time()
+                room.anchor_position = room.projected_position(timestamp)
+                room.anchor_server_time = timestamp
+                room.paused = True
+                room.version += 1
                 room.host_established = False
                 room.host_reconnect_until = time.monotonic() + HOST_RECONNECT_GRACE_SECONDS
+                notifications = [
+                    {"type": "host_status", "status": "waiting", "version": room.version},
+                    self.state(room),
+                ]
             elif participant.is_host or (not room.participants and room.host_established):
                 self.rooms.pop(room.room_id, None)
+        for message in notifications:
+            await self.broadcast(room, message)
 
     async def discard(self, room_id: str, host_key: str) -> bool:
         async with self._lock:
@@ -192,30 +284,39 @@ class WatchRoomManager:
             return True
 
     async def promote_expired(self, room: WatchRoom) -> None:
-        async with self._lock:
-            if room.host_established or room.host_reconnect_until is None or time.monotonic() <= room.host_reconnect_until:
+        while True:
+            async with self._lock:
+                if room.host_established or room.host_reconnect_until is None or time.monotonic() <= room.host_reconnect_until:
+                    return
+                candidates = sorted(room.participants.items(), key=lambda item: item[1].joined_at)
+                if not candidates:
+                    self.rooms.pop(room.room_id, None)
+                    return
+                promoted_id, participant = candidates[0]
+                participant.is_host = True
+                participant.pending_sync = True
+                room.host_key = secrets.token_urlsafe(32)
+                room.host_established = True
+                room.host_reconnect_until = None
+                room.version += 1
+                participant.sync_version = room.version
+                notice = {"type": "promotion", "participant_id": promoted_id, "version": room.version, "host_key": room.host_key}
+            if await self._send(participant.socket, notice):
+                await self.broadcast(room, {"type": "host_status", "status": "connected", "version": room.version})
+                await self.broadcast(room, self.state(room))
                 return
-            if not room.participants:
-                self.rooms.pop(room.room_id, None)
-                return
-            promoted_id = min(room.participants, key=lambda key: room.participants[key].joined_at)
-            room.participants[promoted_id].is_host = True
-            room.host_key = secrets.token_urlsafe(32)
-            room.host_established = True
-            room.host_reconnect_until = None
-            room.version += 1
-            participant = room.participants[promoted_id]
-            notice = {"type": "promotion", "participant_id": promoted_id, "version": room.version, "host_key": room.host_key}
-        if await self._send(participant.socket, notice):
-            return
-        async with self._lock:
-            if self.rooms.get(room.room_id) is not room:
-                return
-            if room.participants.pop(promoted_id, None) is not None:
-                room.host_established = False
-                room.host_reconnect_until = time.monotonic() + HOST_RECONNECT_GRACE_SECONDS
-                room.last_activity = time.monotonic()
-        await self.broadcast(room, {"type": "participants", "participant_count": len(room.participants)})
+            async with self._lock:
+                if self.rooms.get(room.room_id) is not room:
+                    return
+                if room.participants.pop(promoted_id, None) is not None:
+                    room.participant_version += 1
+                    room.host_established = False
+                    room.host_reconnect_until = 0
+                    room.last_activity = time.monotonic()
+                elif not room.host_established:
+                    # The failed socket's handler may have removed it and started a
+                    # grace period. No client received this promotion key, so retry now.
+                    room.host_reconnect_until = 0
 
     async def command(self, room: WatchRoom, participant_id: str, message: dict[str, Any]) -> dict[str, Any]:
         async with self._lock:
@@ -224,6 +325,8 @@ class WatchRoomManager:
             participant = room.participants.get(participant_id)
             if participant is None or not participant.is_host:
                 raise WatchRoomError(ERROR_AUTHORITY)
+            if participant.pending_sync:
+                raise WatchRoomError(ERROR_SYNC)
             now = time.monotonic()
             if now - participant.command_window_started >= COMMAND_WINDOW_SECONDS:
                 participant.command_window_started = now
@@ -310,6 +413,7 @@ class WatchRoomManager:
             "playback_rate": room.playback_rate,
             "server_time": server_time,
             "participant_count": len(room.participants),
+            "participant_version": room.participant_version,
         }
 
     async def broadcast(self, room: WatchRoom, message: dict[str, Any]) -> None:
@@ -363,21 +467,38 @@ class WatchRoomManager:
                         for participant_id, participant in room.participants.items()
                         if now - participant.last_seen > STALE_PARTICIPANT_SECONDS
                     ]
-                    stale_host = any(room.participants[participant_id].is_host for participant_id in stale)
-                    stale_sockets = [room.participants.pop(participant_id).socket for participant_id in stale]
-                    if stale_host and room.host_established:
-                        room.host_established = False
-                        room.host_reconnect_until = now + HOST_RECONNECT_GRACE_SECONDS
+                    stale_sockets = []
+                    stale_notifications: list[dict[str, Any]] = []
+                    for participant_id in stale:
+                        participant = room.participants.pop(participant_id)
+                        room.participant_version += 1
+                        stale_sockets.append(participant.socket)
+                        if participant.is_host and room.host_established:
+                            timestamp = time.time()
+                            room.anchor_position = room.projected_position(timestamp)
+                            room.anchor_server_time = timestamp
+                            room.paused = True
+                            room.version += 1
+                            room.host_established = False
+                            room.host_reconnect_until = time.monotonic() + HOST_RECONNECT_GRACE_SECONDS
+                            stale_notifications.extend(
+                                [
+                                    {"type": "host_status", "status": "waiting", "version": room.version},
+                                    self.state(room),
+                                ]
+                            )
                     room.last_activity = now if stale else room.last_activity
             if expired:
                 await asyncio.gather(*(self._close_socket(participant.socket) for participant in participants))
+                await self._drain_superseded({room.room_id})
                 continue
+            for message in stale_notifications:
+                await self.broadcast(room, message)
+            if stale:
+                participant_message = await self.participant_message(room)
+                if participant_message is not None:
+                    await self.broadcast(room, participant_message)
             await asyncio.gather(*(self._close_socket(socket) for socket in stale_sockets))
-            async with self._lock:
-                should_broadcast = stale and self.rooms.get(room.room_id) is room
-                participant_count = len(room.participants)
-            if should_broadcast:
-                await self.broadcast(room, {"type": "participants", "participant_count": participant_count})
             await self.promote_expired(room)
             async with self._lock:
                 abandoned = not room.participants and not room.host_established and now - room.created_at > NEVER_JOINED_TTL_SECONDS
@@ -394,6 +515,7 @@ class WatchRoomManager:
                     participants = list(room.participants.values())
                     self.rooms.pop(room.room_id, None)
                 await asyncio.gather(*(self._close_socket(participant.socket) for participant in participants))
+                await self._drain_superseded({room.room_id})
 
     async def invalidate(self, download_token: str | None = None, upload_id: str | None = None) -> None:
         """Remove and close rooms matching an invalidated token or upload."""
@@ -406,6 +528,8 @@ class WatchRoomManager:
             for room in rooms:
                 self.rooms.pop(room.room_id, None)
             participants = [participant for room in rooms for participant in room.participants.values()]
+            room_ids = {room.room_id for room in rooms}
+        await self._drain_superseded(room_ids)
         await asyncio.gather(*(self._close_socket(participant.socket) for participant in participants))
 
     async def update_expiry(self, download_token: str, expires_at: datetime | float) -> None:
@@ -423,16 +547,20 @@ class WatchRoomManager:
                 for room in rooms:
                     self.rooms.pop(room.room_id, None)
                 participants = [participant for room in rooms for participant in room.participants.values()]
+                room_ids = {room.room_id for room in rooms}
             else:
                 for room in rooms:
                     room.token_expires_at = expiry
                 participants = []
+                room_ids = set()
+        await self._drain_superseded(room_ids)
         await asyncio.gather(*(self._close_socket(participant.socket) for participant in participants))
 
     async def close(self) -> None:
         async with self._lock:
             participants = [participant for room in self.rooms.values() for participant in room.participants.values()]
             self.rooms.clear()
+        await self._drain_superseded()
         await asyncio.gather(*(self._close_socket(participant.socket) for participant in participants))
 
 

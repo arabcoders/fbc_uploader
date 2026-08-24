@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from backend.app.config import settings
 from backend.app.db import SessionLocal
 from backend.app.routers.tokens import _get_accessible_upload
-from backend.app.watch import ERROR_CREDENTIAL, WatchRoomError, WatchRoomManager
+from backend.app.watch import ERROR_CREDENTIAL, ERROR_SYNC, WatchRoomError, WatchRoomManager
 
 ERROR_MESSAGE = "message"
 ERROR_JSON = "json"
@@ -95,6 +95,7 @@ async def watch_websocket(websocket: WebSocket, room_id: str) -> None:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
     participant_id: str | None = None
+    superseded_close_task: asyncio.Task[None] | None = None
     try:
         try:
             message = await asyncio.wait_for(_read_message(websocket), JOIN_TIMEOUT_SECONDS)
@@ -117,7 +118,11 @@ async def watch_websocket(websocket: WebSocket, room_id: str) -> None:
                 raise WatchRoomError(ERROR_CREDENTIAL) from exc
             if record.public_id != room.upload_id or token.download_token != room.download_token:
                 raise WatchRoomError(ERROR_CREDENTIAL)
-            participant_id, is_host = await manager.join(room, websocket, credential, host_key, upload_id)
+            participant_id, is_host, reconnected = await manager.join(room, websocket, credential, host_key, upload_id)
+            waiting_version = None if reconnected else await manager.waiting_version(room)
+            superseded_close_task = asyncio.create_task(
+                manager.close_superseded(participant_id), name=f"watch-close-superseded-{participant_id}"
+            )
         except (WatchRoomError, TimeoutError) as exc:
             await _send_error(websocket, str(exc))
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
@@ -130,13 +135,23 @@ async def watch_websocket(websocket: WebSocket, room_id: str) -> None:
                 "participant_id": participant_id,
                 "role": "host" if is_host else "guest",
                 "participant_count": len(room.participants),
+                "participant_version": room.participant_version,
+                "sync_required": reconnected,
+                "version": room.version,
                 **({"host_key": room.host_key} if is_host else {}),
             },
         ):
             return
         if not await manager._send(websocket, manager.state(room)):
             return
-        await manager.broadcast(room, {"type": "participants", "participant_count": len(room.participants)})
+        if reconnected:
+            await manager.broadcast(room, {"type": "host_status", "status": "connected", "version": room.version})
+            await manager.broadcast(room, manager.state(room))
+        elif waiting_version is not None:
+            await manager._send(websocket, {"type": "host_status", "status": "waiting", "version": waiting_version})
+        participant_message = await manager.participant_message(room)
+        if participant_message is not None:
+            await manager.broadcast(room, participant_message)
         while True:
             try:
                 raw = await websocket.receive_text()
@@ -150,6 +165,16 @@ async def watch_websocket(websocket: WebSocket, room_id: str) -> None:
                         raise WatchRoomError(ERROR_PING)
                     if not await manager._send(websocket, {"type": "pong", "client_time": client_time, "server_time": time.time()}):
                         return
+                elif kind == "synced":
+                    version = message.get("version")
+                    if not isinstance(version, int) or isinstance(version, bool):
+                        raise WatchRoomError(ERROR_SYNC)
+                    current_state = await manager.synced(room, participant_id, version)
+                    if current_state is not None:
+                        await _send_error(websocket, str(WatchRoomError(ERROR_SYNC)))
+                        await manager._send(websocket, current_state)
+                    else:
+                        await manager._send(websocket, {"type": "synced", "version": version})
                 elif kind == "ready":
                     if not await manager._send(websocket, manager.state(room)):
                         return
@@ -166,8 +191,13 @@ async def watch_websocket(websocket: WebSocket, room_id: str) -> None:
     finally:
         if participant_id is not None:
             await manager.remove(room, participant_id)
-            if room.room_id in manager.rooms:
-                await manager.broadcast(room, {"type": "participants", "participant_count": len(room.participants)})
+            participant_message = await manager.participant_message(room)
+            if participant_message is not None:
+                await manager.broadcast(room, participant_message)
+            if superseded_close_task is None:
+                await manager.close_superseded(participant_id)
+            else:
+                await superseded_close_task
 
 
 def _finite(value: float) -> bool:
