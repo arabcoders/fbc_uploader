@@ -26,7 +26,7 @@ class FBCIE(InfoExtractor):
         return cls._VALID_FBC.match(url)
 
     @classmethod
-    def _match_id(cls, url) -> None | str:
+    def _match_id(cls, url) -> str | None:
         mat: re.Match[str] | None = cls._match_valid_url(url)
         if not mat:
             return None
