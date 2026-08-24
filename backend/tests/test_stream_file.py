@@ -10,7 +10,7 @@ from backend.tests.utils import complete_upload, create_token
 
 
 @pytest.mark.asyncio
-async def test_stream_file_returns_inline_content_disposition(client):
+async def test_stream_inline_disposition(client):
     """Streaming endpoint should return completed media inline for playback."""
     with patch("backend.app.security.settings.allow_public_downloads", True):
         token_data = await create_token(client, max_uploads=1)
@@ -59,7 +59,7 @@ async def test_stream_file_returns_inline_content_disposition(client):
 
 
 @pytest.mark.asyncio
-async def test_stream_file_supports_head_requests(client):
+async def test_stream_head_request(client):
     """Streaming endpoint should expose metadata over HEAD without returning a body."""
     with patch("backend.app.security.settings.allow_public_downloads", True):
         token_data = await create_token(client, max_uploads=1)
@@ -109,7 +109,7 @@ async def test_stream_file_supports_head_requests(client):
 
 
 @pytest.mark.asyncio
-async def test_stream_file_does_not_depend_on_request_scoped_db_session(client):
+async def test_stream_independent_db_session(client):
     """Streaming endpoint should resolve metadata before returning FileResponse."""
     from backend.app.db import get_db
 

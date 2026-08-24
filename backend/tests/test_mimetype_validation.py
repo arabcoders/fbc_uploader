@@ -179,7 +179,7 @@ async def test_mimetype_updated_on_completion(client):
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(shutil.which("ffprobe") is None, reason="ffprobe not available")
-async def test_ffprobe_extracts_metadata_for_video(client):
+async def test_ffprobe_video_metadata(client):
     """Test that ffprobe metadata is extracted for video files."""
     resp = await client.post(
         app.url_path_for("create_token"),
@@ -246,7 +246,7 @@ async def test_ffprobe_extracts_metadata_for_video(client):
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(shutil.which("ffprobe") is None, reason="ffprobe not available")
-async def test_ffprobe_not_run_for_non_multimedia(client):
+async def test_ffprobe_skips_nonmedia(client):
     """Test that ffprobe is not run for non-multimedia files."""
     resp = await client.post(
         app.url_path_for("create_token"),

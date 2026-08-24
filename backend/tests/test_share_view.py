@@ -19,7 +19,7 @@ from backend.tests.test_postprocessing import wait_for_processing
 
 
 @pytest.mark.asyncio
-async def test_get_token_with_upload_token_returns_full_info():
+async def test_upload_token_full_info():
     """Test that accessing with upload token returns full token info including upload token."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -38,7 +38,7 @@ async def test_get_token_with_upload_token_returns_full_info():
 
 
 @pytest.mark.asyncio
-async def test_get_token_with_download_token_returns_limited_info():
+async def test_download_token_limited_info():
     """Test that accessing with download token returns share info without upload token."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -59,7 +59,7 @@ async def test_get_token_with_download_token_returns_limited_info():
 
 
 @pytest.mark.asyncio
-async def test_get_token_invalid_token_returns_404():
+async def test_invalid_token_returns_404():
     """Test that invalid token returns 404."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -72,7 +72,7 @@ async def test_get_token_invalid_token_returns_404():
 
 
 @pytest.mark.asyncio
-async def test_share_page_route_exists_and_responds():
+async def test_share_page_responds():
     """Test that /f/{token} route exists and responds appropriately."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -94,7 +94,7 @@ async def test_share_page_route_exists_and_responds():
 
 @pytest.mark.asyncio
 @pytest.mark.asyncio
-async def test_share_page_bot_preview_with_video(client):
+async def test_share_bot_preview_video(client):
     """Discord bot preview should expose playable video embed tags alongside the thumbnail image."""
     with patch("backend.app.security.settings.allow_public_downloads", True):
         token_data = await create_token(client, max_uploads=1)
@@ -154,7 +154,7 @@ async def test_share_page_bot_preview_with_video(client):
 
 
 @pytest.mark.asyncio
-async def test_token_embed_page_renders_preview_for_public_token(client):
+async def test_embed_preview_public_token(client):
     """Human embed page should keep video embed metadata while avoiding eager autoplay."""
     with patch("backend.app.security.settings.allow_public_downloads", True):
         token_data = await create_token(client, max_uploads=1)
@@ -217,7 +217,7 @@ async def test_token_embed_page_renders_preview_for_public_token(client):
 
 
 @pytest.mark.asyncio
-async def test_thumbnail_endpoint_returns_shared_fallback_when_no_thumbnail_exists(client):
+async def test_thumbnail_shared_fallback(client):
     """Thumbnail endpoint should return the shared fallback image when no sidecar exists."""
     with patch("backend.app.security.settings.allow_public_downloads", True):
         token_data = await create_token(client, max_uploads=1)
@@ -262,7 +262,7 @@ async def test_thumbnail_endpoint_returns_shared_fallback_when_no_thumbnail_exis
 
 
 @pytest.mark.asyncio
-async def test_share_page_bot_preview_uses_generated_preview_sidecar(client):
+async def test_share_preview_sidecar(client):
     """Bot preview should prefer the generated short preview clip when one exists."""
     with (
         patch("backend.app.security.settings.allow_public_downloads", True),
@@ -330,7 +330,7 @@ async def test_share_page_bot_preview_uses_generated_preview_sidecar(client):
 
 
 @pytest.mark.asyncio
-async def test_share_page_bot_preview_ignores_sidecar_when_preview_feature_disabled(client):
+async def test_share_preview_disabled_sidecar(client):
     """Bot preview should fall back to the full stream when preview sidecars are disabled by config."""
     with (
         patch("backend.app.security.settings.allow_public_downloads", True),
@@ -398,7 +398,7 @@ async def test_share_page_bot_preview_ignores_sidecar_when_preview_feature_disab
 
 
 @pytest.mark.asyncio
-async def test_share_page_bot_preview_prefers_generated_preview_for_small_incompatible_video(client):
+async def test_share_preview_small_incompatible(client):
     """Bot preview should use a generated MP4 sidecar for small incompatible videos."""
     with (
         patch("backend.app.security.settings.allow_public_downloads", True),
@@ -461,7 +461,7 @@ async def test_share_page_bot_preview_prefers_generated_preview_for_small_incomp
 
 
 @pytest.mark.asyncio
-async def test_share_page_bot_preview_falls_back_to_image_only_for_incompatible_video_without_preview(client):
+async def test_share_preview_image_fallback(client):
     """Bot preview should degrade to image-only metadata when incompatible video has no preview sidecar."""
     with (
         patch("backend.app.security.settings.allow_public_downloads", True),
@@ -524,7 +524,7 @@ async def test_share_page_bot_preview_falls_back_to_image_only_for_incompatible_
 
 
 @pytest.mark.asyncio
-async def test_incompatible_small_video_forces_preview_generation_during_postprocessing():
+async def test_small_video_forces_preview():
     """Incompatible videos should force preview generation even when below the normal preview threshold."""
     configured_clip_seconds = 180
     configured_min_size_bytes = 195 * 1024 * 1024
@@ -593,7 +593,7 @@ async def test_incompatible_small_video_forces_preview_generation_during_postpro
 
 
 @pytest.mark.asyncio
-async def test_share_embed_routes_can_be_requested_repeatedly(client):
+async def test_share_embed_repeated_requests(client):
     """Repeated embed requests should succeed without leaking database sessions."""
     with patch("backend.app.security.settings.allow_public_downloads", True):
         token_data = await create_token(client, max_uploads=1)

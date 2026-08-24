@@ -8,7 +8,7 @@ from backend.tests.utils import validate_metadata
 
 
 @pytest.mark.asyncio
-async def test_metadata_schema_and_validation_success():
+async def test_metadata_validation_success():
     schema = [
         {"key": "title", "label": "Title", "type": "string", "required": True},
         {"key": "source", "label": "Source", "type": "select", "options": ["tv", "web"]},
@@ -28,7 +28,7 @@ async def test_metadata_schema_and_validation_success():
 
 
 @pytest.mark.asyncio
-async def test_metadata_validation_rejects_invalid_option():
+async def test_metadata_rejects_invalid_option():
     schema = [
         {"key": "source", "label": "Source", "type": "select", "options": ["tv", "web"], "required": True},
     ]
@@ -42,7 +42,7 @@ async def test_metadata_validation_rejects_invalid_option():
 
 
 @pytest.mark.asyncio
-async def test_metadata_extraction_returns_matching_fields():
+async def test_metadata_extracts_matching_fields():
     schema = [
         {
             "key": "broadcast_date",
@@ -88,7 +88,7 @@ async def test_metadata_extraction_returns_matching_fields():
 
 
 @pytest.mark.asyncio
-async def test_metadata_extraction_returns_empty_metadata_when_nothing_matches():
+async def test_metadata_extracts_empty_fields():
     seed_schema(
         [
             {

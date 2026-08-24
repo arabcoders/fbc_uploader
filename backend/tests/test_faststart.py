@@ -63,7 +63,7 @@ async def test_needs_faststart_empty_file():
 
 
 @pytest.mark.asyncio
-async def test_needs_faststart_moov_before_mdat():
+async def test_faststart_moov_first():
     """Test that file with moov before mdat doesn't need faststart."""
     with tempfile.NamedTemporaryFile(mode="wb", suffix=".mp4", delete=False) as f:
         f.write(b"ftyp" + b"\x00" * 100)
@@ -80,7 +80,7 @@ async def test_needs_faststart_moov_before_mdat():
 
 
 @pytest.mark.asyncio
-async def test_needs_faststart_mdat_before_moov():
+async def test_faststart_mdat_first():
     """Test that file with mdat before moov needs faststart."""
     with tempfile.NamedTemporaryFile(mode="wb", suffix=".mp4", delete=False) as f:
         f.write(b"ftyp" + b"\x00" * 100)
@@ -97,7 +97,7 @@ async def test_needs_faststart_mdat_before_moov():
 
 
 @pytest.mark.asyncio
-async def test_ensure_faststart_file_not_found():
+async def test_faststart_missing_file():
     """Test that missing file raises FileNotFoundError."""
     nonexistent = Path("/tmp/does_not_exist_12345.mp4")
     with pytest.raises(FileNotFoundError):
@@ -105,7 +105,7 @@ async def test_ensure_faststart_file_not_found():
 
 
 @pytest.mark.asyncio
-async def test_generate_video_thumbnail_uses_seeked_sampling_and_retries_without_seek():
+async def test_thumbnail_sampling_fallback():
     """Thumbnail generation should skip intros first, then fall back to a no-seek attempt if needed."""
     with tempfile.NamedTemporaryFile(mode="wb", suffix=".mp4", delete=False) as f:
         f.write(b"fake video bytes")
@@ -166,7 +166,7 @@ async def test_generate_video_thumbnail_uses_seeked_sampling_and_retries_without
         path.unlink(missing_ok=True)
 
 
-def test_should_remux_mkv_with_h264_aac_to_mp4():
+def test_remux_mkv_to_mp4():
     """H.264/AAC in a non-MP4 container should be remuxed to MP4."""
     ffprobe_data = {
         "format": {"format_name": "matroska,webm"},
@@ -179,7 +179,7 @@ def test_should_remux_mkv_with_h264_aac_to_mp4():
     assert should_remux_to_mp4("video/x-matroska", ffprobe_data) is True, "MKV with H.264/AAC should be remuxed"
 
 
-def test_should_not_remux_web_safe_webm():
+def test_remux_webm_unchanged():
     """Browser-safe WebM should stay in WebM instead of being remuxed."""
     ffprobe_data = {
         "format": {"format_name": "matroska,webm"},
@@ -193,7 +193,7 @@ def test_should_not_remux_web_safe_webm():
     assert should_remux_to_mp4("video/webm", ffprobe_data) is False, "Web-safe WebM should not be remuxed"
 
 
-def test_should_not_remux_streams_with_non_web_tracks():
+def test_remux_nonweb_tracks_unchanged():
     """Files with subtitle or data streams should be left unchanged in v1."""
     ffprobe_data = {
         "format": {"format_name": "matroska,webm"},
@@ -207,7 +207,7 @@ def test_should_not_remux_streams_with_non_web_tracks():
     assert should_remux_to_mp4("video/x-matroska", ffprobe_data) is False, "Subtitle streams should prevent copy-remux to MP4"
 
 
-def test_should_generate_video_preview_uses_file_size_threshold():
+def test_preview_size_threshold():
     """Preview generation should be gated by source file size, not media duration."""
     min_size_bytes = 195 * 1024 * 1024
 
@@ -219,14 +219,14 @@ def test_should_generate_video_preview_uses_file_size_threshold():
     )
 
 
-def test_should_generate_video_preview_can_be_disabled_with_zero_threshold():
+def test_preview_zero_threshold_disabled():
     """A zero size threshold should disable generated bot preview clips."""
     assert should_generate_video_preview(195 * 1024 * 1024, min_size_bytes=0) is False, (
         "Zero preview size threshold should disable preview generation entirely"
     )
 
 
-def test_is_directly_embeddable_video_accepts_mp4_and_web_safe_webm():
+def test_embeddable_video_formats():
     """Embed helper should treat MP4 and browser-safe WebM as directly embeddable."""
     webm_ffprobe = {
         "format": {"format_name": "matroska,webm"},
@@ -242,7 +242,7 @@ def test_is_directly_embeddable_video_accepts_mp4_and_web_safe_webm():
 
 
 @pytest.mark.asyncio
-async def test_generate_video_preview_can_bypass_size_threshold_for_incompatible_video():
+async def test_preview_incompatible_bypasses_limit():
     """Forced previews should bypass only the size threshold, not the rest of preview generation."""
     with tempfile.NamedTemporaryFile(mode="wb", suffix=".mkv", delete=False) as f:
         f.write(b"fake video bytes")
@@ -281,7 +281,7 @@ async def test_generate_video_preview_can_bypass_size_threshold_for_incompatible
 
 
 @pytest.mark.asyncio
-async def test_generate_video_preview_uses_even_dimension_scale_filter():
+async def test_preview_even_dimensions():
     """Preview generation should force even output dimensions for x264 compatibility."""
     with tempfile.NamedTemporaryFile(mode="wb", suffix=".mkv", delete=False) as f:
         f.write(b"fake video bytes")

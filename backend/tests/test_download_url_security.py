@@ -13,7 +13,7 @@ from backend.tests.utils import create_token, initiate_upload, upload_file_via_t
 
 
 @pytest.mark.asyncio
-async def test_list_token_uploads_does_not_expose_api_key():
+async def test_uploads_hide_api_key():
     """Test that list_token_uploads returns clean download URLs without API key."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -47,7 +47,7 @@ async def test_list_token_uploads_does_not_expose_api_key():
 
 
 @pytest.mark.asyncio
-async def test_get_file_info_does_not_expose_api_key():
+async def test_file_info_hides_key():
     """Test that get_file_info returns clean download URLs without API key."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

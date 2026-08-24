@@ -9,7 +9,7 @@ from backend.tests.utils import create_token
 
 
 @pytest.mark.asyncio
-async def test_initiate_upload_rejects_large_file():
+async def test_initiate_rejects_large_file():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -31,7 +31,7 @@ async def test_initiate_upload_rejects_large_file():
 
 
 @pytest.mark.asyncio
-async def test_initiate_upload_rejects_disallowed_mime():
+async def test_initiate_rejects_mime():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

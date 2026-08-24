@@ -24,7 +24,7 @@ def clear_subtitle_lookup_cache():
     subtitles.clear_subtitle_lookup_cache()
 
 
-def test_list_subtitle_tracks_caches_hits_by_upload(test_run_dir):
+def test_subtitle_cache_hits(test_run_dir):
     subtitle_root = test_run_dir / "subtitles-cache-hit"
     _write_subtitle_file(subtitle_root, "cacheme.ass", "[Script Info]\nTitle: Cached\n")
 
@@ -41,7 +41,7 @@ def test_list_subtitle_tracks_caches_hits_by_upload(test_run_dir):
     assert collect_matches.call_count == 1, "Cached subtitle hits should avoid rescanning the subtitle directory"
 
 
-def test_list_subtitle_tracks_caches_misses_by_upload(test_run_dir):
+def test_subtitle_cache_misses(test_run_dir):
     subtitle_root = test_run_dir / "subtitles-cache-miss"
     subtitle_root.mkdir(parents=True, exist_ok=True)
 
@@ -59,7 +59,7 @@ def test_list_subtitle_tracks_caches_misses_by_upload(test_run_dir):
     assert collect_matches.call_count == 1, "Cached misses should avoid rescanning the subtitle directory"
 
 
-def test_list_subtitle_tracks_cache_is_scoped_per_upload(test_run_dir):
+def test_subtitle_cache_scoped_upload(test_run_dir):
     subtitle_root = test_run_dir / "subtitles-cache-scope"
     subtitle_root.mkdir(parents=True, exist_ok=True)
 
@@ -79,7 +79,7 @@ def test_list_subtitle_tracks_cache_is_scoped_per_upload(test_run_dir):
     assert collect_matches.call_count == 2, "Subtitle caching should be keyed per upload rather than by filename alone"
 
 
-def test_list_subtitle_tracks_rechecks_after_cache_ttl_expires(test_run_dir):
+def test_subtitle_cache_ttl(test_run_dir):
     subtitle_root = test_run_dir / "subtitles-cache-expiry"
     subtitle_root.mkdir(parents=True, exist_ok=True)
 
@@ -101,7 +101,7 @@ def test_list_subtitle_tracks_rechecks_after_cache_ttl_expires(test_run_dir):
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_prefers_native_formats(client, test_run_dir):
+async def test_subtitles_prefer_native(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-native"
     _write_subtitle_file(subtitle_root, "show/episode.vtt", "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n")
     _write_subtitle_file(subtitle_root, "show/episode.ass", "[Script Info]\nTitle: Example\n")
@@ -131,7 +131,7 @@ async def test_list_file_subtitles_prefers_native_formats(client, test_run_dir):
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_supports_prefix_language_suffixes(client, test_run_dir):
+async def test_subtitles_prefix_language(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-prefix"
     _write_subtitle_file(subtitle_root, "show/episode.en-US.ass", "[Script Info]\nTitle: Example\n")
 
@@ -159,7 +159,7 @@ async def test_list_file_subtitles_supports_prefix_language_suffixes(client, tes
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_supports_duplicate_leading_prefixes(client, test_run_dir):
+async def test_subtitles_duplicate_prefixes(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-duplicate-prefix"
     _write_subtitle_file(
         subtitle_root, "260503 260503 Rajira! Sunday 川﨑桜、梅澤美波 [REQUEST].ass", "[Script Info]\nTitle: Duplicate Prefix\n"
@@ -190,7 +190,7 @@ async def test_list_file_subtitles_supports_duplicate_leading_prefixes(client, t
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_uses_bracket_stripping_as_last_resort(client, test_run_dir):
+async def test_subtitles_bracket_fallback(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-bracket-fallback"
     _write_subtitle_file(subtitle_root, "260602 foo [fbc-bar].ass", "[Script Info]\nTitle: Bracket Fallback\n")
 
@@ -219,7 +219,7 @@ async def test_list_file_subtitles_uses_bracket_stripping_as_last_resort(client,
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_uses_bracket_stripping_with_contains_fallback(client, test_run_dir):
+async def test_subtitles_bracket_contains(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-bracket-contains"
     _write_subtitle_file(subtitle_root, "260602 260602 foo [fbc-bar] [REQUEST].ass", "[Script Info]\nTitle: Bracket Contains\n")
 
@@ -250,7 +250,7 @@ async def test_list_file_subtitles_uses_bracket_stripping_with_contains_fallback
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_matches_compatibility_punctuation_in_bracket_fallback(client, test_run_dir):
+async def test_subtitles_bracket_punctuation(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-compatibility-punctuation"
     _write_subtitle_file(
         subtitle_root,
@@ -291,7 +291,7 @@ async def test_list_file_subtitles_matches_compatibility_punctuation_in_bracket_
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_prefers_normal_match_over_bracket_stripping_fallback(client, test_run_dir):
+async def test_subtitles_normal_match_preferred(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-bracket-precedence"
     _write_subtitle_file(subtitle_root, "260602 foo [youtube-bar].ass", "[Script Info]\nTitle: Exact Bracket\n")
     _write_subtitle_file(subtitle_root, "260602 foo [fbc-bar].ass", "[Script Info]\nTitle: Fallback Bracket\n")
@@ -319,7 +319,7 @@ async def test_list_file_subtitles_prefers_normal_match_over_bracket_stripping_f
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_prefers_exact_stem_over_prefix_matches(client, test_run_dir):
+async def test_subtitles_exact_stem_preferred(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-exact-first"
     _write_subtitle_file(subtitle_root, "show/episode.ass", "[Script Info]\nTitle: Exact\n")
     _write_subtitle_file(subtitle_root, "show/episode.en.ass", "[Script Info]\nTitle: Prefix\n")
@@ -347,7 +347,7 @@ async def test_list_file_subtitles_prefers_exact_stem_over_prefix_matches(client
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_ignores_midword_contains_matches(client, test_run_dir):
+async def test_subtitles_ignores_midword(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-midword"
     _write_subtitle_file(subtitle_root, "myepisode.ass", "[Script Info]\nTitle: Midword\n")
 
@@ -372,7 +372,7 @@ async def test_list_file_subtitles_ignores_midword_contains_matches(client, test
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_skips_ambiguous_extension_matches(client, test_run_dir):
+async def test_subtitles_skips_ambiguous(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-ambiguous"
     _write_subtitle_file(subtitle_root, "one/sample.en.ass", "[Script Info]\nTitle: A\n")
     _write_subtitle_file(subtitle_root, "two/sample.fr.ass", "[Script Info]\nTitle: B\n")
@@ -402,7 +402,7 @@ async def test_list_file_subtitles_skips_ambiguous_extension_matches(client, tes
 
 
 @pytest.mark.asyncio
-async def test_list_file_subtitles_matches_normalized_unicode_filenames(client, test_run_dir):
+async def test_subtitles_normalized_unicode(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-unicode"
     _write_subtitle_file(subtitle_root, "masked-caf\u00e9.ass", "[Script Info]\nTitle: Unicode\n")
 
@@ -431,7 +431,7 @@ async def test_list_file_subtitles_matches_normalized_unicode_filenames(client, 
 
 
 @pytest.mark.asyncio
-async def test_get_file_subtitle_converts_srt_to_vtt(client, test_run_dir):
+async def test_subtitle_srt_to_vtt(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-srt"
     _write_subtitle_file(
         subtitle_root,
@@ -465,7 +465,7 @@ async def test_get_file_subtitle_converts_srt_to_vtt(client, test_run_dir):
 
 
 @pytest.mark.asyncio
-async def test_get_file_subtitle_respects_download_access_rules(client, test_run_dir):
+async def test_subtitle_download_access(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-access"
     _write_subtitle_file(subtitle_root, "secure.ass", "[Script Info]\nTitle: Example\n")
 
@@ -493,7 +493,7 @@ async def test_get_file_subtitle_respects_download_access_rules(client, test_run
 
 
 @pytest.mark.asyncio
-async def test_get_file_subtitle_returns_404_when_feature_disabled(client):
+async def test_subtitle_disabled_returns_404(client):
     token_data = await create_token(client, max_uploads=1)
     upload_token = token_data["token"]
     download_token = token_data["download_token"]

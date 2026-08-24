@@ -77,7 +77,7 @@ async def test_multimedia_upload_enters_postprocessing(client):
 
 
 @pytest.mark.asyncio
-async def test_non_multimedia_upload_completes_immediately(client):
+async def test_nonmedia_upload_completes(client):
     """Test that non-multimedia uploads complete immediately without post-processing."""
     token_data = await create_token(client, max_uploads=1)
     token_value = token_data["token"]
@@ -186,7 +186,7 @@ async def test_postprocessing_preserves_uploaded_checksum():
 
 
 @pytest.mark.asyncio
-async def test_postprocessing_remux_updates_media_metadata():
+async def test_remux_updates_metadata():
     """Remuxed uploads should update filename, ext, mimetype, size, and ffprobe metadata."""
     with tempfile.NamedTemporaryFile(suffix=".mkv", delete=False) as temp_file:
         temp_file.write(b"fake mkv bytes")
@@ -279,7 +279,7 @@ async def test_postprocessing_remux_updates_media_metadata():
 
 
 @pytest.mark.asyncio
-async def test_postprocessing_skips_remux_when_file_exceeds_limit():
+async def test_remux_skips_oversized_file():
     """Oversized remux candidates should skip copy-remux and keep original metadata."""
     with tempfile.NamedTemporaryFile(suffix=".mkv", delete=False) as temp_file:
         temp_file.write(b"fake mkv bytes")
@@ -354,7 +354,7 @@ async def test_postprocessing_skips_remux_when_file_exceeds_limit():
 
 
 @pytest.mark.asyncio
-async def test_postprocessing_logs_reason_when_remux_is_rejected(caplog):
+async def test_remux_logs_rejection(caplog):
     """Non-remuxable video uploads should log why they were left unchanged."""
     with tempfile.NamedTemporaryFile(suffix=".mkv", delete=False) as temp_file:
         temp_file.write(b"fake mkv bytes")
@@ -425,7 +425,7 @@ async def test_postprocessing_logs_reason_when_remux_is_rejected(caplog):
 
 
 @pytest.mark.asyncio
-async def test_postprocessing_logs_directory_name_for_success_and_refusal(caplog):
+async def test_processing_logs_directory(caplog):
     """Post-processing logs should include the upload directory name for successful operations and refusals."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         token_dir = Path(tmp_dir) / "token-dir-abc"
@@ -492,7 +492,7 @@ async def test_postprocessing_logs_directory_name_for_success_and_refusal(caplog
 
 
 @pytest.mark.asyncio
-async def test_processing_queue_can_run_multiple_uploads_concurrently():
+async def test_processing_queue_concurrent_uploads():
     """Worker pool should process more than one queued upload at the same time."""
     started_uploads: set[str] = set()
     both_started = asyncio.Event()
@@ -526,7 +526,7 @@ async def test_processing_queue_can_run_multiple_uploads_concurrently():
 
 
 @pytest.mark.asyncio
-async def test_backfill_missing_video_thumbnails_generates_missing_sidecars(tmp_path):
+async def test_backfill_video_thumbnails(tmp_path):
     """Startup sidecar backfill should skip expired videos and only process eligible missing sidecars."""
     video_path = tmp_path / "video.mp4"
     video_path.write_bytes(b"video-bytes")

@@ -21,7 +21,7 @@ def _unique_storage_path(name: str) -> Path:
 
 
 @pytest.mark.asyncio
-async def test_disable_expired_tokens_marks_disabled():
+async def test_disable_expired_tokens():
     now = datetime.now(UTC).replace(tzinfo=None)
     expired = models.UploadToken(
         token="expired",
@@ -54,7 +54,7 @@ async def test_disable_expired_tokens_marks_disabled():
 
 
 @pytest.mark.asyncio
-async def test_remove_stale_uploads_deletes_files(monkeypatch):
+async def test_remove_stale_uploads(monkeypatch):
     monkeypatch.setattr(cleanup.config.settings, "incomplete_ttl_hours", 1)
     monkeypatch.setattr(cleanup.config.settings, "disabled_tokens_ttl_days", 30)
     stale_token_value = f"stale-token-{secrets.token_urlsafe(8)}"
@@ -105,7 +105,7 @@ async def test_remove_stale_uploads_deletes_files(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_remove_disabled_tokens_cleans_records_and_storage(monkeypatch):
+async def test_remove_disabled_tokens(monkeypatch):
     monkeypatch.setattr(cleanup.config.settings, "incomplete_ttl_hours", 24)
     monkeypatch.setattr(cleanup.config.settings, "disabled_tokens_ttl_days", 1)
     monkeypatch.setattr(cleanup.config.settings, "delete_files_on_token_cleanup", True)

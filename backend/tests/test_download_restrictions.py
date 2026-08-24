@@ -11,7 +11,7 @@ from backend.tests.utils import create_token, initiate_upload, upload_file_via_t
 
 
 @pytest.mark.asyncio
-async def test_download_blocked_for_disabled_token(client):
+async def test_download_disabled_blocked(client):
     """Test that downloads are blocked when token is disabled and public downloads are off."""
     with patch("backend.app.security.settings.allow_public_downloads", False):
         token_data = await create_token(client, max_uploads=1)
@@ -36,7 +36,7 @@ async def test_download_blocked_for_disabled_token(client):
 
 
 @pytest.mark.asyncio
-async def test_download_blocked_for_expired_token(client):
+async def test_download_expired_blocked(client):
     """Test that downloads are blocked when token is expired and public downloads are off."""
     with patch("backend.app.security.settings.allow_public_downloads", False):
         token_data = await create_token(client, max_uploads=1)
@@ -62,7 +62,7 @@ async def test_download_blocked_for_expired_token(client):
 
 
 @pytest.mark.asyncio
-async def test_download_allowed_for_disabled_token_with_admin_key(client):
+async def test_download_disabled_admin_allowed(client):
     """Test that admin can download from disabled tokens."""
     token_data = await create_token(client, max_uploads=1)
     upload_token = token_data["token"]
@@ -104,7 +104,7 @@ async def test_download_supports_head_requests(client):
 
 
 @pytest.mark.asyncio
-async def test_download_file_does_not_depend_on_request_scoped_db_session(client):
+async def test_download_independent_db_session(client):
     """Download endpoint should resolve metadata before returning FileResponse."""
     from backend.app.db import get_db
 
@@ -132,7 +132,7 @@ async def test_download_file_does_not_depend_on_request_scoped_db_session(client
 
 
 @pytest.mark.asyncio
-async def test_get_file_info_blocked_for_disabled_token(client):
+async def test_file_info_disabled_blocked(client):
     """Test that file info is blocked when token is disabled and public downloads are off."""
     with patch("backend.app.security.settings.allow_public_downloads", False):
         token_data = await create_token(client, max_uploads=1)
@@ -157,7 +157,7 @@ async def test_get_file_info_blocked_for_disabled_token(client):
 
 
 @pytest.mark.asyncio
-async def test_get_file_info_allowed_for_disabled_token_with_admin_key(client):
+async def test_file_info_admin_allowed(client):
     """Test that admin can get file info from disabled tokens."""
     token_data = await create_token(client, max_uploads=1)
     upload_token = token_data["token"]

@@ -46,7 +46,7 @@ async def test_token_info_and_initiate():
 
 
 @pytest.mark.asyncio
-async def test_upload_requires_explicit_completion_without_resending_token():
+async def test_upload_requires_explicit_completion():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -90,7 +90,7 @@ async def test_upload_requires_explicit_completion_without_resending_token():
 
 
 @pytest.mark.asyncio
-async def test_token_info_exposes_recommended_chunk_size_for_resume():
+async def test_token_info_chunk_size():
     seed_schema()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

@@ -11,7 +11,7 @@ from backend.tests.utils import create_token
 
 
 @pytest.mark.asyncio
-async def test_disabled_token_can_be_viewed_but_not_used():
+async def test_disabled_token_view_only():
     """Test that disabled tokens return info via get_token but cannot upload."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -48,7 +48,7 @@ async def test_disabled_token_can_be_viewed_but_not_used():
 
 
 @pytest.mark.asyncio
-async def test_expired_token_can_be_viewed_but_not_used():
+async def test_expired_token_view_only():
     """Test that expired tokens return info via get_token but cannot upload."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -88,7 +88,7 @@ async def test_expired_token_can_be_viewed_but_not_used():
 
 
 @pytest.mark.asyncio
-async def test_download_token_view_works_for_disabled():
+async def test_disabled_download_token_view():
     """Test that share page (download token view) works for disabled tokens."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
