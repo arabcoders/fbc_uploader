@@ -5,7 +5,7 @@ from pathlib import Path
 from backend.tests import conftest
 
 
-def test_test_paths_share_one_run_directory():
+def test_paths_share_run_directory():
     run_root = Path(tempfile.gettempdir()).parent
 
     assert run_root.parent == Path("/tmp/fbc-tests")
@@ -14,7 +14,7 @@ def test_test_paths_share_one_run_directory():
     assert Path(os.environ["FBC_FRONTEND_EXPORT_PATH"]).parent == run_root
 
 
-def test_cleanup_test_run_dir_keeps_shared_root(tmp_path):
+def test_cleanup_keeps_shared_root(tmp_path):
     shared_root = tmp_path / "fbc-tests"
     run_root = shared_root / "run-123"
     run_root.mkdir(parents=True)

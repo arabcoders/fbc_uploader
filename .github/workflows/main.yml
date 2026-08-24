@@ -44,11 +44,12 @@ jobs:
           echo "BUILD_ARM64: ${{ vars.BUILD_ARM64 != 'false' && 'true' || 'false' }}"
 
   test:
-    name: Run Tests & Prepare Frontend
+    name: Run Tests and Prepare Frontend
     needs: [validate-build-config]
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4

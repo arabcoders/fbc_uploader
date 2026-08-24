@@ -214,7 +214,7 @@ func runUploadCommand(ctx context.Context, args []string) error {
 		offset = nextOffset
 	}
 
-	record, err := client.CompleteUpload(ctx, resolvedUploadID, *token)
+	record, err := client.CompleteUpload(ctx, resolvedUploadID)
 	if err != nil {
 		return err
 	}

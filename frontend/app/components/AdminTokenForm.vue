@@ -1,7 +1,7 @@
 <template>
   <form class="space-y-4" @submit.prevent="handleSubmit">
     <div class="grid gap-4 sm:grid-cols-2">
-      <UFormField label="Max uploads" description="Total uploads allowed" required>
+      <UFormField label="Max uploads" description="Maximum number of uploads" required>
         <UInput v-model.number="state.max_uploads" type="number" min="1" required class="w-full" />
       </UFormField>
 
@@ -12,14 +12,18 @@
 
     <UFormField
       label="Expiry date & time"
-      :description="mode === 'create' ? 'Leave blank to use server default' : 'Update expiry time'"
+      :description="
+        mode === 'create'
+          ? 'Leave blank to use the server default'
+          : 'Set a new expiry date and time'
+      "
     >
       <UInput v-model="state.expiry" type="datetime-local" class="w-full" />
     </UFormField>
 
     <UFormField
       label="Allowed MIME types"
-      description="One per line. Leave blank for any. Use patterns like video/*"
+      description="Enter one type per line. Leave blank to allow any type. For example: video/*"
     >
       <UTextarea
         v-model="state.allowed_mime"

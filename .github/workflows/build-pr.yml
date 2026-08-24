@@ -19,8 +19,9 @@ env:
 
 jobs:
   test:
-    name: Run Tests & Build Validation
+    name: Run Tests and Validate Builds
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4

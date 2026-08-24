@@ -7,7 +7,7 @@ from backend.app.routers import tokens as tokens_router
 
 
 @pytest.mark.asyncio
-async def test_generated_tokens_skip_leading_and_trailing_hyphens(client, monkeypatch):
+async def test_tokens_trim_hyphens(client, monkeypatch):
     generated_values = iter(["-bad-upload", "good-upload", "bad-download-", "good-download"])
 
     def fake_token_urlsafe(_: int) -> str:

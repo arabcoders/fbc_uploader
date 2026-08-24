@@ -13,6 +13,10 @@ export function useTokenInfo(tokenValue: Ref<string>) {
     if (!tokenInfo.value) return '';
     return `${window.location.origin}/f/${tokenInfo.value.download_token}`;
   });
+  const shareLinkPath = computed(() => {
+    if (!tokenInfo.value) return '';
+    return `/f/${tokenInfo.value.download_token}`;
+  });
 
   async function fetchTokenInfo() {
     if (!tokenValue.value) {
@@ -28,7 +32,6 @@ export function useTokenInfo(tokenValue: Ref<string>) {
       tokenInfo.value = data;
       notFound.value = false;
 
-      // Check token status based on returned data
       if (tokenInfo.value) {
         const now = new Date();
         if (tokenInfo.value.expires_at) {
@@ -41,9 +44,19 @@ export function useTokenInfo(tokenValue: Ref<string>) {
       const error = err as ApiError;
       tokenInfo.value = null;
       notFound.value = true;
-      tokenError.value = error?.data?.detail || error?.message || 'Failed to load token info.';
+      tokenError.value =
+        error?.data?.detail || error?.message || 'Unable to load this upload token.';
     }
   }
 
-  return { tokenInfo, notFound, tokenError, isExpired, isDisabled, shareLinkText, fetchTokenInfo };
+  return {
+    tokenInfo,
+    notFound,
+    tokenError,
+    isExpired,
+    isDisabled,
+    shareLinkText,
+    shareLinkPath,
+    fetchTokenInfo,
+  };
 }

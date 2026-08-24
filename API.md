@@ -25,9 +25,14 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [GET /api/tokens/{token\_value}/uploads](#get-apitokenstoken_valueuploads)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}](#get-apitokensdownload_tokenuploadsupload_id)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/stream](#get-apitokensdownload_tokenuploadsupload_idstream)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/subtitles](#get-apitokensdownload_tokenuploadsupload_idsubtitles)
+    - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/subtitles/{source\_format}](#get-apitokensdownload_tokenuploadsupload_idsubtitlessource_format)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/preview.mp4](#get-apitokensdownload_tokenuploadsupload_idpreviewmp4)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/thumbnail](#get-apitokensdownload_tokenuploadsupload_idthumbnail)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
+    - [POST /api/tokens/{download\_token}/uploads/{upload\_id}/watch](#post-apitokensdownload_tokenuploadsupload_idwatch)
+    - [DELETE /api/watch/{room\_id}](#delete-apiwatchroom_id)
+    - [WS /api/watch/{room\_id}/ws](#ws-apiwatchroom_idws)
     - [POST /api/uploads/initiate](#post-apiuploadsinitiate)
     - [OPTIONS /api/uploads/tus](#options-apiuploadstus)
     - [HEAD /api/uploads/{upload\_id}/tus](#head-apiuploadsupload_idtus)
@@ -145,7 +150,7 @@ Create a new upload token.
 ```
 
 **Fields:**
-- `max_uploads` (integer, required): Maximum number of uploads allowed (min: 1)
+- `max_uploads` (integer, optional): Maximum number of uploads allowed (default: 1; min: 1)
 - `max_size_bytes` (integer, required): Maximum file size in bytes (> 0)
 - `expiry_datetime` (datetime, optional): Token expiration date (defaults to current time + `FBC_DEFAULT_TOKEN_TTL_HOURS`)
 - `allowed_mime` (array of strings, optional): Allowed MIME types with wildcard support (e.g., `video/*`). Empty = all types allowed
@@ -173,24 +178,27 @@ List all upload tokens.
 
 **Query Parameters:**
 - `skip` (integer, optional): Number of records to skip (default: 0)
-- `limit` (integer, optional): Maximum records to return (default: 100)
+- `limit` (integer, optional): Maximum records to return (default: 10)
 
 **Response (200):**
 ```json
-[
-  {
-    "token": "upload-token-string",
-    "download_token": "fbc_download-token-string",
-    "expires_at": "2025-12-24T00:00:00Z",
-    "uploads_used": 2,
-    "max_uploads": 5,
-    "max_size_bytes": 104857600,
-    "allowed_mime": ["application/pdf"],
-    "disabled": false,
-    "created_at": "2025-12-23T00:00:00Z",
-    "remaining_uploads": 3
-  }
-]
+{
+  "tokens": [
+    {
+      "token": "upload-token-string",
+      "download_token": "fbc_download-token-string",
+      "expires_at": "2025-12-24T00:00:00Z",
+      "uploads_used": 2,
+      "max_uploads": 5,
+      "max_size_bytes": 104857600,
+      "allowed_mime": ["application/pdf"],
+      "disabled": false,
+      "created_at": "2025-12-23T00:00:00Z",
+      "remaining_uploads": 3
+    }
+  ],
+  "total": 1
+}
 ```
 
 ---
@@ -199,7 +207,7 @@ List all upload tokens.
 
 Get detailed information about a specific token.
 
-**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+**Authentication:** None
 
 **Path Parameters:**
 - `token_value` (string): Upload token or download token
@@ -407,7 +415,7 @@ Get metadata information about a completed upload.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 ```json
@@ -449,7 +457,7 @@ Stream a completed file inline for browser playback.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 Returns the file with headers:
@@ -475,7 +483,7 @@ List external subtitle tracks that match a completed upload filename.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 ```json
@@ -520,7 +528,7 @@ Return the selected subtitle content for a completed upload.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 - `source_format` (string): One of `vtt`, `srt`, or `ass`
 
 **Response (200):**
@@ -549,7 +557,7 @@ Return a short MP4 preview clip for bot embeds when one has been generated.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 Returns the file with headers:
@@ -577,7 +585,7 @@ Return a preview image for a completed upload.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 Returns an image with headers:
@@ -604,7 +612,7 @@ Download a completed file.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 Returns the file with headers:
@@ -615,6 +623,147 @@ Returns the file with headers:
 **Error Responses:**
 - `404 Not Found` - Download token or upload not found
 - `409 Conflict` - Upload not yet completed
+
+---
+
+### POST /api/tokens/{download_token}/uploads/{upload_id}/watch
+
+Create a temporary Watch Party for a completed video or audio upload.
+
+**Authentication:** Valid download token in the path; requires `FBC_ALLOW_PUBLIC_DOWNLOADS=1`
+
+**Path Parameters:**
+- `download_token` (string): Download token for the shared file
+- `upload_id` (string): Public ID of the completed upload
+
+**Request:**
+No request body.
+
+**Response (200):**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+```json
+{
+  "room_id": "room-id-string",
+  "host_key": "creator-only-secret",
+  "invite_path": "/f/fbc_download-token?upload=upload-id-string&room=room-id-string"
+}
+```
+
+**Fields:**
+- `room_id` (string): Temporary room identifier used by the WebSocket URL
+- `host_key` (string): One-time creator key; keep it private and never include it in an invite URL
+- `invite_path` (string): Relative share-page path for guests
+
+**Error Responses:**
+- `403 Forbidden` - Public downloads are disabled
+- `404 Not Found` - Download token or upload not found
+- `409 Conflict` - Upload is not completed
+- `415 Unsupported Media Type` - Upload is not video or audio
+- `503 Service Unavailable` - In-memory room capacity has been reached
+
+**Notes:**
+- The download token must be valid, enabled, unexpired, belong to the upload, and reference an existing file.
+- Rooms are stored in the current server process and expire after inactivity.
+- Connect to the returned room with [WS /api/watch/{room_id}/ws](#ws-apiwatchroom_idws).
+
+---
+
+### DELETE /api/watch/{room_id}
+
+Discard an unclaimed Watch Party room when no WebSocket participant has joined.
+
+**Authentication:** Send the creator key in the `X-Watch-Host-Key` request header. The key is never accepted in the query string or path.
+
+**Response (204):** The room was discarded.
+
+Invalid, already-claimed, or occupied rooms return `404 Not Found` without changing the room.
+
+---
+
+### WS /api/watch/{room_id}/ws
+
+Connect to a Watch Party and synchronize playback for its upload.
+
+**Authentication:** Send the download token and upload public ID in the first JSON `join` message. The creator also sends `host_key`.
+
+**Path Parameters:**
+- `room_id` (string): Room ID returned by the Watch Party creation endpoint
+
+**Request:**
+No request body. Send the `join` JSON message immediately after the WebSocket connection is established.
+
+**Connection:**
+```http
+GET /api/watch/room-id-string/ws HTTP/1.1
+Connection: Upgrade
+Upgrade: websocket
+```
+
+The creator sends this message after connecting:
+```json
+{
+  "type": "join",
+  "download_token": "fbc_download-token",
+  "upload_id": "upload-id-string",
+  "host_key": "creator-only-secret"
+}
+```
+
+Guests omit `host_key`:
+```json
+{
+  "type": "join",
+  "download_token": "fbc_download-token",
+  "upload_id": "upload-id-string"
+}
+```
+
+**Server Messages:**
+
+| Type | Fields | Meaning |
+| --- | --- | --- |
+| `ready` | `participant_id`, `role`, `participant_count`, `participant_version`, `version`, `sync_required`, host `host_key` | Join accepted; `role` is `host` or `guest`; a host receives its rotated key. A reconnecting host has `sync_required: true` and must apply the state at or above `version` before controlling playback |
+| `state` | `version`, `anchor_position`, `paused`, `playback_rate`, `server_time`, `participant_count`, `participant_version` | Current server playback state |
+| `participants` | `participant_count`, `participant_version` | Participant count changed. Clients ignore messages with an older `participant_version` |
+| `promotion` | `participant_id`, `version`, `host_key` | The indicated guest became host and receives its rotated key |
+| `host_status` | `status`, `version` | `waiting` means the host disconnected and authoritative playback is paused; `connected` means the host recovered or a guest was promoted. Lifecycle `version` values are monotonic, so clients ignore older status events. Guests joining during reconnect grace receive the current `waiting` status |
+| `synced` | `version` | The server accepted the recovering or promoted host's synchronization acknowledgement |
+| `pong` | `client_time`, `server_time` | Response to a valid `ping` |
+| `error` | `message` | Request or party error |
+
+**Client Messages:**
+- Host playback commands use `type` `play`, `pause`, `seek`, `rate`, or `snapshot` and require a finite `position` in seconds.
+- A recovering or promoted host must first apply the authoritative state delivered after `ready` or `promotion`; clients must not send playback commands or snapshots until that synchronization is complete. A new host with `sync_required: false` may send its initial snapshot.
+- A recovering or promoted host acknowledges applied state with `{ "type": "synced", "version": <state version> }`. The server rejects playback commands until that participant acknowledges the current authoritative version, and resends `error` plus `state` for a stale acknowledgement.
+- `rate` and `snapshot` require `playback_rate` from `0.25` through `4`; `snapshot` also requires boolean `paused`.
+- Guests may send `ping` with numeric `client_time` or `ready` to request current state. Guests cannot control playback.
+- Example host command: `{ "type": "seek", "position": 120.5 }`
+- Example ping: `{ "type": "ping", "client_time": 1735689600000 }`
+
+**Authority and Limits:**
+- The first valid join with the creation `host_key` establishes the host. Guests may join first without taking the host role.
+- If the host disconnects, the server anchors and pauses playback, broadcasts a `waiting` status and state, and keeps its `host_key` valid for a 15-second reconnect grace period. A reconnecting host receives and must apply that paused state before controlling playback. After grace expires, the longest-connected guest is promoted, receives a rotated `host_key`, and all participants receive the authoritative paused state. A late joiner receives the current projected state, including its paused state and playback rate.
+- A process allows at most 1000 rooms and at most 3 rooms per download token. A room allows at most 32 participants; before a host is established, one participant slot is reserved for the host. All messages are limited to 60 per two seconds per participant, and playback commands to 20 per two seconds per host. The room also expires when its download token expires.
+- Messages are limited to 8192 bytes; joins must arrive within 10 seconds. Never-joined rooms are retained for 60 seconds, and rooms expire after 30 minutes of inactivity. Participants that send nothing for 90 seconds are removed. Cleanup runs approximately every second in this process.
+
+**Close Codes:**
+- `1000` - Normal client disconnect
+- `1001` - Server shutdown or room expiry
+- `1008` - Invalid join, missing/invalid credential, unknown room, or other policy violation during connection
+
+**Error Responses:**
+- Invalid playback commands, guest control attempts, invalid positions/rates, malformed JSON, oversized messages, and rate-limit violations receive an `error` message while the connection remains open.
+- Invalid joins and join timeouts receive an `error` message and close with WebSocket code `1008`.
+- Playback positions must be between `0` and `86400` seconds inclusive. The host reconnect grace period is approximately 15 seconds. An all-message rate-limit violation closes the socket; playback command errors are reported without closing it.
+- Disabling or deleting a token, or deleting an upload, invalidates matching Watch Party rooms and closes their sockets. Natural token expiry rejects new joins and cleanup closes existing connections.
+
+**Notes:**
+- Room creation and WebSocket access require `FBC_ALLOW_PUBLIC_DOWNLOADS=1`; the associated upload must be completed playable media.
+- The `host_key` is only for the creator/ promoted host connection, is rotated after each successful host join or promotion, and must not be put in an invite URL.
+- Joining before the creator is allowed; that participant remains a guest until host promotion.
 
 ---
 
@@ -698,7 +847,7 @@ Check upload status (TUS protocol).
 **Authentication:** None
 
 **Path Parameters:**
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 
@@ -817,7 +966,7 @@ Cancel an in-progress upload and restore the token slot.
 
 ### POST /api/uploads/{upload_id}/complete
 
-Manually mark an upload as complete.
+Mark an upload as complete.
 
 **Authentication:** None
 
@@ -844,7 +993,10 @@ Manually mark an upload as complete.
 ```
 
 **Error Responses:**
-- `404 Not Found` - Upload not found
+- `403 Forbidden` - Associated upload token expired or disabled
+- `404 Not Found` - Upload or associated token not found
+- `409 Conflict` - Upload has not received all declared bytes
+- `415 Unsupported Media Type` - Detected file type is not allowed
 
 ---
 
@@ -890,7 +1042,7 @@ Each field object can have:
 - `minLength`, `maxLength` (integer, optional): String length constraints
 - `min`, `max` (number, optional): Numeric value constraints
 - `regex` (string, optional): Regular expression pattern for string validation
-- `default` (any, optional): Default value if not provided
+- `default` (any, optional): Default value used by the frontend when initializing the upload form
 - `extract_regex` (string, optional): Python regular expression used by `/api/metadata/extract` to prefill metadata from a filename
 
 **Notes:**
@@ -1059,6 +1211,7 @@ The API implements the [TUS resumable upload protocol](https://tus.io/) v1.0.0.
 **Supported Extensions:**
 - `creation`: Create new uploads
 - `termination`: Delete uploads
+- `checksum`: Verify uploaded chunks with SHA-1 or SHA-256 checksums
 
 **Key Features:**
 - **Resumable:** Upload can be paused and resumed from the same offset
@@ -1096,7 +1249,7 @@ Typical upload flow:
 
 2. **Get Token Info (Client)**
    ```http
-   GET /api/tokens/{token}/info
+   GET /api/tokens/{token}
    ```
 
 3. **Initiate Upload (Client)**
@@ -1126,7 +1279,12 @@ Typical upload flow:
    [binary data]
    ```
 
-5. **Download File**
+5. **Complete Upload**
+    ```http
+    POST /api/uploads/rT72ZKGMPdldiEmA9eDI7kik/complete
+    ```
+
+6. **Download File**
     ```http
     GET /api/tokens/{download_token}/uploads/rT72ZKGMPdldiEmA9eDI7kik
     Authorization: Bearer YOUR_API_KEY
@@ -1161,7 +1319,7 @@ Typical upload flow:
 - Download tokens are prefixed with `fbc_` followed by 16-character URL-safe strings
 - Upload IDs (`public_id`) are 18-character URL-safe random strings (not sequential integers for security)
 - Metadata is stored as JSON in the database (`meta_data` column)
-- TUS protocol is recommended for files larger than a few MB for reliability
+- Use TUS when an upload may need to resume after an interruption or retry a failed chunk
 - Maximum chunk size is controlled by `FBC_MAX_CHUNK_BYTES` (default: 90MB)
 - Media remux eligibility is capped by `FBC_MAX_REMUX_BYTES` (default: 5GB)
-- Multimedia post-processing runs with up to `FBC_POSTPROCESSING_WORKERS` concurrent workers (default: 2)
+- Multimedia post-processing runs with up to `FBC_POSTPROCESSING_WORKERS` concurrent workers (default: 4)

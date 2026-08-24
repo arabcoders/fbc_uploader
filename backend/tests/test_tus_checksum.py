@@ -16,7 +16,7 @@ def _upload_checksum_header(content: bytes, algorithm: str = "sha256") -> str:
 
 
 @pytest.mark.asyncio
-async def test_tus_options_advertises_checksum_support(client):
+async def test_tus_options_checksum(client):
     resp = await client.options(app.url_path_for("tus_options"))
 
     assert resp.status_code == status.HTTP_204_NO_CONTENT, "TUS OPTIONS should return 204"
@@ -25,7 +25,7 @@ async def test_tus_options_advertises_checksum_support(client):
 
 
 @pytest.mark.asyncio
-async def test_tus_patch_checksum_mismatch_keeps_offset_unchanged(client):
+async def test_tus_checksum_mismatch_offset(client):
     token_data = await create_token(client, max_uploads=1, max_size_bytes=1000)
     upload_data = await initiate_upload(client, token_data["token"], filename="test.txt", size_bytes=5, meta_data={})
     upload_id = upload_data["upload_id"]
@@ -50,7 +50,7 @@ async def test_tus_patch_checksum_mismatch_keeps_offset_unchanged(client):
 
 
 @pytest.mark.asyncio
-async def test_tus_patch_checksum_success_records_uploaded_file_digest(client):
+async def test_tus_checksum_records_digest(client):
     token_data = await create_token(client, max_uploads=1, max_size_bytes=1000)
     upload_data = await initiate_upload(client, token_data["token"], filename="test.txt", size_bytes=5, meta_data={})
     upload_id = upload_data["upload_id"]

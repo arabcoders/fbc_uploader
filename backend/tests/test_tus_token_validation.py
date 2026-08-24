@@ -11,7 +11,7 @@ from backend.tests.utils import create_token, initiate_upload, tus_head
 
 
 @pytest.mark.asyncio
-async def test_tus_head_blocked_for_expired_token():
+async def test_tus_head_expired():
     """TUS HEAD should fail when token is expired."""
     from backend.app.db import get_db
     from backend.app.models import UploadToken
@@ -46,7 +46,7 @@ async def test_tus_head_blocked_for_expired_token():
 
 
 @pytest.mark.asyncio
-async def test_tus_head_blocked_for_disabled_token():
+async def test_tus_head_disabled():
     """TUS HEAD should fail when token is disabled."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -79,7 +79,7 @@ async def test_tus_head_blocked_for_disabled_token():
 
 
 @pytest.mark.asyncio
-async def test_tus_patch_blocked_for_expired_token():
+async def test_tus_patch_expired():
     """TUS PATCH should fail when token is expired."""
     from backend.app.db import get_db
     from backend.app.models import UploadToken
@@ -122,7 +122,7 @@ async def test_tus_patch_blocked_for_expired_token():
 
 
 @pytest.mark.asyncio
-async def test_tus_patch_blocked_for_disabled_token():
+async def test_tus_patch_disabled():
     """TUS PATCH should fail when token is disabled."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -163,7 +163,7 @@ async def test_tus_patch_blocked_for_disabled_token():
 
 
 @pytest.mark.asyncio
-async def test_tus_delete_blocked_for_expired_token():
+async def test_tus_delete_expired():
     """TUS DELETE should fail when token is expired."""
     from backend.app.db import get_db
     from backend.app.models import UploadToken
@@ -198,7 +198,7 @@ async def test_tus_delete_blocked_for_expired_token():
 
 
 @pytest.mark.asyncio
-async def test_tus_delete_blocked_for_disabled_token():
+async def test_tus_delete_disabled():
     """TUS DELETE should fail when token is disabled."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -231,7 +231,7 @@ async def test_tus_delete_blocked_for_disabled_token():
 
 
 @pytest.mark.asyncio
-async def test_tus_delete_works_with_valid_token():
+async def test_tus_delete_valid():
     """TUS DELETE should work when token is valid."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

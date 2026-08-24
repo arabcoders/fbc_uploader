@@ -37,6 +37,7 @@
           <TokenSummary
             :token-info="tokenInfo"
             :share-link="shareLinkText"
+            :share-path="shareLinkPath"
             :share-disabled="!canShare"
             @copy="copyShareLink"
             @refresh="refreshAll"
@@ -48,7 +49,7 @@
             <UCollapsible v-model:open="showNotice">
               <button class="group flex items-center gap-2 w-full cursor-pointer">
                 <UIcon name="i-heroicons-megaphone-20-solid" />
-                <span class="font-semibold">System Notice</span>
+                <span class="font-semibold">Notice</span>
                 <UIcon
                   name="i-heroicons-chevron-down-20-solid"
                   class="ml-auto group-data-[state=open]:rotate-180 transition-transform duration-200"
@@ -82,8 +83,8 @@
           <UAlert
             color="neutral"
             variant="outline"
-            title="No uploads yet"
-            description="All upload slots for this token have been used. There are no files uploaded yet."
+            title="No files uploaded"
+            description="This token has no remaining upload slots."
             icon="i-heroicons-inbox-20-solid"
           />
         </div>
@@ -120,6 +121,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatBytes } from '~/utils';
 import { computed, ref, watch, onMounted, onUnmounted, reactive } from 'vue';
 import { useRoute } from 'vue-router';
 import type {
@@ -142,8 +144,16 @@ const route = useRoute();
 const toast = useToast();
 const token = ref<string>((route.params.token as string) || '');
 
-const { tokenInfo, notFound, tokenError, isExpired, isDisabled, shareLinkText, fetchTokenInfo } =
-  useTokenInfo(token);
+const {
+  tokenInfo,
+  notFound,
+  tokenError,
+  isExpired,
+  isDisabled,
+  shareLinkText,
+  shareLinkPath,
+  fetchTokenInfo,
+} = useTokenInfo(token);
 const { metadataSchema, fetchMetadata, extractMetadata } = useMetadata();
 const { startTusUpload, pauseUpload, resumeUpload } = useTusUpload();
 const { slots, seedSlots, addSlot, unintiatedSlots } = useUploadSlots(metadataSchema);
@@ -385,7 +395,7 @@ async function onResumeFile(e: Event) {
   if (file.name !== resumeTarget.value.filename) {
     toast.add({
       title: 'File name mismatch',
-      description: `Expected: ${resumeTarget.value.filename}, Got: ${file.name}`,
+      description: `Select ${resumeTarget.value.filename}; the selected file is ${file.name}.`,
       color: 'error',
       icon: 'i-heroicons-exclamation-triangle-20-solid',
     });
@@ -394,10 +404,14 @@ async function onResumeFile(e: Event) {
     return;
   }
 
-  if (file.size !== resumeTarget.value.upload_length) {
+  const expectedSize = resumeTarget.value.upload_length;
+  if (expectedSize === undefined || file.size !== expectedSize) {
     toast.add({
       title: 'File size mismatch',
-      description: `Expected: ${resumeTarget.value.upload_length} bytes, Got: ${file.size} bytes`,
+      description:
+        expectedSize === undefined
+          ? 'The original upload size is unavailable.'
+          : `${formatBytes(expectedSize)} expected; the selected file is ${formatBytes(file.size)}.`,
       color: 'error',
       icon: 'i-heroicons-exclamation-triangle-20-solid',
     });

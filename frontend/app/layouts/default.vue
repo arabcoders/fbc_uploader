@@ -18,7 +18,7 @@
                 size="sm"
                 aria-label="Dashboard"
                 title="Dashboard"
-                @click="navigateTo('/admin')"
+                @click="goToAdmin"
                 icon="i-heroicons-shield-check-20-solid"
               >
                 <span class="hidden sm:inline">Dashboard</span>
@@ -44,7 +44,7 @@
               color="neutral"
               variant="ghost"
             >
-              <span class="hidden sm:inline">Theme</span>
+              <span class="hidden sm:inline">{{ colorModeButtonLabel }}</span>
             </UButton>
           </div>
         </UContainer>
@@ -144,6 +144,17 @@ const colorModeButtonTitle = computed(() => {
   }
 });
 
+const colorModeButtonLabel = computed(() => {
+  switch (colorModePreference.value) {
+    case 'light':
+      return 'Light';
+    case 'dark':
+      return 'Dark';
+    default:
+      return 'System';
+  }
+});
+
 const colorModeButtonAriaLabel = computed(() => {
   switch (nextColorModePreference.value) {
     case 'light':
@@ -157,6 +168,10 @@ const colorModeButtonAriaLabel = computed(() => {
 
 const cycleColorMode = (): void => {
   colorMode.preference = nextColorModePreference.value;
+};
+
+const goToAdmin = async (): Promise<void> => {
+  await navigateTo('/admin');
 };
 
 const signOut = async () => {

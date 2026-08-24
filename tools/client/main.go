@@ -51,7 +51,7 @@ func run(ctx context.Context, args []string) error {
 }
 
 func printRootUsage(w *os.File) {
-	fmt.Fprintln(w, "fbc is a standard-library CLI for FBC Uploader.")
+	fmt.Fprintln(w, "FBC Uploader command-line client.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  fbc <command> [options]")
@@ -60,7 +60,7 @@ func printRootUsage(w *os.File) {
 	fmt.Fprintln(w, "  create    Create an upload/download token pair")
 	fmt.Fprintln(w, "  info      Inspect a token or a specific uploaded file")
 	fmt.Fprintln(w, "  upload    Upload a file with server-driven resume")
-	fmt.Fprintln(w, "  download  Download a completed uploaded file")
+	fmt.Fprintln(w, "  download  Download a completed file")
 	fmt.Fprintln(w, "  cancel    Cancel an incomplete upload")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Environment:")

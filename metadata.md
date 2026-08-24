@@ -1,6 +1,6 @@
 # Dynamic Upload Metadata Schema
 
-Upload metadata fields are defined in `{config_path}/metadata.json`. This file contains a list of field definitions that describe how metadata is collected, validated, and stored for each upload.
+`{config_path}/metadata.json` defines how upload metadata is collected, validated, and stored.
 
 ---
 
@@ -23,13 +23,13 @@ Each field supports the following properties.
 ### Common Properties
 
 * **`required`** *(boolean)*
-  Whether the field must be present and non-empty.
+  Whether the field must be present.
 * **`placeholder`** *(string)*
   Placeholder text shown in the UI.
 * **`help` / `description`** *(string)*
   Helper text displayed below the input.
 * **`default`** *(any)*
-  Default value applied when the field is not explicitly set.
+  Default value used by the frontend when initializing the upload form.
 
 ---
 

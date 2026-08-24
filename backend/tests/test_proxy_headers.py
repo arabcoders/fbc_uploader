@@ -27,7 +27,7 @@ def create_test_app(trusted_hosts: str) -> FastAPI:
 
 
 @pytest.mark.asyncio
-async def test_proxy_headers_trusts_only_configured_proxy():
+async def test_proxy_trusts_configured_only():
     app = create_test_app("172.23.0.0/16")
     transport = ASGITransport(app=app, client=("172.23.0.1", 47548))
 
@@ -51,7 +51,7 @@ async def test_proxy_headers_trusts_only_configured_proxy():
 
 
 @pytest.mark.asyncio
-async def test_proxy_headers_ignore_untrusted_client():
+async def test_proxy_ignores_untrusted():
     app = create_test_app("172.23.0.0/16")
     transport = ASGITransport(app=app, client=("198.51.100.20", 47548))
 
@@ -75,7 +75,7 @@ async def test_proxy_headers_ignore_untrusted_client():
 
 
 @pytest.mark.asyncio
-async def test_proxy_headers_preserve_forwarded_port():
+async def test_proxy_preserves_forwarded_port():
     app = create_test_app("172.23.0.0/16")
     transport = ASGITransport(app=app, client=("172.23.0.1", 47548))
 
@@ -94,7 +94,7 @@ async def test_proxy_headers_preserve_forwarded_port():
     assert response.json()["host"] == "files.example.com:8443"
 
 
-def test_server_entrypoint_disables_uvicorn_proxy_headers_by_default(monkeypatch):
+def test_server_disables_proxy_headers(monkeypatch):
     monkeypatch.setenv("FBC_DEV_MODE", "0")
 
     with patch("backend.main.uvicorn.run") as run_mock:

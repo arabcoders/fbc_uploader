@@ -19,6 +19,7 @@ from .db import engine
 from .migrate import run_migrations
 from .postprocessing import ProcessingQueue, backfill_missing_video_thumbnails
 from .proxy_headers import TrustedProxyHeadersMiddleware
+from .watch import WatchRoomManager
 
 
 def create_app() -> FastAPI:
@@ -48,6 +49,8 @@ def create_app() -> FastAPI:
         queue = ProcessingQueue()
         queue.start_worker()
         app.state.processing_queue = queue
+        app.state.watch_rooms = WatchRoomManager()
+        app.state.watch_cleanup_task = asyncio.create_task(_watch_cleanup_loop(app.state.watch_rooms), name="watch_room_cleanup")
         app.state.media_sidecar_backfill_task = asyncio.create_task(
             backfill_missing_video_thumbnails(),
             name="media_sidecar_backfill",
@@ -66,6 +69,10 @@ def create_app() -> FastAPI:
                 await media_sidecar_backfill_task
 
         await queue.stop_worker()
+        app.state.watch_cleanup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await app.state.watch_cleanup_task
+        await app.state.watch_rooms.close()
 
         if not settings.skip_cleanup:
             task: asyncio.Task | None = getattr(app.state, "cleanup_task", None)
@@ -231,6 +238,12 @@ def create_app() -> FastAPI:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
     return app
+
+
+async def _watch_cleanup_loop(manager: WatchRoomManager) -> None:
+    while True:
+        await asyncio.sleep(1)
+        await manager.cleanup()
 
 
 app: FastAPI = create_app()

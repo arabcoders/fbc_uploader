@@ -62,8 +62,10 @@
       @timeupdate="handleVideoTimeUpdate"
       @play="handleVideoPlay"
       @pause="handleVideoPause"
+      @ratechange="handleVideoRateChange"
+      @click="handleVideoClick"
       @dblclick="handleVideoDoubleClick"
-      @pointermove="showCustomControls"
+      @pointermove="handleDesktopPointerMove"
       @resize="scheduleAssLayoutRefresh"
       @volumechange="handleMediaVolumeChange"
       @webkitbeginfullscreen="handleVideoWebkitBeginFullscreen"
@@ -83,25 +85,11 @@
     </video>
 
     <button
-      v-if="active && shouldEnableMobileSeekZones"
+      v-if="active && isTouchDevice && !customControlsVisible"
       type="button"
-      class="absolute inset-y-0 left-0 z-10 w-1/3"
-      aria-label="Back 10 seconds"
-      @click="seekBy(-10)"
-    />
-    <button
-      v-if="active && isTouchDevice"
-      type="button"
-      class="absolute inset-y-0 left-1/3 z-10 w-1/3"
-      :aria-label="customControlsVisible ? 'Hide controls' : 'Show controls'"
+      class="absolute inset-0 z-10"
+      aria-label="Show controls"
       @click="toggleCustomControlsVisibility"
-    />
-    <button
-      v-if="active && shouldEnableMobileSeekZones"
-      type="button"
-      class="absolute inset-y-0 right-0 z-10 w-1/3"
-      aria-label="Forward 10 seconds"
-      @click="seekBy(10)"
     />
 
     <div
@@ -112,66 +100,57 @@
     />
 
     <div
-      v-if="active && shouldEnableMobileSeekZones && customControlsVisible"
-      class="pointer-events-none absolute inset-y-0 left-0 z-20 flex w-1/3 items-center justify-start px-5"
-    >
-      <div
-        class="rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm"
-      >
-        -10s
-      </div>
-    </div>
-    <div
-      v-if="active && shouldEnableMobileSeekZones && customControlsVisible"
-      class="pointer-events-none absolute inset-y-0 right-0 z-20 flex w-1/3 items-center justify-end px-5"
-    >
-      <div
-        class="rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm"
-      >
-        +10s
-      </div>
-    </div>
-
-    <div
       v-if="active"
-      class="absolute inset-x-0 bottom-0 z-30 bg-linear-to-t from-black/95 via-black/70 to-transparent px-3 pb-3 pt-10 text-white transition-opacity duration-200"
+      class="absolute inset-x-0 bottom-0 z-30 bg-linear-to-t from-black/36 via-black/8 to-transparent px-3 pb-3 pt-10 text-white transition-opacity duration-150"
       :class="customControlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'"
       @click.self="toggleCustomControlsVisibility"
       @pointermove="showCustomControls"
     >
-      <div class="rounded-2xl border border-white/10 bg-black/45 p-3 shadow-2xl backdrop-blur-md">
-        <div class="space-y-3">
-          <input
-            :value="customVideoProgress"
-            type="range"
-            min="0"
-            max="1000"
-            step="1"
-            class="h-1.5 w-full accent-white"
-            aria-label="Seek video"
-            @input="handleCustomVideoSeek"
-          />
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
+      <div class="rounded-sm border border-white/8 bg-black/8 p-2.5 shadow-lg backdrop-blur-sm">
+        <div
+          class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-3"
+        >
+          <div class="order-2 min-w-0 sm:order-1 sm:flex sm:items-center sm:gap-3">
+            <div class="flex min-w-0 items-center gap-2">
               <UButton
                 color="neutral"
                 variant="soft"
                 size="sm"
+                class="opacity-65 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :icon="
                   isCustomVideoPaused ? 'i-heroicons-play-20-solid' : 'i-heroicons-pause-20-solid'
                 "
                 :aria-label="isCustomVideoPaused ? 'Play video' : 'Pause video'"
                 @click="toggleCustomVideoPlayback"
               />
-              <div class="min-w-0 text-xs font-medium text-white/90">
+              <div class="min-w-0 truncate whitespace-nowrap text-xs font-medium text-white/60">
                 {{ customVideoTimeLabel }}
               </div>
             </div>
-            <div class="flex items-center gap-2">
+          </div>
+          <div class="order-1 col-span-2 sm:order-2 sm:col-span-1 sm:min-w-0 sm:flex-1">
+            <input
+              :value="customVideoProgress"
+              type="range"
+              min="0"
+              max="1000"
+              step="1"
+              class="h-1.5 w-full accent-white opacity-55 transition-opacity hover:opacity-100 seek-bar"
+              aria-label="Seek video"
+              @input="handleCustomVideoSeek"
+              @change="handleCustomVideoSeekChange"
+              @touchstart.prevent="handleCustomVideoSeekTouch"
+              @touchmove.prevent="handleCustomVideoSeekTouch"
+              @touchend.prevent="handleCustomVideoSeekTouchEnd"
+            />
+          </div>
+          <div class="order-3 flex items-center justify-end sm:order-3 sm:shrink-0">
+            <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <UButton
                 color="neutral"
                 variant="soft"
                 size="sm"
+                class="opacity-65 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :icon="
                   effectiveStoredMediaVolume <= 0
                     ? 'i-heroicons-speaker-x-mark-20-solid'
@@ -181,12 +160,13 @@
                 @click="toggleCurrentMediaMute"
               />
               <input
+                v-if="!isTouchDevice"
                 :value="Math.round(effectiveStoredMediaVolume * 100)"
                 type="range"
                 min="0"
                 max="100"
                 step="1"
-                class="w-20 accent-white"
+                class="w-16 accent-white opacity-55 transition-opacity hover:opacity-100 sm:w-18"
                 aria-label="Video volume"
                 @input="handleCustomVideoVolumeChange"
               />
@@ -194,6 +174,7 @@
                 color="neutral"
                 variant="soft"
                 size="sm"
+                class="opacity-65 transition-opacity hover:opacity-100 focus-visible:opacity-100"
                 :icon="
                   isPlayerFullscreen
                     ? 'i-heroicons-arrows-pointing-in-20-solid'
@@ -237,6 +218,9 @@ const emit = defineEmits<{
   activate: [];
   'media-error': [];
   'clear-media-error': [];
+  'playback-state-change': [isPlaying: boolean, media: HTMLVideoElement | null];
+  seek: [position: number, media: HTMLVideoElement | null];
+  rate: [playbackRate: number, position: number, media: HTMLVideoElement | null];
   'subtitle-state-change': [
     payload: {
       subtitleLoading: boolean;
@@ -272,6 +256,7 @@ const isTouchDevice = ref(false);
 
 let assLayoutRefreshFrame = 0;
 let customControlsHideTimeout = 0;
+let pendingVideoClickTimeout = 0;
 let mediaGainAudioContext: AudioContext | null = null;
 let mediaGainSourceNode: MediaElementAudioSourceNode | null = null;
 let mediaGainNode: GainNode | null = null;
@@ -288,9 +273,6 @@ const customVideoTimeLabel = computed(() => {
     ? formatDuration(Math.round(customVideoDuration.value))
     : '--:--';
   return `${currentLabel} / ${durationLabel}`;
-});
-const shouldEnableMobileSeekZones = computed(() => {
-  return Boolean(isTouchDevice.value && isPlaying.value);
 });
 const usesMediaGainVolumeFallback = computed(() => {
   return Boolean(isTouchDevice.value && getAudioContextConstructor());
@@ -314,6 +296,14 @@ const {
   videoElement,
   overlayElement: assOverlayElement,
 });
+
+watch(
+  [() => props.active, isPlaying],
+  ([active, playing]) => {
+    emit('playback-state-change', Boolean(active && playing), videoElement.value);
+  },
+  { immediate: true },
+);
 
 watch(
   [
@@ -439,7 +429,40 @@ function handleVideoPause() {
   customControlsVisible.value = true;
 }
 
+function handleVideoRateChange() {
+  const video = videoElement.value;
+  if (video) emit('rate', video.playbackRate, video.currentTime, video);
+}
+
+function handleDesktopPointerMove(event: PointerEvent) {
+  if (isTouchDevice.value || customControlsVisible.value) {
+    return;
+  }
+
+  const container = playerContainer.value;
+  if (!container) return;
+
+  const rect = container.getBoundingClientRect();
+  const distanceFromBottom = rect.bottom - event.clientY;
+  if (distanceFromBottom <= 120) {
+    showCustomControls();
+  }
+}
+
+function handleVideoClick() {
+  if (isTouchDevice.value) {
+    return;
+  }
+
+  clearPendingVideoClickTimeout();
+  pendingVideoClickTimeout = window.setTimeout(() => {
+    pendingVideoClickTimeout = 0;
+    toggleCustomControlsVisibility();
+  }, 180);
+}
+
 function handleVideoDoubleClick() {
+  clearPendingVideoClickTimeout();
   void togglePlayerFullscreen();
 }
 
@@ -481,6 +504,30 @@ function handleCustomVideoSeek(event: Event) {
   showCustomControls();
 }
 
+function emitCustomVideoSeek() {
+  if (videoElement.value) emit('seek', videoElement.value.currentTime, videoElement.value);
+}
+
+function handleCustomVideoSeekChange() {
+  emitCustomVideoSeek();
+}
+
+function handleCustomVideoSeekTouch(event: TouchEvent) {
+  const target = event.currentTarget as HTMLInputElement | null;
+  const touch = event.touches[0];
+  if (!target || !touch || !videoElement.value || !customVideoDuration.value) return;
+
+  const rect = target.getBoundingClientRect();
+  const fraction = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+  videoElement.value.currentTime = fraction * customVideoDuration.value;
+  syncCustomVideoState();
+  showCustomControls();
+}
+
+function handleCustomVideoSeekTouchEnd() {
+  emitCustomVideoSeek();
+}
+
 function handleCustomVideoVolumeChange(event: Event) {
   const target = event.target as HTMLInputElement | null;
   if (!target || !videoElement.value) return;
@@ -515,24 +562,6 @@ function toggleCurrentMediaMute() {
   syncCustomVideoState();
   showCustomControls();
   void resumeMediaGainController();
-}
-
-function seekBy(deltaSeconds: number) {
-  if (!videoElement.value) return;
-
-  if (!isPlaying.value) {
-    showCustomControls();
-    return;
-  }
-
-  const duration = Number.isFinite(videoElement.value.duration) ? videoElement.value.duration : 0;
-  const nextTime = Math.min(
-    Math.max(videoElement.value.currentTime + deltaSeconds, 0),
-    duration || Infinity,
-  );
-  videoElement.value.currentTime = nextTime;
-  syncCustomVideoState();
-  showCustomControls();
 }
 
 function applyStoredMediaState(element: HTMLMediaElement | null) {
@@ -670,10 +699,6 @@ function toggleCustomControlsVisibility() {
     return;
   }
 
-  if (videoElement.value?.paused) {
-    return;
-  }
-
   clearCustomControlsHideTimeout();
   customControlsVisible.value = false;
 }
@@ -685,11 +710,21 @@ function clearCustomControlsHideTimeout() {
   }
 }
 
+function clearPendingVideoClickTimeout() {
+  if (pendingVideoClickTimeout) {
+    window.clearTimeout(pendingVideoClickTimeout);
+    pendingVideoClickTimeout = 0;
+  }
+}
+
 function syncPlayerFullscreenState() {
   const fullscreenElement = getFullscreenElement();
   isPlayerFullscreen.value = Boolean(
     fullscreenElement && playerContainer.value && fullscreenElement === playerContainer.value,
   );
+  if (!isPlayerFullscreen.value && isTouchDevice.value) {
+    showCustomControls();
+  }
   scheduleAssLayoutRefresh();
 }
 
@@ -737,6 +772,9 @@ defineExpose({
   setSubtitleEnabled(enabled: boolean) {
     subtitleEnabled.value = enabled;
   },
+  getMediaElement() {
+    return videoElement.value;
+  },
 });
 
 onMounted(() => {
@@ -762,6 +800,7 @@ onBeforeUnmount(() => {
   }
 
   clearCustomControlsHideTimeout();
+  clearPendingVideoClickTimeout();
   disconnectMediaGainController();
   if (mediaGainAudioContext && mediaGainAudioContext.state !== 'closed') {
     void mediaGainAudioContext.close().catch(() => {});
@@ -777,5 +816,9 @@ onBeforeUnmount(() => {
 
 .share-video-element::-webkit-media-controls-fullscreen-button {
   display: none;
+}
+
+.seek-bar {
+  touch-action: none;
 }
 </style>

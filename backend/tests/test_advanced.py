@@ -9,7 +9,7 @@ from backend.tests.utils import create_token, validate_metadata
 
 
 @pytest.mark.asyncio
-async def test_create_token_with_allowed_mime_types():
+async def test_token_allowed_mimes():
     """Test token creation with MIME type restrictions."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -42,7 +42,7 @@ async def test_create_token_with_expiry():
 
 
 @pytest.mark.asyncio
-async def test_reject_upload_with_disallowed_mime():
+async def test_upload_rejects_mime():
     """Test that uploads with disallowed MIME types are rejected."""
     seed_schema()
     transport = ASGITransport(app=app)

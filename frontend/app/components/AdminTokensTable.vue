@@ -58,7 +58,7 @@
               <div class="flex items-center justify-between">
                 <span class="text-muted">Expires</span>
                 <span :class="token.disabled ? 'text-muted' : ''">
-                  {{ formatDate(token.expires_at as string) || '—' }}
+                  {{ formatDate(token.expires_at as string) || 'N/A' }}
                 </span>
               </div>
             </div>
@@ -161,7 +161,7 @@
                 {{ formatBytes(token.max_size_bytes) }}
               </td>
               <td class="px-4 py-3 text-sm" :class="token.disabled ? 'text-muted' : ''">
-                {{ formatDate(token.expires_at as string) || '—' }}
+                {{ formatDate(token.expires_at as string) || 'N/A' }}
               </td>
               <td class="px-4 py-3 text-sm">
                 <UBadge :color="token.disabled ? 'neutral' : 'success'" variant="subtle">
@@ -241,7 +241,7 @@ const copyUrl = (path: string, token: string) => {
   console.log('Copying URL:', url);
   copyText(url);
   toast.add({
-    title: 'link copied to clipboard.',
+    title: 'Link copied to clipboard',
     color: 'success',
     icon: 'i-heroicons-check-circle-20-solid',
   });

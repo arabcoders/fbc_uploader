@@ -1,11 +1,4 @@
-"""
-Post-processing worker for uploaded files.
-
-Handles background tasks like:
-- MP4 faststart optimization
-- FFprobe metadata extraction
-- Future: thumbnail generation, video transcoding, etc.
-"""
+"""Background processing for media metadata, MP4 remuxing and faststart, thumbnails, and embed previews."""
 
 import asyncio
 import contextlib
@@ -444,7 +437,7 @@ async def backfill_missing_video_thumbnails() -> int:
                     generated_any = True
                     logger.info("Backfilled embed preview [upload=%s dir=%s]", upload_id, path.parent.name or "unknown")
                 else:
-                    logger.info(
+                    logger.debug(
                         "Skipped embed preview backfill because no preview was generated [upload=%s dir=%s]",
                         upload_id,
                         path.parent.name or "unknown",

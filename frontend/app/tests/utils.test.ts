@@ -4,6 +4,7 @@ import {
   copyText,
   formatBytes,
   formatKey,
+  formatUploadStatus,
   formatValue,
   percent,
 } from '~/utils';
@@ -45,16 +46,22 @@ describe('format helpers', () => {
   });
 
   it('calculates percent safely', () => {
-    expect(percent(undefined, undefined)).toBe('—');
+    expect(percent(undefined, undefined)).toBe('N/A');
     expect(percent(25, 100)).toBe('25%');
     expect(percent(120, 100)).toBe('100%');
   });
 
   it('formats keys and values for display', () => {
     expect(formatKey('broadcast_date')).toBe('broadcast date');
-    expect(formatValue(null)).toBe('—');
+    expect(formatValue(null)).toBe('N/A');
     expect(formatValue(['a', 'b'])).toBe('a, b');
     expect(formatValue({ foo: 1 })).toBe(JSON.stringify({ foo: 1 }));
+  });
+
+  it('formats upload statuses', () => {
+    expect(formatUploadStatus('postprocessing')).toBe('Processing');
+    expect(formatUploadStatus('validation_failed')).toBe('Needs attention');
+    expect(formatUploadStatus('custom_status')).toBe('Custom status');
   });
 
   it('builds subtitle download filenames from the media filename stem', () => {

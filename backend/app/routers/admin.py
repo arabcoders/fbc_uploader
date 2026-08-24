@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,7 @@ async def validate_api_key(_: Annotated[bool, Depends(verify_admin)]) -> dict[st
 
 @router.delete("/uploads/{upload_id}", name="delete_upload")
 async def delete_upload(
+    request: Request,
     upload_id: str,
     _: Annotated[bool, Depends(verify_admin)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -32,6 +33,7 @@ async def delete_upload(
     Delete an upload record and its associated file.
 
     Args:
+        request (Request): The current application request.
         upload_id (str): The public ID of the upload to delete.
         db (AsyncSession): The database session.
 
@@ -49,5 +51,7 @@ async def delete_upload(
 
     await db.delete(upload)
     await db.commit()
+    if manager := getattr(request.app.state, "watch_rooms", None):
+        await manager.invalidate(upload_id=upload_id)
 
     return {"status": "deleted", "public_id": upload_id}

@@ -65,7 +65,7 @@ def normalize_source_format(source_format: str) -> str | None:
 
 
 def normalize_subtitle_stem(stem: str) -> str:
-    return unicodedata.normalize("NFC", stem).casefold().strip()
+    return unicodedata.normalize("NFKC", stem).casefold().strip()
 
 
 def normalize_cache_identity(identity: str) -> str:

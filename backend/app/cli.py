@@ -40,7 +40,7 @@ def create_token(
 
     Args:
         max_uploads: Maximum number of uploads allowed with this token
-        max_size: Maximum size per upload (e.g., 1G, 500M
+        max_size: Maximum size per upload (e.g., 1G, 500M).
         allowed_mime: Comma-separated MIME patterns (e.g., application/pdf,video/*). Omit to allow any.
         admin_key: Admin API key for authentication
         base_url: Base URL of the API

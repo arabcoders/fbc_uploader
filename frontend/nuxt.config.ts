@@ -2,8 +2,8 @@ import { defineNuxtConfig } from 'nuxt/config';
 
 let extraNitro = {}
 const isProd = 'production' === process.env.NODE_ENV
+const API_URL = process.env.NUXT_API_URL;
 try {
-  const API_URL = process.env.NUXT_API_URL;
   if (API_URL) {
     extraNitro = {
       devProxy: {
@@ -31,6 +31,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       APP_ENV: process.env.NODE_ENV,
+      API_URL: isProd ? '' : API_URL || '',
     }
   },
   app: {

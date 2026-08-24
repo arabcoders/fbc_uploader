@@ -20,18 +20,14 @@
       </div>
     </div>
     <div class="flex items-center gap-2">
-      <UButton
-        v-if="shareLink && !shareDisabled"
-        size="xs"
-        color="neutral"
-        variant="outline"
-        icon="i-heroicons-arrow-top-right-on-square-20-solid"
-        :href="shareLink"
-        target="_blank"
-        rel="noopener noreferrer"
+      <ULink
+        v-if="sharePath && !shareDisabled"
+        :to="sharePath"
+        class="inline-flex items-center gap-1.5 rounded-md border border-default px-2.5 py-1.5 text-xs font-medium text-highlighted transition-colors hover:bg-elevated"
       >
-        Open share page
-      </UButton>
+        <UIcon name="i-heroicons-arrow-top-right-on-square-20-solid" class="size-4" />
+        <span>Open share page</span>
+      </ULink>
       <UButton
         v-if="shareLink"
         size="xs"
@@ -63,6 +59,7 @@ import { formatBytes, formatDate } from '../utils';
 defineProps<{
   tokenInfo: TokenInfo | null;
   shareLink: string;
+  sharePath: string;
   shareDisabled: boolean;
 }>();
 
