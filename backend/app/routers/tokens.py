@@ -213,7 +213,7 @@ async def get_token(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> schemas.TokenPublicInfo:
     """
-    Get information about an token.
+    Get information about a token.
 
     Args:
         request (Request): The FastAPI request object.
@@ -601,7 +601,6 @@ async def download_file(
     Args:
         download_token (str): The download token associated with the upload.
         upload_id (str): The public ID of the upload.
-        db (AsyncSession): The database session.
         is_admin (bool): Whether the request is authenticated as admin.
 
     Returns:

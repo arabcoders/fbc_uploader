@@ -55,7 +55,7 @@
           color="error"
           variant="subtle"
           icon="i-heroicons-exclamation-circle-20-solid"
-          title="Please fix these:"
+          title="Please fix the following:"
         >
           <template #description>
             <ul class="list-disc pl-4 space-y-1 text-sm">
@@ -67,7 +67,7 @@
         <div v-if="uploadSlot.status" class="space-y-1">
           <UProgress :value="uploadSlot.progress" size="sm" color="primary" />
           <p class="text-xs opacity-70">
-            Status: {{ uploadSlot.status }} ({{ uploadSlot.progress }}%)
+            Status: {{ formatUploadStatus(uploadSlot.status) }} ({{ uploadSlot.progress }}%)
           </p>
         </div>
         <UAlert
@@ -87,6 +87,7 @@ import { computed } from 'vue';
 import type { Field } from '../types/metadata';
 import type { Slot } from '../types/uploads';
 import MetadataFields from './MetadataFields.vue';
+import { formatUploadStatus } from '~/utils';
 
 const emit = defineEmits<{
   file: [Event];

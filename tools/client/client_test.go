@@ -11,6 +11,15 @@ import (
 	"time"
 )
 
+func TestHTTPErrorMessage(t *testing.T) {
+	t.Parallel()
+
+	err := (&HTTPError{StatusCode: http.StatusNotFound, Method: http.MethodGet, Detail: "not found"}).Error()
+	if err != "GET request failed with status 404: not found" {
+		t.Fatalf("unexpected HTTP error: %q", err)
+	}
+}
+
 func TestParseByteSize(t *testing.T) {
 	t.Parallel()
 

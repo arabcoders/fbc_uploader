@@ -406,7 +406,7 @@
                   <UIcon name="i-heroicons-user-group-20-solid" class="size-5 text-primary" />
                   <span>Watch Party</span>
                 </div>
-                <p class="text-sm text-muted">Play at same time with your friends.</p>
+                <p class="text-sm text-muted">Watch or listen with friends in sync.</p>
                 <div v-if="watchStatus !== 'idle'" class="space-y-1 text-sm">
                   <div class="flex items-center justify-between gap-4">
                     <span class="text-muted">Status</span>
@@ -657,7 +657,7 @@
                   </span>
                   <div class="flex items-center gap-2 mt-2">
                     <UBadge :color="getStatusColor(upload.status)" variant="soft" size="xs">
-                      {{ upload.status }}
+                      {{ formatUploadStatus(upload.status) }}
                     </UBadge>
                   </div>
                 </div>
@@ -811,7 +811,7 @@
                 </td>
                 <td class="px-4 py-3 text-sm">
                   <UBadge :color="getStatusColor(upload.status)" variant="soft">
-                    {{ upload.status }}
+                    {{ formatUploadStatus(upload.status) }}
                   </UBadge>
                 </td>
                 <td class="px-4 py-3 text-sm font-medium">
@@ -941,6 +941,7 @@ import {
   formatBytes,
   formatDate,
   formatKey,
+  formatUploadStatus,
   formatValue,
 } from '~/utils';
 

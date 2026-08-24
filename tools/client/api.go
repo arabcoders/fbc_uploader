@@ -21,16 +21,15 @@ type Client struct {
 type HTTPError struct {
 	StatusCode int
 	Method     string
-	URL        string
 	Detail     string
 }
 
 func (e *HTTPError) Error() string {
 	if strings.TrimSpace(e.Detail) == "" {
-		return fmt.Sprintf("%s %s failed with status %d", e.Method, e.URL, e.StatusCode)
+		return fmt.Sprintf("%s request failed with status %d", e.Method, e.StatusCode)
 	}
 
-	return fmt.Sprintf("%s %s failed with status %d: %s", e.Method, e.URL, e.StatusCode, e.Detail)
+	return fmt.Sprintf("%s request failed with status %d: %s", e.Method, e.StatusCode, e.Detail)
 }
 
 func NewClient(baseURL string, apiKey string) (*Client, error) {
@@ -190,7 +189,6 @@ func parseHTTPError(resp *http.Response) error {
 	return &HTTPError{
 		StatusCode: resp.StatusCode,
 		Method:     resp.Request.Method,
-		URL:        resp.Request.URL.String(),
 		Detail:     detail,
 	}
 }

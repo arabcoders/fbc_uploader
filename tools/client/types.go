@@ -13,17 +13,17 @@ type TokenResponse struct {
 }
 
 type TokenPublicInfo struct {
-	Token                *string         `json:"token"`
-	DownloadToken        string          `json:"download_token"`
-	RemainingUploads     int             `json:"remaining_uploads"`
-	MaxUploads           int             `json:"max_uploads"`
-	MaxSizeBytes         int64           `json:"max_size_bytes"`
-	MaxChunkBytes        int64           `json:"max_chunk_bytes"`
-	AllowedMime          []string        `json:"allowed_mime"`
-	ExpiresAt            FlexibleTime    `json:"expires_at"`
-	Disabled             bool            `json:"disabled"`
-	AllowPublicDownloads bool            `json:"allow_public_downloads"`
-	Uploads              []UploadRecord  `json:"uploads"`
+	Token                *string        `json:"token"`
+	DownloadToken        string         `json:"download_token"`
+	RemainingUploads     int            `json:"remaining_uploads"`
+	MaxUploads           int            `json:"max_uploads"`
+	MaxSizeBytes         int64          `json:"max_size_bytes"`
+	MaxChunkBytes        int64          `json:"max_chunk_bytes"`
+	AllowedMime          []string       `json:"allowed_mime"`
+	ExpiresAt            FlexibleTime   `json:"expires_at"`
+	Disabled             bool           `json:"disabled"`
+	AllowPublicDownloads bool           `json:"allow_public_downloads"`
+	Uploads              []UploadRecord `json:"uploads"`
 }
 
 type UploadRecord struct {

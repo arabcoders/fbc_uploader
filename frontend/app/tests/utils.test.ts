@@ -4,6 +4,7 @@ import {
   copyText,
   formatBytes,
   formatKey,
+  formatUploadStatus,
   formatValue,
   percent,
 } from '~/utils';
@@ -55,6 +56,12 @@ describe('format helpers', () => {
     expect(formatValue(null)).toBe('—');
     expect(formatValue(['a', 'b'])).toBe('a, b');
     expect(formatValue({ foo: 1 })).toBe(JSON.stringify({ foo: 1 }));
+  });
+
+  it('formats upload statuses', () => {
+    expect(formatUploadStatus('postprocessing')).toBe('Processing');
+    expect(formatUploadStatus('validation_failed')).toBe('Needs attention');
+    expect(formatUploadStatus('custom_status')).toBe('Custom status');
   });
 
   it('builds subtitle download filenames from the media filename stem', () => {

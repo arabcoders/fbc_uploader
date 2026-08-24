@@ -150,7 +150,7 @@ Create a new upload token.
 ```
 
 **Fields:**
-- `max_uploads` (integer, required): Maximum number of uploads allowed (min: 1)
+- `max_uploads` (integer, optional): Maximum number of uploads allowed (default: 1; min: 1)
 - `max_size_bytes` (integer, required): Maximum file size in bytes (> 0)
 - `expiry_datetime` (datetime, optional): Token expiration date (defaults to current time + `FBC_DEFAULT_TOKEN_TTL_HOURS`)
 - `allowed_mime` (array of strings, optional): Allowed MIME types with wildcard support (e.g., `video/*`). Empty = all types allowed
@@ -178,24 +178,27 @@ List all upload tokens.
 
 **Query Parameters:**
 - `skip` (integer, optional): Number of records to skip (default: 0)
-- `limit` (integer, optional): Maximum records to return (default: 100)
+- `limit` (integer, optional): Maximum records to return (default: 10)
 
 **Response (200):**
 ```json
-[
-  {
-    "token": "upload-token-string",
-    "download_token": "fbc_download-token-string",
-    "expires_at": "2025-12-24T00:00:00Z",
-    "uploads_used": 2,
-    "max_uploads": 5,
-    "max_size_bytes": 104857600,
-    "allowed_mime": ["application/pdf"],
-    "disabled": false,
-    "created_at": "2025-12-23T00:00:00Z",
-    "remaining_uploads": 3
-  }
-]
+{
+  "tokens": [
+    {
+      "token": "upload-token-string",
+      "download_token": "fbc_download-token-string",
+      "expires_at": "2025-12-24T00:00:00Z",
+      "uploads_used": 2,
+      "max_uploads": 5,
+      "max_size_bytes": 104857600,
+      "allowed_mime": ["application/pdf"],
+      "disabled": false,
+      "created_at": "2025-12-23T00:00:00Z",
+      "remaining_uploads": 3
+    }
+  ],
+  "total": 1
+}
 ```
 
 ---
@@ -204,7 +207,7 @@ List all upload tokens.
 
 Get detailed information about a specific token.
 
-**Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
+**Authentication:** None
 
 **Path Parameters:**
 - `token_value` (string): Upload token or download token
@@ -412,7 +415,7 @@ Get metadata information about a completed upload.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 ```json
@@ -454,7 +457,7 @@ Stream a completed file inline for browser playback.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 Returns the file with headers:
@@ -480,7 +483,7 @@ List external subtitle tracks that match a completed upload filename.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 ```json
@@ -525,7 +528,7 @@ Return the selected subtitle content for a completed upload.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 - `source_format` (string): One of `vtt`, `srt`, or `ass`
 
 **Response (200):**
@@ -554,7 +557,7 @@ Return a short MP4 preview clip for bot embeds when one has been generated.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 Returns the file with headers:
@@ -582,7 +585,7 @@ Return a preview image for a completed upload.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 Returns an image with headers:
@@ -609,7 +612,7 @@ Download a completed file.
 
 **Path Parameters:**
 - `download_token` (string): The download token
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 Returns the file with headers:
@@ -840,7 +843,7 @@ Check upload status (TUS protocol).
 **Authentication:** None
 
 **Path Parameters:**
-- `upload_id` (integer): The upload record ID
+- `upload_id` (string): The upload record public ID (random string)
 
 **Response (200):**
 
@@ -988,6 +991,8 @@ Mark an upload as complete.
 **Error Responses:**
 - `403 Forbidden` - Associated upload token expired or disabled
 - `404 Not Found` - Upload or associated token not found
+- `409 Conflict` - Upload has not received all declared bytes
+- `415 Unsupported Media Type` - Detected file type is not allowed
 
 ---
 
@@ -1033,7 +1038,7 @@ Each field object can have:
 - `minLength`, `maxLength` (integer, optional): String length constraints
 - `min`, `max` (number, optional): Numeric value constraints
 - `regex` (string, optional): Regular expression pattern for string validation
-- `default` (any, optional): Default value if not provided
+- `default` (any, optional): Default value used by the frontend when initializing the upload form
 - `extract_regex` (string, optional): Python regular expression used by `/api/metadata/extract` to prefill metadata from a filename
 
 **Notes:**
@@ -1202,6 +1207,7 @@ The API implements the [TUS resumable upload protocol](https://tus.io/) v1.0.0.
 **Supported Extensions:**
 - `creation`: Create new uploads
 - `termination`: Delete uploads
+- `checksum`: Verify uploaded chunks with SHA-1 or SHA-256 checksums
 
 **Key Features:**
 - **Resumable:** Upload can be paused and resumed from the same offset
@@ -1239,7 +1245,7 @@ Typical upload flow:
 
 2. **Get Token Info (Client)**
    ```http
-   GET /api/tokens/{token}/info
+   GET /api/tokens/{token}
    ```
 
 3. **Initiate Upload (Client)**
@@ -1269,7 +1275,12 @@ Typical upload flow:
    [binary data]
    ```
 
-5. **Download File**
+5. **Complete Upload**
+    ```http
+    POST /api/uploads/rT72ZKGMPdldiEmA9eDI7kik/complete
+    ```
+
+6. **Download File**
     ```http
     GET /api/tokens/{download_token}/uploads/rT72ZKGMPdldiEmA9eDI7kik
     Authorization: Bearer YOUR_API_KEY
@@ -1307,4 +1318,4 @@ Typical upload flow:
 - TUS protocol is recommended for files larger than a few MB for reliability
 - Maximum chunk size is controlled by `FBC_MAX_CHUNK_BYTES` (default: 90MB)
 - Media remux eligibility is capped by `FBC_MAX_REMUX_BYTES` (default: 5GB)
-- Multimedia post-processing runs with up to `FBC_POSTPROCESSING_WORKERS` concurrent workers (default: 2)
+- Multimedia post-processing runs with up to `FBC_POSTPROCESSING_WORKERS` concurrent workers (default: 4)

@@ -68,6 +68,37 @@ async def test_mimetype_spoofing_rejected(client):
 
 
 @pytest.mark.asyncio
+async def test_detection_error_hidden(client, monkeypatch):
+    resp = await client.post(
+        app.url_path_for("create_token"),
+        json={"max_size_bytes": 1_000_000},
+        headers={"Authorization": f"Bearer {settings.admin_api_key}"},
+    )
+    token_value = resp.json()["token"]
+    content = b"plain text"
+    init_resp = await client.post(
+        app.url_path_for("initiate_upload"),
+        json={"filename": "test.txt", "filetype": "text/plain", "size_bytes": len(content), "meta_data": {}},
+        params={"token": token_value},
+    )
+    upload_id = init_resp.json()["upload_id"]
+    await client.patch(
+        app.url_path_for("tus_patch", upload_id=upload_id),
+        content=content,
+        headers={"Content-Type": "application/offset+octet-stream", "Upload-Offset": "0"},
+    )
+
+    def fail_detection(_path):
+        raise RuntimeError("sensitive implementation detail")
+
+    monkeypatch.setattr("backend.app.routers.uploads.detect_mimetype", fail_detection)
+    complete_status, complete_data = await complete_upload(client, upload_id, token_value)
+
+    assert complete_status == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert complete_data == {"detail": "Failed to detect file type"}
+
+
+@pytest.mark.asyncio
 async def test_valid_mimetype_accepted(client):
     """Test that files with correct mimetypes are accepted."""
     resp = await client.post(

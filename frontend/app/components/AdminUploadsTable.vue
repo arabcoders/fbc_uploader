@@ -40,7 +40,7 @@
                 variant="subtle"
                 size="xs"
               >
-                {{ upload.status }}
+                {{ formatUploadStatus(upload.status) }}
               </UBadge>
             </div>
           </template>
@@ -190,7 +190,7 @@
                   :color="upload.status === 'completed' ? 'success' : 'neutral'"
                   variant="subtle"
                 >
-                  {{ upload.status }}
+                  {{ formatUploadStatus(upload.status) }}
                 </UBadge>
               </td>
               <td class="px-4 py-3 text-sm text-right">
@@ -214,7 +214,14 @@
 
 <script setup lang="ts">
 import type { UploadRow } from '~/types/uploads';
-import { formatBytes, formatDate, formatKey, formatValue, addAdminKeyToUrl } from '~/utils';
+import {
+  addAdminKeyToUrl,
+  formatBytes,
+  formatDate,
+  formatKey,
+  formatUploadStatus,
+  formatValue,
+} from '~/utils';
 
 const props = defineProps<{
   uploads: UploadRow[];

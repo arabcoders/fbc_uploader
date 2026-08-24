@@ -14,8 +14,7 @@
                       class="size-3.5 shrink-0"
                       :class="row.status === 'postprocessing' ? 'animate-spin' : ''"
                     />
-                    <span v-if="row.status === 'postprocessing'">Processing</span>
-                    <span v-else>{{ row.status }}</span>
+                    <span>{{ formatUploadStatus(row.status) }}</span>
                   </span>
                 </UBadge>
               </div>
@@ -228,8 +227,7 @@
                     class="size-3.5 shrink-0"
                     :class="row.status === 'postprocessing' ? 'animate-spin' : ''"
                   />
-                  <span v-if="row.status === 'postprocessing'">Processing</span>
-                  <span v-else>{{ row.status }}</span>
+                  <span>{{ formatUploadStatus(row.status) }}</span>
                 </span>
               </UBadge>
             </td>
@@ -311,7 +309,7 @@
 
 <script setup lang="ts">
 import type { UploadRow, Slot } from '../types/uploads';
-import { percent, formatKey, formatValue, formatBytes } from '../utils';
+import { percent, formatKey, formatUploadStatus, formatValue, formatBytes } from '../utils';
 
 type UploadRowExt = UploadRow & {
   share_preview?: string;

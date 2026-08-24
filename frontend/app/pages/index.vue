@@ -20,7 +20,7 @@
               autocomplete="off"
               required
               class="w-full"
-              placeholder="FBC API KEY"
+              placeholder="FBC API key"
               icon="i-heroicons-key-20-solid"
             />
           </UFormField>
@@ -83,7 +83,7 @@ const onSubmit = async () => {
   } catch (err) {
     const apiError = err as ApiError;
     adminToken.value = null;
-    error.value = apiError?.data?.detail || apiError?.message || 'Invalid api key';
+    error.value = apiError?.data?.detail || apiError?.message || 'Invalid API key';
     console.log('Admin sign-in error:', err, error.value);
   } finally {
     loading.value = false;

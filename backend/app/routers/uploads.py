@@ -1,6 +1,7 @@
 import base64
 import binascii
 import hashlib
+import logging
 import secrets
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,8 @@ from backend.app.utils import (
     mime_allowed,
     recommend_chunk_size,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.result import Result
@@ -214,11 +217,12 @@ async def _finalize_upload(
 
     try:
         actual_mimetype: str = detect_mimetype(path)
-    except Exception as e:
+    except Exception as exc:
+        logger.exception("Failed to detect MIME type for upload %s", record.public_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to detect file type: {e}",
-        ) from e
+            detail="Failed to detect file type",
+        ) from exc
 
     stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.id == record.token_id)
     res: Result[tuple[models.UploadToken]] = await db.execute(stmt)
@@ -382,7 +386,6 @@ async def tus_patch(
     Args:
         upload_id (str): The public ID of the upload.
         request (Request): The incoming HTTP request.
-        db (AsyncSession): Database session.
         upload_offset (int): The current upload offset from the client.
         upload_checksum (str | None): Optional TUS checksum for the current PATCH body.
         content_length (int | None): The Content-Length header value.

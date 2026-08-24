@@ -83,6 +83,21 @@ function formatValue(val: unknown): string {
   return String(val);
 }
 
+function formatUploadStatus(status: string): string {
+  const labels: Record<string, string> = {
+    completed: 'Completed',
+    error: 'Upload failed',
+    failed: 'Upload failed',
+    in_progress: 'Uploading',
+    initiating: 'Preparing upload',
+    paused: 'Paused',
+    postprocessing: 'Processing',
+    uploading: 'Uploading',
+    validation_failed: 'Needs attention',
+  };
+  return labels[status] || formatKey(status).replace(/^./, (char) => char.toUpperCase());
+}
+
 /**
  * Build a download filename for a delivered subtitle track.
  */
@@ -118,6 +133,7 @@ export {
   formatBytes,
   formatDate,
   formatKey,
+  formatUploadStatus,
   formatValue,
   percent,
 };

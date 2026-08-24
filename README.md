@@ -17,8 +17,7 @@ ghcr.io/arabcoders/fbc_uploader:latest
 Then you can access the WebUI at `http://localhost:8000`.
 
 > [!NOTE]
-> If you are using `podman` instead of `docker`, you can use the same command, but you need to change the user to `0:0`
-> it will appears to be running as root, but it will run as the user who started the container.
+> If you use Podman instead of Docker, set `--user 0:0`. With rootless Podman, container root maps to the user who started the container.
 
 ## Using compose file
 
@@ -48,8 +47,7 @@ mkdir -p ./{config,downloads} && docker compose -f compose.yaml up -d
 Then you can access the WebUI at `http://localhost:8000`.
 
 > [!NOTE]
-> you can use podman-compose instead of docker-compose, as it supports the same syntax. However, you should change the 
-> user to `0:0` it will appears to be running as root, but it will run as the user who started the container.
+> With Podman, set `user: "0:0"` and run `podman-compose -f compose.yaml up -d`.
 
 ## Environment Variables
 
@@ -60,17 +58,17 @@ All configuration is done via environment variables prefixed with `FBC_`:
 | `FBC_CONFIG_PATH`                   | `./data/config`  | Configuration directory                                                                                      |
 | `FBC_STORAGE_PATH`                  | `./data/uploads` | Directory for uploaded files                                                                                 |
 | `FBC_SUBTITLE_PATH`                 | unset            | Optional external subtitle directory scanned recursively for matching `.vtt`, `.srt`, and `.ass` files       |
-| `FBC_SUBTITLE_CACHE_TTL_SECONDS`    | `600`            | Cache subtitle lookup results per upload for this many seconds, including misses; set `0` to disable         |
+| `FBC_SUBTITLE_CACHE_TTL_SECONDS`    | `300`            | Cache subtitle lookup results per upload for this many seconds, including misses; set `0` to disable         |
 | `FBC_ADMIN_API_KEY`                 | Auto-generated   | Admin API key (stored in `{config_path}/secret.key` if not set)                                              |
 | `FBC_DEFAULT_TOKEN_TTL_HOURS`       | `24`             | Default token expiration in hours (1-720)                                                                    |
 | `FBC_CLEANUP_INTERVAL_SECONDS`      | `3600`           | Interval between cleanup job runs                                                                            |
 | `FBC_INCOMPLETE_TTL_HOURS`          | `24`             | Time-to-live for incomplete uploads (0 to disable)                                                           |
 | `FBC_DISABLED_TOKENS_TTL_DAYS`      | `30`             | Days to keep disabled tokens before deletion (0 to disable)                                                  |
 | `FBC_DELETE_FILES_ON_TOKEN_CLEANUP` | `true`           | Delete associated files when cleaning up disabled tokens                                                     |
-| `FBC_MAX_CHUNK_BYTES`               | `94371840`       | Maximum TUS chunk size. Default to (90MB)                                                                    |
+| `FBC_MAX_CHUNK_BYTES`               | `94371840`       | Maximum TUS chunk size (90 MB)                                                                                |
 | `FBC_MAX_REMUX_BYTES`               | `5368709120`     | Maximum file size eligible for copy-remux to MP4 during post-processing (5GB)                                |
 | `FBC_POSTPROCESSING_WORKERS`        | `4`              | Number of uploads processed concurrently in the background post-processing queue                             |
-| `FBC_EMBED_PREVIEW_CLIP_SECONDS`    | `10`             | Length of generated bot preview clips in seconds (0 disables preview generation)                             |
+| `FBC_EMBED_PREVIEW_CLIP_SECONDS`    | `300`            | Length of generated bot preview clips in seconds (0 disables preview generation)                             |
 | `FBC_EMBED_PREVIEW_MIN_SIZE_BYTES`  | `204472320`      | Only generate bot preview clips for videos at or above this size in bytes (195 MB); `0` disables the feature |
 | `FBC_ALLOW_PUBLIC_DOWNLOADS`        | `false`          | Allow public downloads without authentication                                                                |
 | `FBC_TRUST_PROXY_HEADERS`           | `false`          | Trust `X-Forwarded-*` headers, but only from proxies in `FBC_FORWARDED_ALLOW_IPS`                            |
@@ -87,7 +85,7 @@ Set `FBC_SUBTITLE_PATH` to an existing directory to enable subtitle discovery on
 ## Dynamic Metadata Schema
 
 Upload metadata is configurable via `{config_path}/metadata.json`. Define custom fields with validation rules, types, and UI hints.
-The schema is validated on server. See [metadata.md](metadata.md) for full documentation.
+The server validates the schema. See [metadata.md](metadata.md) for full documentation.
 
 ## yt-dlp Extractor
 
@@ -183,7 +181,7 @@ When public downloads are enabled, viewers can watch or listen to a shared media
 
 ## API Documentation
 
-See [API.md](API.md) for complete API documentation,.
+See [API.md](API.md) for complete API documentation.
 
 ## Contributing (Bug reports only)
 

@@ -241,7 +241,7 @@ const copyUrl = (path: string, token: string) => {
   console.log('Copying URL:', url);
   copyText(url);
   toast.add({
-    title: 'link copied to clipboard.',
+    title: 'Link copied to clipboard',
     color: 'success',
     icon: 'i-heroicons-check-circle-20-solid',
   });

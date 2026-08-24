@@ -45,7 +45,8 @@ export function useTokenInfo(tokenValue: Ref<string>) {
       const error = err as ApiError;
       tokenInfo.value = null;
       notFound.value = true;
-      tokenError.value = error?.data?.detail || error?.message || 'Failed to load token info.';
+      tokenError.value =
+        error?.data?.detail || error?.message || 'Unable to load this upload token.';
     }
   }
 
