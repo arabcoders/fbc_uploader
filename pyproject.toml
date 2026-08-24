@@ -1,7 +1,7 @@
 [project]
 name = "fbc-uploader"
 version = "0.1.0"
-description = "Add your description here"
+description = "Token-based file upload service with resumable uploads and metadata validation"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

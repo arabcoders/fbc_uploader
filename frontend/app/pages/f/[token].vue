@@ -95,7 +95,7 @@
           <UCollapsible v-model:open="showNotice">
             <button class="group flex items-center gap-2 w-full cursor-pointer">
               <UIcon name="i-heroicons-megaphone-20-solid" />
-              <span class="font-semibold">System Notice</span>
+              <span class="font-semibold">Notice</span>
               <UIcon
                 name="i-heroicons-chevron-down-20-solid"
                 class="ml-auto group-data-[state=open]:rotate-180 transition-transform duration-200"
@@ -443,7 +443,7 @@
                     class="flex items-center gap-2 text-sm text-success"
                   >
                     <UIcon name="i-heroicons-check-circle-20-solid" class="size-4 shrink-0" />
-                    <span>You are now the host. You can control playback.</span>
+                    <span>You are now the host and can control playback.</span>
                   </p>
                 </div>
                 <p v-if="watchError || watchCreateError" class="text-sm text-error">
@@ -507,9 +507,7 @@
                   <span>Subtitles</span>
                 </div>
                 <div class="space-y-3 text-sm">
-                  <div v-if="subtitleLoading" class="text-muted">
-                    Looking for matching subtitles...
-                  </div>
+                  <div v-if="subtitleLoading" class="text-muted">Searching for subtitles</div>
                   <div v-else-if="hasSubtitles" class="space-y-3">
                     <div class="flex items-center justify-between gap-4">
                       <div class="font-medium text-highlighted">Show subtitles</div>
@@ -621,8 +619,8 @@
         v-else-if="uploads.length > 0 && !loading && !tokenInfo?.allow_public_downloads"
         color="neutral"
         variant="outline"
-        title="Can't play files on this page"
-        description="Downloads are turned off for this link, so video and audio can't be played here."
+        title="Playback unavailable"
+        description="Playback is unavailable because downloads are disabled for this link."
         icon="i-heroicons-lock-closed-20-solid"
       />
 
@@ -830,8 +828,8 @@
         <UAlert
           color="neutral"
           variant="outline"
-          title="No files available"
-          description="There are no uploaded files to display for this token."
+          title="No files uploaded"
+          description="No files have been uploaded for this token."
           icon="i-heroicons-inbox-20-solid"
         />
       </div>

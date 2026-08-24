@@ -61,7 +61,7 @@ function formatDate(d?: string) {
  * Calculate percentage from offset and length
  */
 function percent(offset?: number, length?: number) {
-  if (!length || length <= 0) return '—';
+  if (!length || length <= 0) return 'N/A';
   const val = Math.min(100, Math.round(((offset || 0) / length) * 100));
   return `${val}%`;
 }
@@ -77,7 +77,7 @@ function formatKey(key: string): string {
  * Format metadata value for display
  */
 function formatValue(val: unknown): string {
-  if (val === null || val === undefined) return '—';
+  if (val === null || val === undefined) return 'N/A';
   if (Array.isArray(val)) return val.join(', ');
   if (typeof val === 'object') return JSON.stringify(val);
   return String(val);

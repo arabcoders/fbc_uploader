@@ -19,7 +19,7 @@ env:
 
 jobs:
   test:
-    name: Run Tests & Build Validation
+    name: Run Tests and Validate Builds
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

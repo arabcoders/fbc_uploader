@@ -358,7 +358,6 @@ async function confirmDeleteUpload() {
       icon: 'i-heroicons-check-circle-20-solid',
     });
     deleteUploadOpen.value = false;
-    // Refresh the uploads list
     if (uploadsToken.value) {
       await openUploads(uploadsToken.value);
     }
@@ -382,7 +381,7 @@ function handleAuthError(err: ApiError) {
   } else {
     toast.add({
       title: 'Request failed',
-      description: err?.data?.detail || err?.message || 'Unexpected error',
+      description: err?.data?.detail || err?.message || 'No error details were returned.',
       color: 'error',
       icon: 'i-heroicons-exclamation-triangle-20-solid',
     });

@@ -46,14 +46,14 @@ describe('format helpers', () => {
   });
 
   it('calculates percent safely', () => {
-    expect(percent(undefined, undefined)).toBe('—');
+    expect(percent(undefined, undefined)).toBe('N/A');
     expect(percent(25, 100)).toBe('25%');
     expect(percent(120, 100)).toBe('100%');
   });
 
   it('formats keys and values for display', () => {
     expect(formatKey('broadcast_date')).toBe('broadcast date');
-    expect(formatValue(null)).toBe('—');
+    expect(formatValue(null)).toBe('N/A');
     expect(formatValue(['a', 'b'])).toBe('a, b');
     expect(formatValue({ foo: 1 })).toBe(JSON.stringify({ foo: 1 }));
   });

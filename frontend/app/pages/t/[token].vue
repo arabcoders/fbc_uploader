@@ -49,7 +49,7 @@
             <UCollapsible v-model:open="showNotice">
               <button class="group flex items-center gap-2 w-full cursor-pointer">
                 <UIcon name="i-heroicons-megaphone-20-solid" />
-                <span class="font-semibold">System Notice</span>
+                <span class="font-semibold">Notice</span>
                 <UIcon
                   name="i-heroicons-chevron-down-20-solid"
                   class="ml-auto group-data-[state=open]:rotate-180 transition-transform duration-200"

@@ -32,7 +32,6 @@ export function useTokenInfo(tokenValue: Ref<string>) {
       tokenInfo.value = data;
       notFound.value = false;
 
-      // Check token status based on returned data
       if (tokenInfo.value) {
         const now = new Date();
         if (tokenInfo.value.expires_at) {

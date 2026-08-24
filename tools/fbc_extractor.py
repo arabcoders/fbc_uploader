@@ -73,7 +73,7 @@ class FBCIE(InfoExtractor):
 
         err_note = "Failed to download token info."
         if not apikey:
-            err_note += "You may need to provide a valid API key via --password or FBC_API_KEY environment variable."
+            err_note += " Provide a valid API key with --password or the FBC_API_KEY environment variable."
 
         items_info = self._download_json(
             self._convert_to_api_url(url),
@@ -104,7 +104,7 @@ class FBCIE(InfoExtractor):
 
         if is_single or self.get_param("noplaylist"):
             if self.get_param("noplaylist") and len(playlist) > 1:
-                self.to_screen(f"Downloading 1 video out of '{len(playlist)}' because of --no-playlist option")
+                self.to_screen(f"Downloading 1 of {len(playlist)} videos because --no-playlist was specified")
                 playlist[0]["_type"] = "video"
 
             return playlist.pop(0)
@@ -135,7 +135,7 @@ class FBCIE(InfoExtractor):
         return extracted
 
     def _format_date(self, date_str: str | None, dateformat: str = "{year:04}{month:02}{day:02}") -> str | None:
-        """Date is YYYY-MM-DD."""
+        """Format a YYYY-MM-DD date."""
         if not date_str:
             return None
 
@@ -150,7 +150,7 @@ class FBCIE(InfoExtractor):
         return dateformat.format(year=year, month=month, day=day)
 
     def _parse_date(self, date_str: str | None, dateformat: str = "{year:04}{month:02}{day:02}") -> str | None:
-        """Parse ISO DATE."""
+        """Parse an ISO date."""
         if not date_str:
             return None
 
@@ -171,7 +171,7 @@ class FBCIE(InfoExtractor):
         format_info = ffprobe_data.get("format", {})
 
         if format_name := str_or_none(format_info.get("format_name")):
-            format_dict["container"] = format_name.split(",")[0]  # Take first format if multiple
+            format_dict["container"] = format_name.split(",")[0]  # Use the first format when multiple are reported.
 
         if not format_dict.get("filesize") and (size := format_info.get("size")):
             format_dict["filesize"] = int_or_none(size)

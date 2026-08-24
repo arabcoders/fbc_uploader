@@ -16,7 +16,7 @@ Tagged GitHub releases publish prebuilt binaries for Linux, macOS, and Windows o
 
 ## Environment
 
-The CLI reads the same environment variables already used elsewhere in this repo:
+The CLI reads these environment variables:
 
 - `FBC_PUBLIC_BASE_URL`
 - `FBC_ADMIN_API_KEY`
@@ -101,9 +101,9 @@ Cancel an incomplete upload:
 ./fbc cancel --token YOUR_UPLOAD_TOKEN --upload-id EXISTING_UPLOAD_ID
 ```
 
-## Notes
+## Behavior
 
-- Re-running `upload` with the same `--upload-id` resumes from the server's current offset; you do not need to track local state yourself.
+- Re-running `upload` with the same `--upload-id` resumes from the server's current offset; the CLI does not require local state.
 - For new uploads, the CLI asks the server to extract metadata from the filename first, then applies values from `--metadata-file`, `--metadata-json`, and repeated `--metadata key=value` flags.
 - `--metadata key=value` supports dotted paths like `series.title=Example`, and explicit flag values win over matching keys from JSON sources.
 - The CLI completes uploads automatically after the final chunk is accepted.

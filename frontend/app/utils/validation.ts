@@ -26,20 +26,20 @@ export function validateSlot(slot: Slot, schema: Field[], tokenInfo: TokenInfo |
       if (val !== null && val !== undefined && val !== '') {
         const num = Number(val);
         if (Number.isNaN(num)) errs.push(`${f.label} must be numeric`);
-        if (f.min !== undefined && num < f.min) errs.push(`${f.label} must be >= ${f.min}`);
-        if (f.max !== undefined && num > f.max) errs.push(`${f.label} must be <= ${f.max}`);
+        if (f.min !== undefined && num < f.min) errs.push(`${f.label} must be at least ${f.min}`);
+        if (f.max !== undefined && num > f.max) errs.push(`${f.label} must be at most ${f.max}`);
       }
     }
     if ((f.type === 'string' || f.type === 'text') && typeof val === 'string') {
       if (f.minLength && val.length < f.minLength)
-        errs.push(`${f.label} must be at least ${f.minLength} chars`);
+        errs.push(`${f.label} must be at least ${f.minLength} characters`);
       if (f.maxLength && val.length > f.maxLength)
-        errs.push(`${f.label} must be at most ${f.maxLength} chars`);
+        errs.push(`${f.label} must be at most ${f.maxLength} characters`);
     }
     if (f.type === 'select' && f.options && val && typeof val === 'string') {
       if (!f.allowCustom) {
         const opts = f.options.map((o) => (typeof o === 'string' ? o : o.value));
-        if (!opts.includes(val)) errs.push(`${f.label} has invalid option`);
+        if (!opts.includes(val)) errs.push(`${f.label} must be one of the allowed options`);
       }
     }
     if (f.type === 'multiselect' && Array.isArray(val) && f.options) {
@@ -47,7 +47,7 @@ export function validateSlot(slot: Slot, schema: Field[], tokenInfo: TokenInfo |
         const opts = f.options.map((o) => (typeof o === 'string' ? o : o.value));
         val.forEach((v: unknown) => {
           if (typeof v === 'string' && !opts.includes(v))
-            errs.push(`${f.label} has invalid option: ${v}`);
+            errs.push(`${f.label} includes an unsupported option: ${v}`);
         });
       }
     }
@@ -60,7 +60,7 @@ export function validateSlot(slot: Slot, schema: Field[], tokenInfo: TokenInfo |
     if (f.regex && typeof val === 'string' && val !== '') {
       try {
         const re = new RegExp(f.regex);
-        if (!re.test(val)) errs.push(`${f.label} has invalid format`);
+        if (!re.test(val)) errs.push(`${f.label} has an invalid format`);
       } catch {
         // ignore bad regex
       }
@@ -69,7 +69,7 @@ export function validateSlot(slot: Slot, schema: Field[], tokenInfo: TokenInfo |
 
   if (tokenInfo?.max_size_bytes && slot.file && slot.file.size > tokenInfo.max_size_bytes) {
     errs.push(
-      `The selected file exceeds max size '${formatBytes(tokenInfo.max_size_bytes)}'. Current file size is '${formatBytes(slot.file.size)}'.`,
+      `File is too large. Maximum size: ${formatBytes(tokenInfo.max_size_bytes)}. Selected file: ${formatBytes(slot.file.size)}.`,
     );
   }
 

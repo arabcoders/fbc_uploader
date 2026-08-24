@@ -1,6 +1,6 @@
 # Dynamic Upload Metadata Schema
 
-Upload metadata fields are defined in `{config_path}/metadata.json`. This file contains a list of field definitions that describe how metadata is collected, validated, and stored for each upload.
+`{config_path}/metadata.json` defines how upload metadata is collected, validated, and stored.
 
 ---
 

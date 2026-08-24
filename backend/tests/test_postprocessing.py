@@ -406,12 +406,12 @@ async def test_remux_logs_rejection(caplog):
             ):
                 success = await process_upload(record.public_id)
 
-            assert success is True, "Processing should still complete when remux is rejected"
+            assert success is True, "Processing should still complete when remux is skipped"
 
             await session.refresh(record)
             assert record.status == "completed", "Upload should complete even when remux is skipped"
-            assert record.filename == "sample.mkv", "Filename should remain unchanged when remux is rejected"
-            assert record.ext == "mkv", "Extension should remain unchanged when remux is rejected"
+            assert record.filename == "sample.mkv", "Filename should remain unchanged when remux is skipped"
+            assert record.ext == "mkv", "Extension should remain unchanged when remux is skipped"
             assert record.meta_data["ffprobe"] == ffprobe_with_subtitles, "Original ffprobe metadata should still be stored"
 
             log_messages = [record.message for record in caplog.records if record.name == "backend.app.postprocessing"]
@@ -419,14 +419,14 @@ async def test_remux_logs_rejection(caplog):
                 "Skipping MP4 remux because it contains unsupported non-audio/video streams: subtitle (ass) [upload=postprocess_remux_skip_reason_test dir="
                 in message
                 for message in log_messages
-            ), "Rejected remuxes should log the unsupported subtitle stream reason"
+            ), "Skipped remuxes should log the unsupported subtitle stream reason"
     finally:
         temp_path.unlink(missing_ok=True)
 
 
 @pytest.mark.asyncio
 async def test_processing_logs_directory(caplog):
-    """Post-processing logs should include the upload directory name for successful operations and refusals."""
+    """Post-processing logs should include the upload directory name for successful operations and skipped remuxes."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         token_dir = Path(tmp_dir) / "token-dir-abc"
         token_dir.mkdir(parents=True, exist_ok=True)
@@ -475,7 +475,7 @@ async def test_processing_logs_directory(caplog):
             ):
                 success = await process_upload(record.public_id)
 
-            assert success is True, "Processing should still complete when remux is refused"
+            assert success is True, "Processing should still complete when remux is skipped"
 
         log_messages = [record.message for record in caplog.records if record.name == "backend.app.postprocessing"]
         assert any(
@@ -485,7 +485,7 @@ async def test_processing_logs_directory(caplog):
             "Skipping MP4 remux because it contains unsupported non-audio/video streams: subtitle (ass) [upload=postprocess_log_dir_test dir=token-dir-abc]"
             in message
             for message in log_messages
-        ), "Refusal logs should include the directory name"
+        ), "Skip logs should include the directory name"
         assert any(
             "Completed processing upload [upload=postprocess_log_dir_test dir=token-dir-abc]" in message for message in log_messages
         ), "Success logs should include the directory name"

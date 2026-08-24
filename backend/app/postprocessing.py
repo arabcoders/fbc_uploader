@@ -1,11 +1,4 @@
-"""
-Post-processing worker for uploaded files.
-
-Handles background tasks like:
-- MP4 faststart optimization
-- FFprobe metadata extraction
-- Future: thumbnail generation, video transcoding, etc.
-"""
+"""Background processing for media metadata, MP4 remuxing and faststart, thumbnails, and embed previews."""
 
 import asyncio
 import contextlib

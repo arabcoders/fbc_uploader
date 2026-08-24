@@ -38,11 +38,11 @@ describe('validateSlot', () => {
 
     slot.values.score = 5;
     errors = validateSlot(slot, schema, null);
-    expect(errors).toContain('Score must be >= 10');
+    expect(errors).toContain('Score must be at least 10');
 
     slot.values.score = 25;
     errors = validateSlot(slot, schema, null);
-    expect(errors).toContain('Score must be <= 20');
+    expect(errors).toContain('Score must be at most 20');
   });
 
   it('rejects invalid select options', () => {
@@ -53,7 +53,7 @@ describe('validateSlot', () => {
 
     const errors = validateSlot(slot, schema, null);
 
-    expect(errors).toContain('Color has invalid option');
+    expect(errors).toContain('Color must be one of the allowed options');
   });
 
   it('splits multiselect custom values', () => {
@@ -76,6 +76,6 @@ describe('validateSlot', () => {
 
     const errors = validateSlot(slot, schema, { max_size_bytes: 1_000_000 } as any);
 
-    expect(errors.some((e) => e.includes('exceeds max size'))).toBe(true);
+    expect(errors).toContain('File is too large. Maximum size: 976.6 KB. Selected file: 1.9 MB.');
   });
 });

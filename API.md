@@ -1315,7 +1315,7 @@ Typical upload flow:
 - Download tokens are prefixed with `fbc_` followed by 16-character URL-safe strings
 - Upload IDs (`public_id`) are 18-character URL-safe random strings (not sequential integers for security)
 - Metadata is stored as JSON in the database (`meta_data` column)
-- TUS protocol is recommended for files larger than a few MB for reliability
+- Use TUS when an upload may need to resume after an interruption or retry a failed chunk
 - Maximum chunk size is controlled by `FBC_MAX_CHUNK_BYTES` (default: 90MB)
 - Media remux eligibility is capped by `FBC_MAX_REMUX_BYTES` (default: 5GB)
 - Multimedia post-processing runs with up to `FBC_POSTPROCESSING_WORKERS` concurrent workers (default: 4)

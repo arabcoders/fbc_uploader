@@ -1,12 +1,12 @@
 # FBC Uploader
 
-FBC Uploader is a file upload service that allows users to upload files without creating accounts. Administrators generate upload tokens with defined limits and restrictions to control access and usage. Public downloads can be enabled if required, but the primary purpose of the service is to accept uploads from unauthenticated clients and expose the uploaded content to automation and downstream systems through an administrative API.
+FBC Uploader accepts token-authorized uploads without user accounts. Administrators create tokens with upload limits and MIME restrictions. Completed files are available through the admin API or, when enabled, public download links.
 
-The service supports resumable uploads using the TUS protocol, token-based authentication, and dynamic metadata validation driven by a configurable schema.
+Uploads can resume through TUS. A configurable schema validates upload metadata.
 
 # Installation
 
-## Run using docker command
+## Run with Docker
 
 ```bash
 mkdir -p ./{config,downloads} && docker run -d --rm --user "${UID}:${UID}" --name fbc_uploader \
@@ -14,14 +14,14 @@ mkdir -p ./{config,downloads} && docker run -d --rm --user "${UID}:${UID}" --nam
 ghcr.io/arabcoders/fbc_uploader:latest
 ```
 
-Then you can access the WebUI at `http://localhost:8000`.
+Open the web UI at `http://localhost:8000`.
 
 > [!NOTE]
 > If you use Podman instead of Docker, set `--user 0:0`. With rootless Podman, container root maps to the user who started the container.
 
-## Using compose file
+## Run with Compose
 
-The following is an example of a `compose.yaml` file that can be used to run FBC Uploader.
+Use this `compose.yaml` to run FBC Uploader:
 
 ```yaml
 services:
@@ -38,20 +38,20 @@ services:
 ```
 
 > [!IMPORTANT]
-> Make sure to change the `user` line to match your user id and group id
+> Set `user` to your user ID and group ID.
 
 ```bash
 mkdir -p ./{config,downloads} && docker compose -f compose.yaml up -d
 ```
 
-Then you can access the WebUI at `http://localhost:8000`.
+Open the web UI at `http://localhost:8000`.
 
 > [!NOTE]
 > With Podman, set `user: "0:0"` and run `podman-compose -f compose.yaml up -d`.
 
 ## Environment Variables
 
-All configuration is done via environment variables prefixed with `FBC_`:
+Configure the service with environment variables prefixed with `FBC_`:
 
 | Variable                            | Default          | Description                                                                                                  |
 | ----------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -84,7 +84,7 @@ Set `FBC_SUBTITLE_PATH` to an existing directory to enable subtitle discovery on
 
 ## Dynamic Metadata Schema
 
-Upload metadata is configurable via `{config_path}/metadata.json`. Define custom fields with validation rules, types, and UI hints.
+Define upload metadata fields, validation rules, types, and UI hints in `{config_path}/metadata.json`.
 The server validates the schema. See [metadata.md](metadata.md) for full documentation.
 
 ## yt-dlp Extractor
@@ -112,7 +112,7 @@ The extractor authenticates using the admin API key and downloads all completed 
 
 A standalone Go client lives in `tools/client`.
 
-It is a pure CLI and uses only the Go standard library. It supports token creation, upload with server-driven resume, download, file/token inspection, and upload cancellation.
+It uses only the Go standard library and supports token creation, resumable uploads, downloads, file and token inspection, and upload cancellation.
 
 Tagged releases publish prebuilt Go client binaries for Linux, macOS, and Windows on `amd64` and `arm64`.
 
