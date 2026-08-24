@@ -726,7 +726,7 @@ Guests omit `host_key`:
 | Type | Fields | Meaning |
 | --- | --- | --- |
 | `ready` | `participant_id`, `role`, `participant_count`, `participant_version`, `version`, `sync_required`, host `host_key` | Join accepted; `role` is `host` or `guest`; a host receives its rotated key. A reconnecting host has `sync_required: true` and must apply the state at or above `version` before controlling playback |
-| `state` | `version`, `anchor_position`, `paused`, `playback_rate`, `server_time`, `participant_count`, `participant_version` | Current server playback state |
+| `state` | `version`, `anchor_position`, `paused`, `playback_rate`, `server_time`, `play_at`, `participant_count`, `participant_version` | Current server playback state. `play_at` is a Unix timestamp in server seconds for a scheduled play, or `null` otherwise. |
 | `participants` | `participant_count`, `participant_version` | Participant count changed. Clients ignore messages with an older `participant_version` |
 | `promotion` | `participant_id`, `version`, `host_key` | The indicated guest became host and receives its rotated key |
 | `host_status` | `status`, `version` | `waiting` means the host disconnected and authoritative playback is paused; `connected` means the host recovered or a guest was promoted. Lifecycle `version` values are monotonic, so clients ignore older status events. Guests joining during reconnect grace receive the current `waiting` status |
@@ -735,6 +735,7 @@ Guests omit `host_key`:
 | `error` | `message` | Request or party error |
 
 **Client Messages:**
+- Host `play` commands are scheduled by the server 0.5 seconds in the future. The returned state is authoritative; clients use their server-clock offset to begin at `play_at`. Pause, seek, rate, and snapshot commands remain immediate.
 - Host playback commands use `type` `play`, `pause`, `seek`, `rate`, or `snapshot` and require a finite `position` in seconds.
 - A recovering or promoted host must first apply the authoritative state delivered after `ready` or `promotion`; clients must not send playback commands or snapshots until that synchronization is complete. A new host with `sync_required: false` may send its initial snapshot.
 - A recovering or promoted host acknowledges applied state with `{ "type": "synced", "version": <state version> }`. The server rejects playback commands until that participant acknowledges the current authoritative version, and resends `error` plus `state` for a stale acknowledgement.

@@ -32,6 +32,10 @@ export function useWatchRoom() {
   let pingTimer = 0;
   let snapshotTimer = 0;
   let correctionTimer = 0;
+  let scheduledPlayTimer = 0;
+  let pendingPlayRequest = false;
+  let pendingPlayAfterVersion = -1;
+  let clockSynchronized = false;
   let media: WatchMedia | null = null;
   let roomUrl = '';
   let joinMessage: Record<string, string> | null = null;
@@ -84,6 +88,7 @@ export function useWatchRoom() {
 
   function connect(url: string, message: Record<string, string>, reconnect = false, id = '') {
     if (typeof window === 'undefined') return;
+    cancelScheduledPlay();
     deliberateClose = false;
     fatalClose = false;
     roomUrl = url;
@@ -97,6 +102,7 @@ export function useWatchRoom() {
     requiredSyncVersion = 0;
     syncSentVersion = -1;
     participantVersion = -1;
+    clockSynchronized = false;
     if (!joinMessage.host_key) {
       const stored = storedHostKey(roomId);
       if (stored) joinMessage.host_key = stored;
@@ -151,7 +157,14 @@ export function useWatchRoom() {
       10000,
     );
     snapshotTimer = window.setInterval(() => {
-      if (socket === currentSocket && readyReceived && isHost.value && !syncRequired)
+      if (
+        socket === currentSocket &&
+        readyReceived &&
+        isHost.value &&
+        !syncRequired &&
+        !scheduledPlayTimer &&
+        !pendingPlayRequest
+      )
         sendSnapshot(currentSocket);
     }, 1000);
   }
@@ -160,6 +173,8 @@ export function useWatchRoom() {
     window.clearTimeout(reconnectTimer);
     window.clearInterval(pingTimer);
     window.clearInterval(snapshotTimer);
+    window.clearTimeout(scheduledPlayTimer);
+    scheduledPlayTimer = 0;
   }
 
   function setError(message: string, fatal = false, currentSocket: WebSocket | null = socket) {
@@ -220,13 +235,20 @@ export function useWatchRoom() {
       send({ type: 'ping', client_time: Date.now() }, currentSocket);
       if (message.role === 'host' && !syncRequired) sendSnapshot(currentSocket);
     } else if (type === 'state' && isWatchState(message)) {
+      let shouldApplyHostState = false;
       if (!state.value || message.version >= state.value.version) {
+        const resolvesPendingPlay =
+          pendingPlayRequest &&
+          message.version > pendingPlayAfterVersion &&
+          message.play_at != null;
+        shouldApplyHostState = isHost.value && (resolvesPendingPlay || scheduledPlayTimer !== 0);
+        if (!pendingPlayRequest || resolvesPendingPlay) cancelScheduledPlay();
         state.value = message;
         updateParticipantCount(message.participant_count, message.participant_version);
         hostStatusVersion = Math.max(hostStatusVersion, message.version);
       }
-      if (!isHost.value || syncRequired) {
-        void applyLatest();
+      if (!isHost.value || syncRequired || shouldApplyHostState) {
+        void applyLatest(shouldApplyHostState);
       }
     } else if (
       type === 'synced' &&
@@ -254,6 +276,8 @@ export function useWatchRoom() {
     ) {
       const sample = midpointClockOffset(message.client_time, Date.now(), message.server_time);
       clockOffset.value = clockOffset.value ? clockOffset.value * 0.8 + sample * 0.2 : sample;
+      clockSynchronized = true;
+      if (scheduledPlayTimer && state.value && media) void applyState(state.value, media);
     } else if (type === 'promotion' && message.participant_id === participantId) {
       rememberCredential(message);
       wasPromoted.value = true;
@@ -265,6 +289,7 @@ export function useWatchRoom() {
       syncSentVersion = -1;
       window.clearTimeout(correctionTimer);
     } else if (type === 'error' && typeof message.message === 'string') {
+      cancelScheduledPlay();
       const normalized = message.message.toLowerCase();
       const hasHostCredential = Boolean(reconnectCredential || joinMessage?.host_key);
       if (normalized.includes('host key') && hasHostCredential && !hostFallbackUsed) {
@@ -319,16 +344,32 @@ export function useWatchRoom() {
     return media?.currentTime || 0;
   }
   function sendPlay() {
-    if (canControl()) send({ type: 'play', position: currentPosition() });
+    if (canControl()) {
+      const position = currentPosition();
+      suppressedUntil = Date.now() + 1000;
+      pendingPlayRequest = true;
+      pendingPlayAfterVersion = state.value?.version ?? -1;
+      media?.pause();
+      send({ type: 'play', position });
+    }
   }
   function sendPause() {
-    if (canControl()) send({ type: 'pause', position: currentPosition() });
+    if (canControl()) {
+      cancelScheduledPlay();
+      send({ type: 'pause', position: currentPosition() });
+    }
   }
   function sendSeek(position = currentPosition()) {
-    if (canControl()) send({ type: 'seek', position });
+    if (canControl()) {
+      cancelScheduledPlay();
+      send({ type: 'seek', position });
+    }
   }
   function sendRate(playback_rate = media?.playbackRate || 1, position = currentPosition()) {
-    if (canControl()) send({ type: 'rate', position, playback_rate });
+    if (canControl()) {
+      cancelScheduledPlay();
+      send({ type: 'rate', position, playback_rate });
+    }
   }
   function sendSnapshot(targetSocket: WebSocket | null = socket) {
     if (canControl() && media)
@@ -348,13 +389,24 @@ export function useWatchRoom() {
   function isSuppressed() {
     return Date.now() < suppressedUntil;
   }
+  function cancelScheduledPlay() {
+    window.clearTimeout(scheduledPlayTimer);
+    scheduledPlayTimer = 0;
+    pendingPlayRequest = false;
+    pendingPlayAfterVersion = -1;
+  }
 
   async function applyState(next: WatchState, target: WatchMedia) {
     media = target;
     const generation = ++applyGeneration;
     const targetGeneration = mediaGeneration;
+    window.clearTimeout(scheduledPlayTimer);
+    scheduledPlayTimer = 0;
     suppressedUntil = Date.now() + 500;
-    const expected = expectedWatchPosition(next, Date.now(), clockOffset.value);
+    const stateOffset = clockSynchronized
+      ? clockOffset.value
+      : Date.now() - next.server_time * 1000;
+    const expected = expectedWatchPosition(next, Date.now(), stateOffset);
     const correction = driftCorrection(expected - target.currentTime);
     if (correction.seek !== null) target.currentTime = expected;
     if (correction.rate !== 1) {
@@ -373,32 +425,59 @@ export function useWatchRoom() {
     } else target.playbackRate = next.playback_rate;
     if (next.paused && !target.paused) target.pause();
     if (!next.paused && target.paused) {
-      try {
-        await target.play();
-        if (
-          media === target &&
-          mediaGeneration === targetGeneration &&
-          applyGeneration === generation &&
-          !isHost.value
-        ) {
-          autoplayBlocked.value = false;
-        }
-      } catch {
-        if (
-          media === target &&
-          mediaGeneration === targetGeneration &&
-          applyGeneration === generation &&
-          !isHost.value
-        ) {
-          autoplayBlocked.value = true;
-        }
+      const playAt = typeof next.play_at === 'number' ? next.play_at : null;
+      if (playAt !== null && playAt * 1000 + stateOffset > Date.now()) {
+        let timer = 0;
+        timer = window.setTimeout(
+          () => {
+            if (scheduledPlayTimer !== timer) return;
+            scheduledPlayTimer = 0;
+            if (
+              media !== target ||
+              mediaGeneration !== targetGeneration ||
+              applyGeneration !== generation
+            )
+              return;
+            suppressedUntil = Date.now() + 500;
+            const currentOffset = clockSynchronized ? clockOffset.value : stateOffset;
+            target.currentTime = expectedWatchPosition(next, Date.now(), currentOffset);
+            void playMedia(target, generation, targetGeneration);
+          },
+          Math.max(0, playAt * 1000 + stateOffset - Date.now()),
+        );
+        scheduledPlayTimer = timer;
+        return;
+      }
+      await playMedia(target, generation, targetGeneration);
+    }
+  }
+
+  async function playMedia(target: WatchMedia, generation: number, targetGeneration: number) {
+    try {
+      await target.play();
+      if (
+        media === target &&
+        mediaGeneration === targetGeneration &&
+        applyGeneration === generation &&
+        !isHost.value
+      ) {
+        autoplayBlocked.value = false;
+      }
+    } catch {
+      if (
+        media === target &&
+        mediaGeneration === targetGeneration &&
+        applyGeneration === generation &&
+        !isHost.value
+      ) {
+        autoplayBlocked.value = true;
       }
     }
   }
 
-  async function applyLatest() {
+  async function applyLatest(forceHost = false) {
     if (
-      (!isHost.value || syncRequired) &&
+      (!isHost.value || syncRequired || forceHost) &&
       state.value &&
       media &&
       (!syncRequired || state.value.version >= requiredSyncVersion)
@@ -415,12 +494,14 @@ export function useWatchRoom() {
       mediaGeneration += 1;
       applyGeneration += 1;
       window.clearTimeout(correctionTimer);
+      cancelScheduledPlay();
     }
     media = next;
     if (!isHost.value || syncRequired) void applyLatest();
   }
   function disconnect() {
     deliberateClose = true;
+    cancelScheduledPlay();
     stopTimers();
     window.clearTimeout(correctionTimer);
     mediaGeneration += 1;
@@ -442,6 +523,7 @@ export function useWatchRoom() {
     error.value = '';
     autoplayBlocked.value = false;
     clockOffset.value = 0;
+    clockSynchronized = false;
     room.value = null;
     wasPromoted.value = false;
     hostWaiting.value = false;

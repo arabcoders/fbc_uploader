@@ -30,6 +30,7 @@ MAX_RATE = 4.0
 MAX_POSITION_SECONDS = 86400.0
 COMMAND_WINDOW_SECONDS = 2.0
 MAX_COMMANDS_PER_WINDOW = 20
+PLAY_LEAD_SECONDS = 0.5
 ERROR_CAPACITY = "capacity"
 ERROR_CREDENTIAL = "credential"
 ERROR_FULL = "full"
@@ -103,6 +104,7 @@ class WatchRoom:
     anchor_server_time: float = field(default_factory=time.time)
     paused: bool = True
     playback_rate: float = 1.0
+    play_at: float | None = None
     participant_version: int = 0
     participants: dict[str, Participant] = field(default_factory=dict)
     host_established: bool = False
@@ -112,7 +114,8 @@ class WatchRoom:
         now = time.time() if server_time is None else server_time
         if self.paused:
             return self.anchor_position
-        return min(MAX_POSITION_SECONDS, max(0.0, self.anchor_position + (now - self.anchor_server_time) * self.playback_rate))
+        elapsed = max(0.0, now - self.anchor_server_time)
+        return min(MAX_POSITION_SECONDS, max(0.0, self.anchor_position + elapsed * self.playback_rate))
 
 
 class WatchRoomManager:
@@ -180,6 +183,7 @@ class WatchRoomManager:
                     room.anchor_position = room.projected_position(timestamp)
                     room.anchor_server_time = timestamp
                     room.paused = True
+                    room.play_at = None
                 if reconnected:
                     room.version += 1
                 room.host_established = True
@@ -260,6 +264,7 @@ class WatchRoomManager:
                 room.anchor_position = room.projected_position(timestamp)
                 room.anchor_server_time = timestamp
                 room.paused = True
+                room.play_at = None
                 room.version += 1
                 room.host_established = False
                 room.host_reconnect_until = time.monotonic() + HOST_RECONNECT_GRACE_SECONDS
@@ -355,10 +360,15 @@ class WatchRoomManager:
                 if not isinstance(paused, bool):
                     raise WatchRoomError(ERROR_PAUSED)
             room.anchor_position = position
-            room.anchor_server_time = time.time()
+            timestamp = time.time()
             if kind == "play":
+                room.play_at = timestamp + PLAY_LEAD_SECONDS
+                room.anchor_server_time = room.play_at
                 room.paused = False
-            elif kind == "pause":
+            else:
+                room.play_at = None
+                room.anchor_server_time = timestamp
+            if kind == "pause":
                 room.paused = True
             elif kind == "rate":
                 room.playback_rate = rate or room.playback_rate
@@ -411,6 +421,7 @@ class WatchRoomManager:
             "anchor_position": room.projected_position(server_time),
             "paused": room.paused,
             "playback_rate": room.playback_rate,
+            "play_at": room.play_at if not room.paused else None,
             "server_time": server_time,
             "participant_count": len(room.participants),
             "participant_version": room.participant_version,
@@ -478,6 +489,7 @@ class WatchRoomManager:
                             room.anchor_position = room.projected_position(timestamp)
                             room.anchor_server_time = timestamp
                             room.paused = True
+                            room.play_at = None
                             room.version += 1
                             room.host_established = False
                             room.host_reconnect_until = time.monotonic() + HOST_RECONNECT_GRACE_SECONDS

@@ -149,14 +149,55 @@ async def test_guest_waits():
 
 
 @pytest.mark.asyncio
-async def test_state_projects_elapsed():
+async def test_state_projects_elapsed(monkeypatch):
+    now = 100.0
+    monkeypatch.setattr("backend.app.watch.time.time", lambda: now)
     manager = WatchRoomManager()
     room = await manager.create("download", "upload")
     host, _, _ = await manager.join(room, FakeSocket(), "download", room.host_key, "upload")
     await manager.command(room, host, {"type": "play", "position": 10})
-    room.anchor_server_time -= 2
+    now = 102.5
     state = manager.state(room)
-    assert state["anchor_position"] >= 11.9, "A late state must include elapsed playback"
+    assert state["anchor_position"] == pytest.approx(12), "A late state must include elapsed playback"
+
+
+@pytest.mark.asyncio
+async def test_play_schedules(monkeypatch):
+    monkeypatch.setattr("backend.app.watch.time.time", lambda: 100.0)
+    manager = WatchRoomManager()
+    room = await manager.create("download", "upload")
+    host, _, _ = await manager.join(room, FakeSocket(), "download", room.host_key, "upload")
+
+    state = await manager.command(room, host, {"type": "play", "position": 10})
+
+    assert state["play_at"] == room.anchor_server_time == 100.5
+    assert state["server_time"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_future_play_clamps(monkeypatch):
+    monkeypatch.setattr("backend.app.watch.time.time", lambda: 100.0)
+    manager = WatchRoomManager()
+    room = await manager.create("download", "upload")
+    host, _, _ = await manager.join(room, FakeSocket(), "download", room.host_key, "upload")
+
+    await manager.command(room, host, {"type": "play", "position": 10})
+
+    assert room.projected_position() == pytest.approx(10)
+
+
+@pytest.mark.asyncio
+async def test_started_play_projects(monkeypatch):
+    now = 100.0
+    monkeypatch.setattr("backend.app.watch.time.time", lambda: now)
+    manager = WatchRoomManager()
+    room = await manager.create("download", "upload")
+    host, _, _ = await manager.join(room, FakeSocket(), "download", room.host_key, "upload")
+
+    await manager.command(room, host, {"type": "play", "position": 10})
+    now = 102.0
+
+    assert room.projected_position() == pytest.approx(11.5)
 
 
 @pytest.mark.asyncio
