@@ -5,7 +5,15 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app.watch import MAX_PARTICIPANTS, ERROR_MESSAGE_RATE_LIMIT, Participant, WatchRoomError, WatchRoomManager
+from backend.app.watch import (
+    ERROR_MESSAGE_RATE_LIMIT,
+    MAX_PARTICIPANTS,
+    ROOM_TTL_SECONDS,
+    STALE_PARTICIPANT_SECONDS,
+    Participant,
+    WatchRoomError,
+    WatchRoomManager,
+)
 
 
 class FakeSocket:
@@ -104,7 +112,7 @@ async def test_host_promotion():
     _, guest_role, _ = await manager.join(room, FakeSocket(), "download", None, "upload")
     assert not guest_role and manager.state(room)["paused"]
     await manager.remove(room, guest)
-    room.last_activity = 0
+    room.last_activity = room.created_at - ROOM_TTL_SECONDS - 1
     await manager.cleanup()
     assert manager.get(room.room_id) is None, "An empty room should be removed"
 
@@ -166,7 +174,7 @@ async def test_cleanup_stale_count():
     observer = FakeSocket()
     participant, _, _ = await manager.join(room, socket, "download", None, "upload")
     await manager.join(room, observer, "download", None, "upload")
-    room.participants[participant].last_seen = 0
+    room.participants[participant].last_seen = room.created_at - STALE_PARTICIPANT_SECONDS - 1
     await manager.cleanup()
     assert socket.closed
     assert observer.messages[-1]["participant_count"] == 1
@@ -395,7 +403,7 @@ async def test_cleanup_count_refresh():
     await manager.join(room, failed, "download", None, "upload")
     observer = FakeSocket()
     await manager.join(room, observer, "download", None, "upload")
-    room.participants[host].last_seen = 0
+    room.participants[host].last_seen = room.created_at - STALE_PARTICIPANT_SECONDS - 1
     await manager.cleanup()
     assert any(message.get("type") == "participants" and message.get("participant_count") == 1 for message in observer.messages)
 
@@ -409,7 +417,7 @@ async def test_cleanup_revoke_close():
     host, _, _ = await manager.join(room, host_socket, "download", room.host_key, "upload")
     await manager.join(room, guest_socket, "download", None, "upload")
     reconnect_key = room.host_key
-    room.participants[host].last_seen = 0
+    room.participants[host].last_seen = room.created_at - STALE_PARTICIPANT_SECONDS - 1
     started, release = asyncio.Event(), asyncio.Event()
 
     async def delayed_close(_socket):
@@ -473,7 +481,7 @@ async def test_cleanup_drains_superseded(token_expired):
     if token_expired:
         room.token_expires_at = 0
     else:
-        room.last_activity = 0
+        room.last_activity = room.created_at - ROOM_TTL_SECONDS - 1
     await manager.cleanup()
     assert old_socket.closed and new_socket.closed
     assert not manager._superseded and manager.get(room.room_id) is None
@@ -532,7 +540,7 @@ async def test_stale_cleanup_pauses_room():
     host, _, _ = await manager.join(room, host_socket, "download", room.host_key, "upload")
     await manager.join(room, guest_socket, "download", None, "upload")
     await manager.command(room, host, {"type": "play", "position": 3})
-    room.participants[host].last_seen = 0
+    room.participants[host].last_seen = room.created_at - STALE_PARTICIPANT_SECONDS - 1
     await manager.cleanup()
     assert room.paused
     assert any(message.get("type") == "host_status" and message.get("status") == "waiting" for message in guest_socket.messages)
