@@ -37,3 +37,4 @@ test_impl.py
 data/
 llms-full.txt
 .env
+client/client

@@ -1,3 +1,4 @@
+import asyncio
 import atexit
 import json
 import os
@@ -20,6 +21,7 @@ TEST_FRONTEND_DIR = TEST_RUN_DIR / "frontend"
 TEST_SUBTITLE_DIR = TEST_RUN_DIR / "subtitles"
 TEST_TEMP_DIR = TEST_RUN_DIR / "tmp"
 TEST_FALLBACK_THUMBNAIL_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+FIXTURE_TIMEOUT_SECONDS = 15
 
 for path in (TEST_CONFIG_DIR, TEST_STORAGE_DIR, TEST_FRONTEND_DIR, TEST_SUBTITLE_DIR, TEST_TEMP_DIR):
     path.mkdir(parents=True, exist_ok=True)
@@ -71,15 +73,17 @@ async def reset_database():
     """Clean database before and after each test by dropping and recreating all tables."""
     from backend.app.db import Base, engine
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+    async with asyncio.timeout(FIXTURE_TIMEOUT_SECONDS):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
 
     yield
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+    async with asyncio.timeout(FIXTURE_TIMEOUT_SECONDS):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+            await conn.run_sync(Base.metadata.create_all)
 
 
 @pytest.fixture(autouse=True)
@@ -99,9 +103,9 @@ def reset_metadata_schema():
 async def setup_db(test_run_dir):
     from backend.app.db import engine, init_db
 
-    await init_db()
+    await asyncio.wait_for(init_db(), FIXTURE_TIMEOUT_SECONDS)
     yield
-    await engine.dispose()
+    await asyncio.wait_for(engine.dispose(), FIXTURE_TIMEOUT_SECONDS)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -121,7 +125,7 @@ async def processing_queue():
     queue = ProcessingQueue()
     queue.start_worker()
     yield queue
-    await queue.stop_worker()
+    await asyncio.wait_for(queue.stop_worker(), FIXTURE_TIMEOUT_SECONDS)
 
 
 @pytest.fixture

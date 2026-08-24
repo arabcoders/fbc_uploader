@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from types import SimpleNamespace
 from datetime import UTC, datetime, timedelta
 
@@ -14,6 +15,15 @@ from backend.app.watch import (
     WatchRoomError,
     WatchRoomManager,
 )
+
+EVENT_TIMEOUT_SECONDS = 5
+
+
+async def cancel_task(task: asyncio.Task) -> None:
+    if not task.done():
+        task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
 
 
 class FakeSocket:
@@ -226,15 +236,19 @@ async def test_invalidation_close_race():
 
     async def close_socket(_socket):
         close_started.set()
-        await release_close.wait()
+        await asyncio.wait_for(release_close.wait(), EVENT_TIMEOUT_SECONDS)
 
     manager._close_socket = close_socket
     invalidation = asyncio.create_task(manager.invalidate(download_token="download"))
-    await close_started.wait()
-    with pytest.raises(WatchRoomError, match="not found"):
-        await manager.message_allowed(room, participant)
-    release_close.set()
-    await invalidation
+    try:
+        await asyncio.wait_for(close_started.wait(), EVENT_TIMEOUT_SECONDS)
+        with pytest.raises(WatchRoomError, match="not found"):
+            await manager.message_allowed(room, participant)
+        release_close.set()
+        await asyncio.wait_for(invalidation, EVENT_TIMEOUT_SECONDS)
+    finally:
+        release_close.set()
+        await cancel_task(invalidation)
 
 
 @pytest.mark.asyncio
@@ -357,16 +371,20 @@ async def test_superseded_close_async():
 
     async def delayed_close(_socket):
         started.set()
-        await release.wait()
+        await asyncio.wait_for(release.wait(), EVENT_TIMEOUT_SECONDS)
 
     manager._close_socket = delayed_close
     close_task = asyncio.create_task(manager.close_superseded(new_host))
-    await started.wait()
-    await manager.synced(room, new_host, room.version)
-    state = await manager.command(room, new_host, {"type": "play", "position": 2})
-    assert not state["paused"]
-    release.set()
-    await close_task
+    try:
+        await asyncio.wait_for(started.wait(), EVENT_TIMEOUT_SECONDS)
+        await manager.synced(room, new_host, room.version)
+        state = await manager.command(room, new_host, {"type": "play", "position": 2})
+        assert not state["paused"]
+        release.set()
+        await asyncio.wait_for(close_task, EVENT_TIMEOUT_SECONDS)
+    finally:
+        release.set()
+        await cancel_task(close_task)
 
 
 @pytest.mark.asyncio
@@ -380,18 +398,22 @@ async def test_superseded_cancel_recover():
 
     async def delayed_close(_socket):
         started.set()
-        await release.wait()
+        await asyncio.wait_for(release.wait(), EVENT_TIMEOUT_SECONDS)
 
     manager._close_socket = delayed_close
     close_task = asyncio.create_task(manager.close_superseded(new_host))
-    await started.wait()
-    close_task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await close_task
-    assert new_host in manager._superseded
-    release.set()
-    await manager.close()
-    assert not manager._superseded
+    try:
+        await asyncio.wait_for(started.wait(), EVENT_TIMEOUT_SECONDS)
+        close_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await close_task
+        assert new_host in manager._superseded
+        release.set()
+        await asyncio.wait_for(manager.close(), EVENT_TIMEOUT_SECONDS)
+        assert not manager._superseded
+    finally:
+        release.set()
+        await cancel_task(close_task)
 
 
 @pytest.mark.asyncio
@@ -422,16 +444,20 @@ async def test_cleanup_revoke_close():
 
     async def delayed_close(_socket):
         started.set()
-        await release.wait()
+        await asyncio.wait_for(release.wait(), EVENT_TIMEOUT_SECONDS)
 
     manager._close_socket = delayed_close
     cleanup = asyncio.create_task(manager.cleanup())
-    await started.wait()
-    assert any(message.get("type") == "state" and message.get("paused") for message in guest_socket.messages)
-    recovered, is_host, _ = await manager.join(room, FakeSocket(), "download", reconnect_key, "upload")
-    assert is_host and recovered in room.participants
-    release.set()
-    await cleanup
+    try:
+        await asyncio.wait_for(started.wait(), EVENT_TIMEOUT_SECONDS)
+        assert any(message.get("type") == "state" and message.get("paused") for message in guest_socket.messages)
+        recovered, is_host, _ = await manager.join(room, FakeSocket(), "download", reconnect_key, "upload")
+        assert is_host and recovered in room.participants
+        release.set()
+        await asyncio.wait_for(cleanup, EVENT_TIMEOUT_SECONDS)
+    finally:
+        release.set()
+        await cancel_task(cleanup)
 
 
 @pytest.mark.asyncio

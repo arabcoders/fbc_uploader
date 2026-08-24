@@ -506,7 +506,7 @@ async def test_processing_queue_concurrent_uploads():
             if len(started_uploads) == 2:
                 both_started.set()
 
-        await release_processing.wait()
+        await asyncio.wait_for(release_processing.wait(), timeout=5.0)
         return True
 
     with patch("backend.app.postprocessing.process_upload", new=AsyncMock(side_effect=fake_process_upload)):
@@ -522,7 +522,7 @@ async def test_processing_queue_concurrent_uploads():
             await asyncio.wait_for(queue.join(), timeout=1.0)
         finally:
             release_processing.set()
-            await queue.stop_worker()
+            await asyncio.wait_for(queue.stop_worker(), timeout=5.0)
 
 
 @pytest.mark.asyncio
