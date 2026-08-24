@@ -261,6 +261,7 @@ async def get_token(
 
 @router.patch("/{token_value}", response_model=schemas.TokenInfo, name="update_token")
 async def update_token(
+    request: Request,
     token_value: str,
     payload: schemas.TokenUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -270,6 +271,7 @@ async def update_token(
     Update an existing upload token.
 
     Args:
+        request (Request): The current application request.
         token_value (str): The upload or download token value.
         payload (TokenUpdate): The token update payload.
         db (AsyncSession): The database session.
@@ -300,6 +302,7 @@ async def update_token(
     if payload.allowed_mime is not None:
         token_row.allowed_mime = payload.allowed_mime
 
+    expiry_changed = False
     if payload.expiry_datetime:
         expires_at: datetime = payload.expiry_datetime
 
@@ -307,6 +310,7 @@ async def update_token(
             expires_at = expires_at.replace(tzinfo=UTC)
 
         token_row.expires_at = expires_at
+        expiry_changed = True
 
     if payload.extend_hours:
         expires_at = token_row.expires_at
@@ -315,17 +319,27 @@ async def update_token(
             expires_at = expires_at.replace(tzinfo=UTC)
 
         token_row.expires_at = expires_at + timedelta(hours=payload.extend_hours)
+        expiry_changed = True
 
     if payload.disabled is not None:
         token_row.disabled = payload.disabled
 
     await db.commit()
     await db.refresh(token_row)
+    if manager := getattr(request.app.state, "watch_rooms", None):
+        expires_at = token_row.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expiry_changed:
+            await manager.update_expiry(token_row.download_token, expires_at)
+        if token_row.disabled:
+            await manager.invalidate(download_token=token_row.download_token)
     return token_row
 
 
 @router.delete("/{token_value}", status_code=status.HTTP_204_NO_CONTENT, name="delete_token")
 async def delete_token(
+    request: Request,
     token_value: str,
     *,
     delete_files: Annotated[bool, Query(..., description="Also delete uploaded files")] = False,
@@ -336,6 +350,7 @@ async def delete_token(
     Delete an upload token and optionally its associated files.
 
     Args:
+        request (Request): The current application request.
         token_value (str): The upload or download token value.
         delete_files (bool): Whether to delete associated uploaded files.
         db (AsyncSession): The database session.
@@ -364,8 +379,11 @@ async def delete_token(
             with contextlib.suppress(OSError):
                 storage_dir.rmdir()
 
+    download_token = token_row.download_token
     await db.delete(token_row)
     await db.commit()
+    if manager := getattr(request.app.state, "watch_rooms", None):
+        await manager.invalidate(download_token=download_token)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

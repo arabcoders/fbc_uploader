@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 
 from backend.app.config import settings
 from backend.app.main import app
+from backend.app.watch import WatchRoomManager
 from backend.tests.conftest import seed_schema
 from backend.tests.utils import complete_upload, create_token, get_token_info
 
@@ -47,6 +48,31 @@ async def test_cancel_upload_restores_slot():
 
 
 @pytest.mark.asyncio
+async def test_cancel_invalidates_room():
+    seed_schema()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        token_data = await create_token(client, max_uploads=1, max_size_bytes=1000)
+        response = await client.post(
+            app.url_path_for("initiate_upload"),
+            params={"token": token_data["token"]},
+            json={
+                "filename": "test.txt",
+                "filetype": "text/plain",
+                "size_bytes": 100,
+                "meta_data": {"broadcast_date": "2024-01-01", "title": "Test", "source": "youtube"},
+            },
+        )
+        upload_id = response.json()["upload_id"]
+        manager = WatchRoomManager()
+        app.state.watch_rooms = manager
+        room = await manager.create(token_data["download_token"], upload_id)
+        response = await client.delete(app.url_path_for("cancel_upload", upload_id=upload_id), params={"token": token_data["token"]})
+        assert response.status_code == status.HTTP_200_OK
+        assert manager.get(room.room_id) is None
+
+
+@pytest.mark.asyncio
 async def test_cancel_upload_invalid_token():
     """Test that canceling with wrong token fails."""
     seed_schema()
@@ -81,7 +107,7 @@ async def test_cancel_upload_invalid_token():
 
 
 @pytest.mark.asyncio
-async def test_cancel_upload_invalid_upload_id():
+async def test_cancel_invalid_upload_id():
     """Test that canceling non-existent upload fails."""
     seed_schema()
     transport = ASGITransport(app=app)

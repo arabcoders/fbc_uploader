@@ -173,9 +173,17 @@ cd tools/client
 
 See `tools/client/README.md` for more details.
 
+## Watch Party
+
+When public downloads are enabled, viewers can watch or listen to a shared media file together:
+
+1. Open a share link and select a video or audio file.
+2. Click **Create party** and copy the invite link.
+3. Send the link to friends. They join automatically when they open it.
+
 ## API Documentation
 
-See [API.md](API.md) for complete API documentation.
+See [API.md](API.md) for complete API documentation,.
 
 ## Contributing (Bug reports only)
 

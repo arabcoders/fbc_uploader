@@ -62,6 +62,7 @@
       @timeupdate="handleVideoTimeUpdate"
       @play="handleVideoPlay"
       @pause="handleVideoPause"
+      @ratechange="handleVideoRateChange"
       @click="handleVideoClick"
       @dblclick="handleVideoDoubleClick"
       @pointermove="handleDesktopPointerMove"
@@ -137,8 +138,10 @@
               class="h-1.5 w-full accent-white opacity-55 transition-opacity hover:opacity-100 seek-bar"
               aria-label="Seek video"
               @input="handleCustomVideoSeek"
+              @change="handleCustomVideoSeekChange"
               @touchstart.prevent="handleCustomVideoSeekTouch"
               @touchmove.prevent="handleCustomVideoSeekTouch"
+              @touchend.prevent="handleCustomVideoSeekTouchEnd"
             />
           </div>
           <div class="order-3 flex items-center justify-end sm:order-3 sm:shrink-0">
@@ -215,7 +218,9 @@ const emit = defineEmits<{
   activate: [];
   'media-error': [];
   'clear-media-error': [];
-  'playback-state-change': [isPlaying: boolean];
+  'playback-state-change': [isPlaying: boolean, media: HTMLVideoElement | null];
+  seek: [position: number, media: HTMLVideoElement | null];
+  rate: [playbackRate: number, position: number, media: HTMLVideoElement | null];
   'subtitle-state-change': [
     payload: {
       subtitleLoading: boolean;
@@ -295,7 +300,7 @@ const {
 watch(
   [() => props.active, isPlaying],
   ([active, playing]) => {
-    emit('playback-state-change', Boolean(active && playing));
+    emit('playback-state-change', Boolean(active && playing), videoElement.value);
   },
   { immediate: true },
 );
@@ -424,6 +429,11 @@ function handleVideoPause() {
   customControlsVisible.value = true;
 }
 
+function handleVideoRateChange() {
+  const video = videoElement.value;
+  if (video) emit('rate', video.playbackRate, video.currentTime, video);
+}
+
 function handleDesktopPointerMove(event: PointerEvent) {
   if (isTouchDevice.value || customControlsVisible.value) {
     return;
@@ -494,6 +504,14 @@ function handleCustomVideoSeek(event: Event) {
   showCustomControls();
 }
 
+function emitCustomVideoSeek() {
+  if (videoElement.value) emit('seek', videoElement.value.currentTime, videoElement.value);
+}
+
+function handleCustomVideoSeekChange() {
+  emitCustomVideoSeek();
+}
+
 function handleCustomVideoSeekTouch(event: TouchEvent) {
   const target = event.currentTarget as HTMLInputElement | null;
   const touch = event.touches[0];
@@ -504,6 +522,10 @@ function handleCustomVideoSeekTouch(event: TouchEvent) {
   videoElement.value.currentTime = fraction * customVideoDuration.value;
   syncCustomVideoState();
   showCustomControls();
+}
+
+function handleCustomVideoSeekTouchEnd() {
+  emitCustomVideoSeek();
 }
 
 function handleCustomVideoVolumeChange(event: Event) {
@@ -749,6 +771,9 @@ defineExpose({
   },
   setSubtitleEnabled(enabled: boolean) {
     subtitleEnabled.value = enabled;
+  },
+  getMediaElement() {
+    return videoElement.value;
   },
 });
 

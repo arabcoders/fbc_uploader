@@ -30,6 +30,9 @@ This document describes the FBC Uploader REST API endpoints. All endpoints retur
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/preview.mp4](#get-apitokensdownload_tokenuploadsupload_idpreviewmp4)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/thumbnail](#get-apitokensdownload_tokenuploadsupload_idthumbnail)
     - [GET /api/tokens/{download\_token}/uploads/{upload\_id}/download](#get-apitokensdownload_tokenuploadsupload_iddownload)
+    - [POST /api/tokens/{download\_token}/uploads/{upload\_id}/watch](#post-apitokensdownload_tokenuploadsupload_idwatch)
+    - [DELETE /api/watch/{room\_id}](#delete-apiwatchroom_id)
+    - [WS /api/watch/{room\_id}/ws](#ws-apiwatchroom_idws)
     - [POST /api/uploads/initiate](#post-apiuploadsinitiate)
     - [OPTIONS /api/uploads/tus](#options-apiuploadstus)
     - [HEAD /api/uploads/{upload\_id}/tus](#head-apiuploadsupload_idtus)
@@ -617,6 +620,143 @@ Returns the file with headers:
 **Error Responses:**
 - `404 Not Found` - Download token or upload not found
 - `409 Conflict` - Upload not yet completed
+
+---
+
+### POST /api/tokens/{download_token}/uploads/{upload_id}/watch
+
+Create a temporary Watch Party for a completed video or audio upload.
+
+**Authentication:** Valid download token in the path; requires `FBC_ALLOW_PUBLIC_DOWNLOADS=1`
+
+**Path Parameters:**
+- `download_token` (string): Download token for the shared file
+- `upload_id` (string): Public ID of the completed upload
+
+**Request:**
+No request body.
+
+**Response (200):**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+```
+```json
+{
+  "room_id": "room-id-string",
+  "host_key": "creator-only-secret",
+  "invite_path": "/f/fbc_download-token?upload=upload-id-string&room=room-id-string"
+}
+```
+
+**Fields:**
+- `room_id` (string): Temporary room identifier used by the WebSocket URL
+- `host_key` (string): One-time creator key; keep it private and never include it in an invite URL
+- `invite_path` (string): Relative share-page path for guests
+
+**Error Responses:**
+- `403 Forbidden` - Public downloads are disabled
+- `404 Not Found` - Download token or upload not found
+- `409 Conflict` - Upload is not completed
+- `415 Unsupported Media Type` - Upload is not video or audio
+- `503 Service Unavailable` - In-memory room capacity has been reached
+
+**Notes:**
+- The download token must be valid, enabled, unexpired, belong to the upload, and reference an existing file.
+- Rooms are stored in the current server process and expire after inactivity.
+- Connect to the returned room with [WS /api/watch/{room_id}/ws](#ws-apiwatchroom_idws).
+
+---
+
+### DELETE /api/watch/{room_id}
+
+Discard an unclaimed Watch Party room when no WebSocket participant has joined.
+
+**Authentication:** Send the creator key in the `X-Watch-Host-Key` request header. The key is never accepted in the query string or path.
+
+**Response (204):** The room was discarded.
+
+Invalid, already-claimed, or occupied rooms return `404 Not Found` without changing the room.
+
+---
+
+### WS /api/watch/{room_id}/ws
+
+Connect to a Watch Party and synchronize playback for its upload.
+
+**Authentication:** Send the download token and upload public ID in the first JSON `join` message. The creator also sends `host_key`.
+
+**Path Parameters:**
+- `room_id` (string): Room ID returned by the Watch Party creation endpoint
+
+**Request:**
+No request body. Send the `join` JSON message immediately after the WebSocket connection is established.
+
+**Connection:**
+```http
+GET /api/watch/room-id-string/ws HTTP/1.1
+Connection: Upgrade
+Upgrade: websocket
+```
+
+The creator sends this message after connecting:
+```json
+{
+  "type": "join",
+  "download_token": "fbc_download-token",
+  "upload_id": "upload-id-string",
+  "host_key": "creator-only-secret"
+}
+```
+
+Guests omit `host_key`:
+```json
+{
+  "type": "join",
+  "download_token": "fbc_download-token",
+  "upload_id": "upload-id-string"
+}
+```
+
+**Server Messages:**
+
+| Type | Fields | Meaning |
+| --- | --- | --- |
+| `ready` | `participant_id`, `role`, `participant_count`, host `host_key` | Join accepted; `role` is `host` or `guest`; a host receives its rotated key |
+| `state` | `version`, `anchor_position`, `paused`, `playback_rate`, `server_time`, `participant_count` | Current server playback state |
+| `participants` | `participant_count` | Participant count changed |
+| `promotion` | `participant_id`, `version`, `host_key` | The indicated guest became host and receives its rotated key |
+| `pong` | `client_time`, `server_time` | Response to a valid `ping` |
+| `error` | `message` | Request or party error |
+
+**Client Messages:**
+- Host playback commands use `type` `play`, `pause`, `seek`, `rate`, or `snapshot` and require a finite `position` in seconds.
+- `rate` and `snapshot` require `playback_rate` from `0.25` through `4`; `snapshot` also requires boolean `paused`.
+- Guests may send `ping` with numeric `client_time` or `ready` to request current state. Guests cannot control playback.
+- Example host command: `{ "type": "seek", "position": 120.5 }`
+- Example ping: `{ "type": "ping", "client_time": 1735689600000 }`
+
+**Authority and Limits:**
+- The first valid join with the creation `host_key` establishes the host. Guests may join first without taking the host role.
+- If the host disconnects, its `host_key` remains valid for a 15-second reconnect grace period. After that, the longest-connected guest is promoted and receives a rotated `host_key`.
+- A process allows at most 1000 rooms and at most 3 rooms per download token. A room allows at most 32 participants; all messages are limited to 60 per two seconds per participant, and playback commands to 20 per two seconds per host. The room also expires when its download token expires.
+- Messages are limited to 8192 bytes; joins must arrive within 10 seconds. Never-joined rooms are retained for 60 seconds, and rooms expire after 30 minutes of inactivity. Participants that send nothing for 90 seconds are removed. Cleanup runs approximately every second in this process.
+
+**Close Codes:**
+- `1000` - Normal client disconnect
+- `1001` - Server shutdown or room expiry
+- `1008` - Invalid join, missing/invalid credential, unknown room, or other policy violation during connection
+
+**Error Responses:**
+- Invalid playback commands, guest control attempts, invalid positions/rates, malformed JSON, oversized messages, and rate-limit violations receive an `error` message while the connection remains open.
+- Invalid joins and join timeouts receive an `error` message and close with WebSocket code `1008`.
+- Playback positions must be between `0` and `86400` seconds inclusive. The host reconnect grace period is approximately 15 seconds. An all-message rate-limit violation closes the socket; playback command errors are reported without closing it.
+- Disabling or deleting a token, or deleting an upload, invalidates matching Watch Party rooms and closes their sockets. Natural token expiry rejects new joins and cleanup closes existing connections.
+
+**Notes:**
+- Room creation and WebSocket access require `FBC_ALLOW_PUBLIC_DOWNLOADS=1`; the associated upload must be completed playable media.
+- The `host_key` is only for the creator/ promoted host connection, is rotated after each successful host join or promotion, and must not be put in an invite URL.
+- Joining before the creator is allowed; that participant remains a guest until host promotion.
 
 ---
 

@@ -166,9 +166,11 @@
                   :poster-url="selectedThumbnailUrl"
                   :download-token="tokenInfo?.download_token || ''"
                   :active="shouldRenderSelectedMedia"
-                  @activate="activateSelectedMedia"
+                  @activate="handlePlayerActivate"
                   @media-error="handleMediaPlaybackError"
                   @playback-state-change="handleVideoPlaybackStateChange"
+                  @seek="handleWatchSeek"
+                  @rate="handleWatchRate"
                   @clear-media-error="clearMediaPlaybackError"
                   @subtitle-state-change="handleVideoSubtitleStateChange"
                 />
@@ -181,7 +183,7 @@
                   v-if="!shouldRenderSelectedMedia"
                   type="button"
                   class="group block w-full rounded-2xl text-left"
-                  @click="activateSelectedMedia"
+                  @click="handlePlayerActivate"
                 >
                   <div
                     class="overflow-hidden rounded-2xl border border-default bg-elevated/80 shadow-sm"
@@ -242,6 +244,8 @@
                   @play="handleAudioPlay"
                   @pause="handleAudioPause"
                   @ended="handleAudioPause"
+                  @seeked="handleAudioSeeked"
+                  @ratechange="handleAudioRate"
                   @volumechange="handleAudioVolumeChange"
                 >
                   <source :src="selectedMediaUrl" :type="selectedUpload.mimetype || undefined" />
@@ -395,6 +399,103 @@
               </div>
 
               <div
+                v-if="canPlaySelectedMedia || watchRoomId || watchStatus !== 'idle'"
+                class="space-y-3 border-t border-default pt-5"
+              >
+                <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
+                  <UIcon name="i-heroicons-user-group-20-solid" class="size-5 text-primary" />
+                  <span>Watch Party</span>
+                </div>
+                <p class="text-sm text-muted">Play at same time with your friends.</p>
+                <div v-if="watchStatus !== 'idle'" class="space-y-1 text-sm">
+                  <div class="flex items-center justify-between gap-4">
+                    <span class="text-muted">Status</span>
+                    <span :class="watchStatus === 'error' ? 'text-error' : 'text-highlighted'">
+                      {{ humanizeWatchStatus(watchStatus) }}
+                    </span>
+                  </div>
+                  <div
+                    v-if="watchStatus !== 'error'"
+                    class="flex items-center justify-between gap-4"
+                  >
+                    <span class="text-muted">Role</span>
+                    <span class="text-highlighted">{{ humanizeWatchRole(watchRole) }}</span>
+                  </div>
+                  <div
+                    v-if="watchStatus !== 'error'"
+                    class="flex items-center justify-between gap-4"
+                  >
+                    <span class="text-muted">Participants</span>
+                    <span class="text-highlighted">{{ watchParticipantCount }}</span>
+                  </div>
+                  <p
+                    v-if="watchStatus === 'connected' && watchRole === 'guest'"
+                    class="flex items-center gap-2 text-sm text-muted"
+                  >
+                    <UIcon
+                      name="i-heroicons-information-circle-20-solid"
+                      class="size-4 shrink-0 text-primary"
+                    />
+                    <span>Playback is controlled by the host.</span>
+                  </p>
+                  <p
+                    v-if="watchStatus === 'connected' && watchRole === 'host' && watchWasPromoted"
+                    class="flex items-center gap-2 text-sm text-success"
+                  >
+                    <UIcon name="i-heroicons-check-circle-20-solid" class="size-4 shrink-0" />
+                    <span>You are now the host. You can control playback.</span>
+                  </p>
+                </div>
+                <p v-if="watchError || watchCreateError" class="text-sm text-error">
+                  {{ watchError || watchCreateError }}
+                </p>
+                <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                  <UButton
+                    v-if="watchStatus === 'idle' && !watchRoomId"
+                    icon="i-heroicons-user-plus-20-solid"
+                    size="sm"
+                    class="w-full justify-center"
+                    :loading="watchCreateInProgress"
+                    :disabled="watchCreateInProgress"
+                    @click="createWatchRoom"
+                  >
+                    Create party
+                  </UButton>
+                  <UButton
+                    v-if="watchInvitePath"
+                    icon="i-heroicons-clipboard-document-20-solid"
+                    size="sm"
+                    color="neutral"
+                    variant="outline"
+                    class="w-full justify-center"
+                    @click="copyWatchInvite"
+                  >
+                    Copy invite
+                  </UButton>
+                  <UButton
+                    v-if="watchAutoplayBlocked"
+                    icon="i-heroicons-play-20-solid"
+                    size="sm"
+                    class="w-full justify-center"
+                    @click="resumeWatch"
+                  >
+                    Resume sync
+                  </UButton>
+                  <UButton
+                    v-if="watchStatus !== 'idle'"
+                    icon="i-heroicons-arrow-left-on-rectangle-20-solid"
+                    size="sm"
+                    color="neutral"
+                    variant="ghost"
+                    class="w-full justify-center"
+                    @click="leaveWatchRoom"
+                  >
+                    Leave
+                  </UButton>
+                </div>
+              </div>
+
+              <div
                 v-if="selectedIsVideo && (hasSubtitles || subtitleLoading || subtitleLoadError)"
                 class="space-y-3 border-t border-default pt-5"
               >
@@ -475,7 +576,7 @@
                         ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
                         : 'border-default bg-default hover:bg-elevated/70'
                     "
-                    @click="selectedUploadId = upload.public_id"
+                    @click="selectUpload(upload.public_id)"
                   >
                     <div class="flex items-start gap-3">
                       <div
@@ -523,20 +624,6 @@
         title="Can't play files on this page"
         description="Downloads are turned off for this link, so video and audio can't be played here."
         icon="i-heroicons-lock-closed-20-solid"
-      />
-
-      <UAlert
-        v-else-if="
-          uploads.length > 0 &&
-          !loading &&
-          tokenInfo?.allow_public_downloads &&
-          !playableUploads.length
-        "
-        color="neutral"
-        variant="outline"
-        title="No video or audio files found"
-        description="This link has files, but none of them can be played on this page."
-        icon="i-heroicons-document-20-solid"
       />
 
       <div v-if="uploads.length > 0" class="space-y-3">
@@ -846,6 +933,8 @@ import { useShareShortcutHelp } from '~/composables/useShareShortcutHelp';
 import { useTokenInfo } from '~/composables/useTokenInfo';
 import type { SubtitleTrack } from '~/types/subtitles';
 import type { UploadRow } from '~/types/uploads';
+import { useWatchRoom } from '~/composables/useWatchRoom';
+import { buildWatchSocketUrl } from '~/types/watch';
 import {
   buildSubtitleDownloadFilename,
   copyText,
@@ -859,9 +948,12 @@ type ShareVideoPlayerExpose = {
   play: () => Promise<void>;
   toggleFullscreen: () => Promise<void>;
   setSubtitleEnabled: (enabled: boolean) => void;
+  getMediaElement: () => HTMLVideoElement | null;
 };
 
 const route = useRoute();
+const router = useRouter();
+const runtimeConfig = useRuntimeConfig();
 const toast = useToast();
 const token = ref<string>((route.params.token as string) || '');
 
@@ -883,6 +975,17 @@ const activeUploadId = ref<string>('');
 const mediaPlaybackError = ref('');
 const audioElement = ref<HTMLAudioElement | null>(null);
 const videoPlayer = ref<ShareVideoPlayerExpose | null>(null);
+const watchRoom = useWatchRoom();
+const {
+  status: watchStatus,
+  role: watchRole,
+  participantCount: watchParticipantCount,
+  error: watchError,
+  autoplayBlocked: watchAutoplayBlocked,
+  wasPromoted: watchWasPromoted,
+  invitePath: watchInvitePath,
+} = watchRoom;
+const watchRoomId = computed(() => (typeof route.query.room === 'string' ? route.query.room : ''));
 const showShortcutHelp = useShareShortcutHelp();
 const subtitleLoading = ref(false);
 const subtitleLoadError = ref('');
@@ -892,6 +995,10 @@ const activeSubtitleTrack = ref<SubtitleTrack | null>(null);
 const isPlayerFullscreen = ref(false);
 const isAudioPlaying = ref(false);
 const isVideoPlaying = ref(false);
+const watchCreateInProgress = ref(false);
+const watchCreateError = ref('');
+let autoJoinGeneration = 0;
+let mediaActivationGeneration = 0;
 let audioGainAudioContext: AudioContext | null = null;
 let audioGainSourceNode: MediaElementAudioSourceNode | null = null;
 let audioGainNode: GainNode | null = null;
@@ -1004,7 +1111,9 @@ watch(
       (upload) => upload.public_id === selectedUploadId.value,
     );
     if (!selectedStillExists) {
-      const firstUpload = nextUploads[0];
+      const requested = typeof route.query.upload === 'string' ? route.query.upload : '';
+      const firstUpload =
+        nextUploads.find((upload) => upload.public_id === requested) || nextUploads[0];
       if (firstUpload) {
         selectedUploadId.value = firstUpload.public_id;
       }
@@ -1012,6 +1121,192 @@ watch(
   },
   { immediate: true },
 );
+
+watch(
+  () => selectedUpload.value?.public_id,
+  (uploadId) => {
+    mediaActivationGeneration += 1;
+    if (watchRoomId.value && uploadId !== route.query.upload) {
+      watchRoom.disconnect();
+      void router.replace({ query: withoutWatchQuery() });
+    }
+  },
+);
+
+watch(
+  [
+    () => route.params.token,
+    watchRoomId,
+    () => tokenInfo.value?.download_token,
+    () => selectedUpload.value?.public_id,
+  ],
+  ([tokenParam, roomId, downloadToken, uploadId], previous) => {
+    if (
+      previous &&
+      (tokenParam !== previous[0] ||
+        roomId !== previous[1] ||
+        downloadToken !== previous[2] ||
+        uploadId !== previous[3]) &&
+      roomId !== watchRoom.room.value?.room_id
+    )
+      watchRoom.disconnect();
+    void joinWatchRoom(++autoJoinGeneration);
+  },
+  { immediate: true },
+);
+
+async function createWatchRoom() {
+  if (watchCreateInProgress.value || !selectedUpload.value || !tokenInfo.value) return;
+  watchCreateInProgress.value = true;
+  watchCreateError.value = '';
+  const tokenBeforeCreate = token.value;
+  const uploadId = selectedUpload.value.public_id;
+  const downloadToken = tokenInfo.value.download_token;
+  const activationGeneration = mediaActivationGeneration;
+  try {
+    const created = await $fetch<{ room_id: string; host_key: string; invite_path: string }>(
+      `/api/tokens/${downloadToken}/uploads/${uploadId}/watch`,
+      { method: 'POST' },
+    );
+    if (
+      token.value !== tokenBeforeCreate ||
+      tokenInfo.value?.download_token !== downloadToken ||
+      selectedUpload.value?.public_id !== uploadId ||
+      mediaActivationGeneration !== activationGeneration
+    ) {
+      await cleanupCreatedWatchRoom(created);
+      return;
+    }
+    watchRoom.room.value = created;
+    const activationStartGeneration = mediaActivationGeneration;
+    await activateSelectedMedia(false);
+    if (
+      token.value !== tokenBeforeCreate ||
+      tokenInfo.value?.download_token !== downloadToken ||
+      selectedUpload.value?.public_id !== uploadId ||
+      mediaActivationGeneration !== activationStartGeneration + 1
+    ) {
+      await cleanupCreatedWatchRoom(created);
+      return;
+    }
+    watchRoom.connect(
+      getWatchSocketUrl(created.room_id),
+      {
+        download_token: downloadToken,
+        upload_id: uploadId,
+        host_key: created.host_key,
+      },
+      false,
+      created.room_id,
+    );
+    watchRoom.storeHostKey(created.room_id, created.host_key);
+    await router.replace({
+      query: { ...route.query, upload: uploadId, room: created.room_id },
+    });
+  } catch {
+    watchCreateError.value =
+      'Could not create the Watch Party. Check public downloads and try again.';
+  } finally {
+    watchCreateInProgress.value = false;
+  }
+}
+
+async function cleanupCreatedWatchRoom(created: { room_id: string; host_key: string }) {
+  if (watchRoom.room.value?.room_id === created.room_id) watchRoom.room.value = null;
+  try {
+    await $fetch(`/api/watch/${encodeURIComponent(created.room_id)}`, {
+      method: 'DELETE',
+      headers: { 'X-Watch-Host-Key': created.host_key },
+    });
+  } catch {}
+}
+
+async function joinWatchRoom(generation: number) {
+  if (!watchRoomId.value || !tokenInfo.value || !selectedUpload.value) return;
+  if (
+    typeof route.query.upload !== 'string' ||
+    route.query.upload !== selectedUpload.value.public_id ||
+    watchStatus.value !== 'idle'
+  )
+    return;
+
+  const roomId = watchRoomId.value;
+  const uploadId = selectedUpload.value.public_id;
+  const downloadToken = tokenInfo.value.download_token;
+  try {
+    await activateSelectedMedia(false);
+    if (
+      generation !== autoJoinGeneration ||
+      watchRoomId.value !== roomId ||
+      selectedUpload.value?.public_id !== uploadId ||
+      watchStatus.value !== 'idle'
+    )
+      return;
+    watchRoom.connect(
+      getWatchSocketUrl(roomId),
+      {
+        download_token: downloadToken,
+        upload_id: uploadId,
+      },
+      false,
+      roomId,
+    );
+  } catch {}
+}
+
+async function leaveWatchRoom() {
+  autoJoinGeneration += 1;
+  watchRoom.removeStoredHostKey(watchRoomId.value);
+  watchRoom.disconnect();
+  await router.replace({ query: withoutWatchQuery() });
+}
+
+function withoutWatchQuery() {
+  const query = { ...route.query };
+  delete query.room;
+  delete query.upload;
+  return query;
+}
+
+function selectUpload(uploadId: string) {
+  if (uploadId === selectedUpload.value?.public_id) return;
+  selectedUploadId.value = uploadId;
+}
+
+function getWatchSocketUrl(roomId: string): string {
+  return buildWatchSocketUrl(roomId, runtimeConfig.public.API_URL, window.location.origin);
+}
+
+function copyWatchInvite() {
+  if (!watchInvitePath.value) return;
+  copyText(`${window.location.origin}${watchInvitePath.value}`);
+  toast.add({
+    title: 'Watch invite copied',
+    color: 'success',
+    icon: 'i-heroicons-check-circle-20-solid',
+  });
+}
+
+function humanizeWatchStatus(status: string): string {
+  return (
+    {
+      connecting: 'Connecting',
+      connected: 'Connected',
+      reconnecting: 'Reconnecting',
+      error: 'Connection error',
+    }[status] || 'Ready'
+  );
+}
+
+function humanizeWatchRole(role: string | null): string {
+  return role === 'host' ? 'Host' : role === 'guest' ? 'Guest' : 'Joining';
+}
+
+async function resumeWatch() {
+  watchAutoplayBlocked.value = false;
+  const element = selectedIsVideo.value ? videoPlayer.value?.getMediaElement() : audioElement.value;
+  if (watchRoom.state.value && element) await watchRoom.applyState(watchRoom.state.value, element);
+}
 
 watch(
   () => selectedUpload.value?.public_id,
@@ -1050,6 +1345,7 @@ watch(
     }
 
     syncAudioVolumeState();
+    watchRoom.setMedia(element);
   },
   { immediate: true },
 );
@@ -1067,22 +1363,39 @@ function clearMediaPlaybackError() {
   mediaPlaybackError.value = '';
 }
 
-async function activateSelectedMedia() {
+async function activateSelectedMedia(autoplay = true) {
   if (!selectedUpload.value) return;
+  const generation = ++mediaActivationGeneration;
+  const uploadId = selectedUpload.value.public_id;
   activeUploadId.value = selectedUpload.value.public_id;
   clearMediaPlaybackError();
 
   await nextTick();
+  if (generation !== mediaActivationGeneration || selectedUpload.value?.public_id !== uploadId)
+    return;
 
   try {
     if (selectedIsVideo.value) {
-      await videoPlayer.value?.play();
+      watchRoom.setMedia(videoPlayer.value?.getMediaElement() || null);
+      const element = videoPlayer.value?.getMediaElement();
+      if (autoplay) await videoPlayer.value?.play();
+      else element?.pause();
+      if (generation !== mediaActivationGeneration || selectedUpload.value?.public_id !== uploadId)
+        return;
       return;
     }
 
     syncAudioVolumeState();
-    await audioElement.value?.play();
+    watchRoom.setMedia(audioElement.value);
+    if (autoplay) await audioElement.value?.play();
+    else audioElement.value?.pause();
+    if (generation !== mediaActivationGeneration || selectedUpload.value?.public_id !== uploadId)
+      return;
   } catch {}
+}
+
+async function handlePlayerActivate() {
+  await activateSelectedMedia();
 }
 
 function handleMediaPlaybackError() {
@@ -1096,15 +1409,35 @@ function handleAudioLoadedMetadata() {
   syncAudioVolumeState();
 }
 
-function handleAudioPlay() {
+function isCurrentAudioEvent(event: Event): boolean {
+  return event.currentTarget === audioElement.value && shouldRenderSelectedMedia.value;
+}
+
+function handleAudioPlay(event: Event) {
+  if (!isCurrentAudioEvent(event)) return;
   clearMediaPlaybackError();
   syncAudioVolumeState();
   isAudioPlaying.value = true;
+  watchRoom.setMedia(audioElement.value);
+  if (!watchRoom.isSuppressed()) watchRoom.sendPlay();
   void resumeAudioGainController();
 }
 
-function handleAudioPause() {
+function handleAudioPause(event: Event) {
+  if (!isCurrentAudioEvent(event)) return;
   isAudioPlaying.value = false;
+  if (!watchRoom.isSuppressed()) watchRoom.sendPause();
+}
+
+function handleAudioSeeked(event: Event) {
+  if (!isCurrentAudioEvent(event)) return;
+  if (!watchRoom.isSuppressed()) watchRoom.sendSeek(audioElement.value?.currentTime || 0);
+}
+
+function handleAudioRate(event: Event) {
+  if (!isCurrentAudioEvent(event)) return;
+  const target = event.currentTarget as HTMLMediaElement;
+  if (!watchRoom.isSuppressed()) watchRoom.sendRate(target.playbackRate);
 }
 
 function handleAudioVolumeChange(event: Event) {
@@ -1242,8 +1575,24 @@ function handleVideoSubtitleStateChange(payload: {
   isPlayerFullscreen.value = payload.isFullscreen;
 }
 
-function handleVideoPlaybackStateChange(isPlaying: boolean) {
+function handleVideoPlaybackStateChange(isPlaying: boolean, media: HTMLVideoElement | null) {
+  if (media !== videoPlayer.value?.getMediaElement() || !shouldRenderSelectedMedia.value) return;
   isVideoPlaying.value = isPlaying;
+  watchRoom.setMedia(videoPlayer.value?.getMediaElement() || null);
+  if (!watchRoom.isSuppressed()) {
+    if (isPlaying) watchRoom.sendPlay();
+    else watchRoom.sendPause();
+  }
+}
+
+function handleWatchSeek(position: number, media: HTMLVideoElement | null) {
+  if (media !== videoPlayer.value?.getMediaElement() || !shouldRenderSelectedMedia.value) return;
+  if (!watchRoom.isSuppressed()) watchRoom.sendSeek(position);
+}
+
+function handleWatchRate(playbackRate: number, position: number, media: HTMLVideoElement | null) {
+  if (media !== videoPlayer.value?.getMediaElement() || !shouldRenderSelectedMedia.value) return;
+  if (!watchRoom.isSuppressed()) watchRoom.sendRate(playbackRate, position);
 }
 
 async function togglePlayerFullscreen() {

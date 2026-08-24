@@ -498,12 +498,13 @@ async def tus_options() -> Response:
 
 
 @router.delete("/{upload_id}/tus", status_code=status.HTTP_204_NO_CONTENT, name="tus_delete")
-async def tus_delete(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)]) -> Response:
+async def tus_delete(upload_id: str, request: Request, db: Annotated[AsyncSession, Depends(get_db)]) -> Response:
     """
     Delete an upload record and its associated file.
 
     Args:
         upload_id (str): The public ID of the upload.
+        request (Request): The incoming HTTP request.
         db (AsyncSession): Database session.
 
     Returns:
@@ -517,6 +518,8 @@ async def tus_delete(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)
 
     await db.delete(record)
     await db.commit()
+    if manager := getattr(request.app.state, "watch_rooms", None):
+        await manager.invalidate(upload_id=upload_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -547,6 +550,7 @@ async def mark_complete(
 @router.delete("/{upload_id}/cancel", response_model=dict, name="cancel_upload")
 async def cancel_upload(
     upload_id: str,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     token: Annotated[str, Query(description="Upload token")] = ...,
 ) -> dict[str, Any]:
@@ -555,6 +559,7 @@ async def cancel_upload(
 
     Args:
         upload_id (str): The public ID of the upload.
+        request (Request): The incoming HTTP request.
         db (AsyncSession): Database session.
         token (str): The upload token string.
 
@@ -579,6 +584,8 @@ async def cancel_upload(
 
     await db.commit()
     await db.refresh(token_row)
+    if manager := getattr(request.app.state, "watch_rooms", None):
+        await manager.invalidate(upload_id=upload_id)
 
     return {
         "message": "Upload cancelled successfully",
