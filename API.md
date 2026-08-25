@@ -477,7 +477,7 @@ Returns the file with headers:
 
 ### GET /api/tokens/{download_token}/uploads/{upload_id}/subtitles
 
-List external subtitle tracks that match a completed upload filename.
+List external subtitle tracks that match a completed upload.
 
 **Authentication:** Required (Admin, or public if `FBC_ALLOW_PUBLIC_DOWNLOADS=1`)
 
@@ -507,6 +507,8 @@ List external subtitle tracks that match a completed upload filename.
 
 **Notes:**
 - This endpoint only returns tracks discovered under `FBC_SUBTITLE_PATH`.
+- A subtitle filename containing the upload ID is preferred over name-based matches. No particular prefix or bracket format is required around the ID.
+- Name-based discovery first uses the uploaded filename, then optionally tries `title` and `broadcast_date` metadata when those values are available.
 - Discovery results are cached per upload for `FBC_SUBTITLE_CACHE_TTL_SECONDS`, including cases where no subtitles are found.
 - Results are ordered by renderer preference: `.vtt`, then `.srt`, then `.ass`.
 - `.srt` files are exposed here with `source_format: "srt"`, `delivery_format: "vtt"`, and `renderer: "native"`.

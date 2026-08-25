@@ -159,6 +159,54 @@ async def test_subtitles_prefix_language(client, test_run_dir):
 
 
 @pytest.mark.asyncio
+async def test_subtitles_upload_id(client, test_run_dir):
+    subtitle_root = test_run_dir / "subtitles-upload-id"
+    _write_subtitle_file(subtitle_root, "original.ass", "[Script Info]\nTitle: Filename\n")
+
+    with (
+        patch("backend.app.config.settings.subtitle_path", str(subtitle_root)),
+        patch("backend.app.security.settings.allow_public_downloads", True),
+    ):
+        token_data = await create_token(client, max_uploads=1)
+        upload_token = token_data["token"]
+        download_token = token_data["download_token"]
+
+        upload_data = await initiate_upload(client, upload_token, "original.mp4", 5, "video/mp4")
+        upload_id = upload_data["upload_id"]
+        _write_subtitle_file(subtitle_root, f"generated {upload_id} request.ass", "[Script Info]\nTitle: Upload ID\n")
+        status_code = await upload_file_via_tus(client, upload_id, b"hello", upload_token)
+
+        assert status_code == status.HTTP_200_OK, "Upload should complete successfully"
+
+        response = await client.get(
+            app.url_path_for("get_file_subtitle", download_token=download_token, upload_id=upload_id, source_format="ass")
+        )
+
+        assert response.status_code == status.HTTP_200_OK, "A subtitle containing the unique upload ID should be returned"
+        assert "Title: Upload ID" in response.text, "Upload ID matches should take precedence over filename matches"
+
+
+def test_subtitles_metadata_name(test_run_dir):
+    subtitle_root = test_run_dir / "subtitles-metadata-name"
+    _write_subtitle_file(
+        subtitle_root,
+        "250102 Example Program (Special Episode) [REQUEST].ass",
+        "[Script Info]\nTitle: Metadata\n",
+    )
+
+    with patch("backend.app.config.settings.subtitle_path", str(subtitle_root)):
+        tracks = subtitles.list_subtitle_tracks(
+            "unique-upload-id",
+            "250102 Provider Example Program (Special Episode).mp4",
+            {"broadcast_date": "2025-01-02", "title": "Example Program (Special Episode)"},
+        )
+
+    assert [track.source_format for track in tracks] == ["ass"], (
+        "Optional title and broadcast date metadata should provide fallback matching"
+    )
+
+
+@pytest.mark.asyncio
 async def test_subtitles_duplicate_prefixes(client, test_run_dir):
     subtitle_root = test_run_dir / "subtitles-duplicate-prefix"
     _write_subtitle_file(
