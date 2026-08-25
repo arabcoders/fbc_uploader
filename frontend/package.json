@@ -28,7 +28,7 @@
     "@nuxt/ui": "4.7.0",
     "@vueuse/core": "^14.4.0",
     "@vueuse/nuxt": "^14.4.0",
-    "assjs": "^0.1.10",
+    "assjs": "0.1.10",
     "marked": "^18.0.10",
     "marked-alert": "^2.1.2",
     "marked-base-url": "^1.1.10",
@@ -56,5 +56,8 @@
     "typescript": "^6.0.3",
     "vue-eslint-parser": "^10.4.1",
     "vue-tsc": "^3.3.10"
+  },
+  "patchedDependencies": {
+    "assjs@0.1.10": "patches/assjs@0.1.10.patch"
   }
 }
