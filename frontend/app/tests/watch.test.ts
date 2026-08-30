@@ -36,6 +36,20 @@ describe('watch protocol helpers', () => {
     expect(expectedWatchPosition(state, 102000, 0)).toBe(14);
   });
 
+  test('clamps scheduled position', () => {
+    const state = {
+      version: 1,
+      anchor_position: 10,
+      paused: false,
+      playback_rate: 1,
+      server_time: 100,
+      play_at: 101,
+      participant_count: 1,
+    };
+    expect(expectedWatchPosition(state, 100500, 0)).toBe(10);
+    expect(expectedWatchPosition(state, 101500, 0)).toBe(10.5);
+  });
+
   test('applies drift correction thresholds', () => {
     expect(driftCorrection(0.1)).toEqual({ seek: null, rate: 1 });
     expect(driftCorrection(0.3).rate).toBe(1.08);
@@ -84,8 +98,10 @@ describe('watch protocol helpers', () => {
 describe('watch room connection lifecycle', () => {
   const originalSocket = globalThis.WebSocket;
   const originalWindow = globalThis.window;
+  const originalNow = Date.now;
   let sockets: FakeSocket[];
-  let timers: Array<() => void>;
+  let timers: Array<(() => void) | null>;
+  let intervals: Array<(() => void) | null>;
   let sessionValues: Map<string, string>;
 
   class FakeSocket {
@@ -128,6 +144,7 @@ describe('watch room connection lifecycle', () => {
   beforeEach(() => {
     sockets = [];
     timers = [];
+    intervals = [];
     sessionValues = new Map();
     globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
     globalThis.window = {
@@ -135,9 +152,16 @@ describe('watch room connection lifecycle', () => {
         timers.push(callback);
         return timers.length;
       },
-      clearTimeout: () => {},
-      setInterval: () => 1,
-      clearInterval: () => {},
+      clearTimeout: (id: number) => {
+        timers[id - 1] = null;
+      },
+      setInterval: (callback: () => void) => {
+        intervals.push(callback);
+        return intervals.length;
+      },
+      clearInterval: (id: number) => {
+        intervals[id - 1] = null;
+      },
       sessionStorage: {
         getItem: (key: string) => sessionValues.get(key) || null,
         setItem: (key: string, value: string) => sessionValues.set(key, value),
@@ -149,6 +173,7 @@ describe('watch room connection lifecycle', () => {
   afterEach(() => {
     globalThis.WebSocket = originalSocket;
     globalThis.window = originalWindow;
+    Date.now = originalNow;
   });
 
   test('ignores callbacks from stale sockets', () => {
@@ -227,7 +252,7 @@ describe('watch room connection lifecycle', () => {
     expect(timers).toHaveLength(1);
   });
 
-  test('keeps host media playing', async () => {
+  test('pauses host media', async () => {
     const room = useWatchRoom();
     room.connect('ws://host', { host_key: 'secret' });
     const socket = sockets[0]!;
@@ -265,8 +290,291 @@ describe('watch room connection lifecycle', () => {
     await Promise.resolve();
     room.sendPlay();
 
-    expect(media.paused).toBe(false);
+    expect(media.paused).toBe(true);
     expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({ type: 'play', position: 10 });
+  });
+
+  test('schedules host playback', async () => {
+    const room = useWatchRoom();
+    room.connect('ws://host', { host_key: 'secret' });
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({ type: 'ready', role: 'host', participant_id: 'host', participant_count: 1 });
+    let playCalls = 0;
+    const media = {
+      currentTime: 10,
+      paused: false,
+      playbackRate: 1,
+      pause() {
+        this.paused = true;
+      },
+      play() {
+        playCalls += 1;
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    room.sendPlay();
+    expect(media.paused).toBe(true);
+    expect(playCalls).toBe(0);
+    socket.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 10,
+      paused: true,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      play_at: null,
+      participant_count: 1,
+    });
+    socket.message({
+      type: 'state',
+      version: 2,
+      anchor_position: 10,
+      paused: false,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      play_at: Date.now() / 1000 + 10,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    expect(playCalls).toBe(0);
+    Date.now = () => originalNow() + 11000;
+    timers.forEach((timer) => timer?.());
+    expect(playCalls).toBe(1);
+    expect(room.isSuppressed()).toBe(true);
+  });
+
+  test('schedules host and guest', async () => {
+    const playAt = Date.now() / 1000 + 10;
+    const media = () => ({
+      currentTime: 0,
+      paused: true,
+      playbackRate: 1,
+      pause() {},
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    });
+    const host = useWatchRoom();
+    host.connect('ws://host', { host_key: 'secret' });
+    sockets[0]!.open();
+    sockets[0]!.message({
+      type: 'ready',
+      role: 'host',
+      participant_id: 'host',
+      participant_count: 1,
+    });
+    const hostMedia = media();
+    host.setMedia(hostMedia as unknown as HTMLMediaElement);
+    host.sendPlay();
+    sockets[0]!.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 0,
+      paused: false,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      play_at: playAt,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    timers.forEach((timer) => timer?.());
+    expect(hostMedia.paused).toBe(false);
+    const guest = useWatchRoom();
+    guest.connect('ws://guest', {});
+    sockets[1]!.open();
+    sockets[1]!.message({
+      type: 'ready',
+      role: 'guest',
+      participant_id: 'guest',
+      participant_count: 2,
+    });
+    const guestMedia = media();
+    guest.setMedia(guestMedia as unknown as HTMLMediaElement);
+    sockets[1]!.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 0,
+      paused: false,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      play_at: playAt,
+      participant_count: 2,
+    });
+    await Promise.resolve();
+    expect(guestMedia.paused).toBe(true);
+    timers.at(-1)?.();
+    expect(guestMedia.paused).toBe(false);
+  });
+
+  test('catches up delayed playback', async () => {
+    Date.now = () => 100000;
+    const room = useWatchRoom();
+    room.connect('ws://guest', {});
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({ type: 'ready', role: 'guest', participant_id: 'guest', participant_count: 1 });
+    socket.message({
+      type: 'pong',
+      client_time: Date.now(),
+      server_time: 100,
+    });
+    const media = {
+      currentTime: 0,
+      paused: true,
+      playbackRate: 1,
+      pause() {},
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    const serverTime = 99;
+    socket.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 10,
+      paused: false,
+      playback_rate: 2,
+      server_time: serverTime,
+      play_at: serverTime + 0.5,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    expect(media.currentTime).toBe(11);
+    expect(expectedWatchPosition(room.state.value!, Date.now(), room.clockOffset.value)).toBe(11);
+    expect(media.paused).toBe(false);
+  });
+
+  test('reschedules after clock sync', async () => {
+    Date.now = () => 100000;
+    const room = useWatchRoom();
+    room.connect('ws://guest', {});
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({ type: 'ready', role: 'guest', participant_id: 'guest', participant_count: 1 });
+    let plays = 0;
+    const media = {
+      currentTime: 0,
+      paused: true,
+      playbackRate: 1,
+      pause() {},
+      play() {
+        plays += 1;
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    socket.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 4,
+      paused: false,
+      playback_rate: 1,
+      server_time: 94.5,
+      play_at: 95.5,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    const unsynchronizedTimer = timers.at(-1);
+    expect(plays).toBe(0);
+    socket.message({ type: 'pong', client_time: 100000, server_time: 95 });
+    await Promise.resolve();
+    unsynchronizedTimer?.();
+    expect(plays).toBe(0);
+    timers.at(-1)?.();
+    expect(plays).toBe(1);
+  });
+
+  test('cancels stale scheduled playback', async () => {
+    const room = useWatchRoom();
+    room.connect('ws://guest', {});
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({ type: 'ready', role: 'guest', participant_id: 'guest', participant_count: 1 });
+    let plays = 0;
+    const media = {
+      currentTime: 0,
+      paused: true,
+      playbackRate: 1,
+      pause() {},
+      play() {
+        plays += 1;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    socket.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 0,
+      paused: false,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      play_at: Date.now() / 1000 + 10,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    const scheduled = timers.at(-1);
+    socket.message({
+      type: 'state',
+      version: 2,
+      anchor_position: 0,
+      paused: true,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      play_at: null,
+      participant_count: 1,
+    });
+    scheduled?.();
+    expect(plays).toBe(0);
+  });
+
+  test('pauses snapshots until playback', async () => {
+    const room = useWatchRoom();
+    room.connect('ws://host', { host_key: 'secret' });
+    const socket = sockets[0]!;
+    socket.open();
+    socket.message({ type: 'ready', role: 'host', participant_id: 'host', participant_count: 1 });
+    const media = {
+      currentTime: 0,
+      paused: true,
+      playbackRate: 1,
+      pause() {},
+      play() {
+        this.paused = false;
+        return Promise.resolve();
+      },
+    };
+    room.setMedia(media as unknown as HTMLMediaElement);
+    socket.sent = [];
+    room.sendPlay();
+    socket.message({
+      type: 'state',
+      version: 1,
+      anchor_position: 0,
+      paused: false,
+      playback_rate: 1,
+      server_time: Date.now() / 1000,
+      play_at: Date.now() / 1000 + 10,
+      participant_count: 1,
+    });
+    await Promise.resolve();
+    intervals[1]!();
+    expect(socket.sent.filter((message) => JSON.parse(message).type === 'snapshot')).toHaveLength(
+      0,
+    );
+    timers.at(-1)?.();
+    Date.now = () => originalNow() + 1000;
+    intervals[1]!();
+    expect(socket.sent.filter((message) => JSON.parse(message).type === 'snapshot')).toHaveLength(
+      1,
+    );
   });
 
   test('gates reconnect controls', () => {

@@ -6,6 +6,7 @@ export type WatchState = {
   paused: boolean;
   playback_rate: number;
   server_time: number;
+  play_at?: number | null;
   participant_count: number;
   participant_version?: number;
 };
@@ -39,10 +40,12 @@ export function buildWatchSocketUrl(
 
 export function expectedWatchPosition(state: WatchState, now = Date.now(), offset = 0): number {
   if (state.paused) return state.anchor_position;
-  return Math.max(
-    0,
-    state.anchor_position + ((now - offset) / 1000 - state.server_time) * state.playback_rate,
-  );
+  const anchorTime =
+    typeof state.play_at === 'number' && state.server_time < state.play_at
+      ? state.play_at
+      : state.server_time;
+  const elapsed = Math.max(0, (now - offset) / 1000 - anchorTime);
+  return Math.max(0, state.anchor_position + elapsed * state.playback_rate);
 }
 
 export function driftCorrection(drift: number): { seek: number | null; rate: number } {
@@ -78,6 +81,11 @@ export function isWatchState(value: unknown): value is WatchState {
     state.playback_rate <= 4 &&
     typeof state.server_time === 'number' &&
     Number.isFinite(state.server_time) &&
+    (state.play_at === undefined ||
+      state.play_at === null ||
+      (typeof state.play_at === 'number' &&
+        Number.isFinite(state.play_at) &&
+        state.play_at >= 0)) &&
     typeof state.participant_count === 'number' &&
     Number.isInteger(state.participant_count) &&
     state.participant_count >= 0 &&

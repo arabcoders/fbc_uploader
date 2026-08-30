@@ -44,7 +44,7 @@ class SubtitleLookupCacheEntry:
     expires_at: float
 
 
-SubtitleLookupCacheKey = tuple[str, str]
+SubtitleLookupCacheKey = tuple[str, str, tuple[str, ...]]
 _subtitle_lookup_cache: dict[SubtitleLookupCacheKey, SubtitleLookupCacheEntry] = {}
 
 
@@ -72,42 +72,48 @@ def normalize_cache_identity(identity: str) -> str:
     return unicodedata.normalize("NFC", identity).strip()
 
 
-def build_subtitle_cache_key(upload_id: str, filename: str) -> SubtitleLookupCacheKey:
-    return normalize_cache_identity(upload_id), normalize_cache_identity(filename)
+def build_subtitle_cache_key(upload_id: str, filename: str | None, target_stems: list[str]) -> SubtitleLookupCacheKey:
+    return normalize_cache_identity(upload_id), normalize_cache_identity(filename or ""), tuple(target_stems)
 
 
 def clear_subtitle_lookup_cache() -> None:
     _subtitle_lookup_cache.clear()
 
 
-def list_subtitle_tracks(upload_id: str | None, filename: str | None) -> list[SubtitleTrack]:
+def list_subtitle_tracks(
+    upload_id: str | None,
+    filename: str | None,
+    meta_data: dict | None = None,
+) -> list[SubtitleTrack]:
     subtitle_root = get_subtitle_root()
-    if subtitle_root is None or not upload_id or not filename:
+    if subtitle_root is None or not upload_id:
         return []
 
+    target_stems = _build_target_stems(filename, meta_data)
     cache_ttl_seconds = config.settings.subtitle_cache_ttl_seconds
-    cache_key = build_subtitle_cache_key(upload_id, filename)
+    cache_key = build_subtitle_cache_key(upload_id, filename, target_stems)
     cached_tracks = _get_cached_subtitle_tracks(cache_key, cache_ttl_seconds)
     if cached_tracks is not None:
         return cached_tracks
 
-    target_stem = normalize_subtitle_stem(Path(filename).stem)
-    if not target_stem:
-        return []
-
-    subtitle_tracks = _build_subtitle_tracks(_collect_matching_subtitles(subtitle_root, target_stem))
+    subtitle_tracks = _build_subtitle_tracks(_collect_matching_subtitles(subtitle_root, normalize_subtitle_stem(upload_id), target_stems))
 
     _store_cached_subtitle_tracks(cache_key, subtitle_tracks, cache_ttl_seconds)
     return subtitle_tracks
 
 
-def get_subtitle_track(upload_id: str | None, filename: str | None, source_format: str) -> SubtitleTrack | None:
+def get_subtitle_track(
+    upload_id: str | None,
+    filename: str | None,
+    source_format: str,
+    meta_data: dict | None = None,
+) -> SubtitleTrack | None:
     normalized_source_format = normalize_source_format(source_format)
     if normalized_source_format is None:
         return None
 
     return next(
-        (track for track in list_subtitle_tracks(upload_id, filename) if track.source_format == normalized_source_format),
+        (track for track in list_subtitle_tracks(upload_id, filename, meta_data) if track.source_format == normalized_source_format),
         None,
     )
 
@@ -192,16 +198,40 @@ def _build_subtitle_tracks(matches_by_format: dict[str, list[Path]]) -> list[Sub
     return subtitle_tracks
 
 
-def _collect_matching_subtitles(subtitle_root: Path, target_stem: str) -> dict[str, list[Path]]:
-    matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
-    exact_matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
-    prefix_matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
-    stripped_exact_matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
-    stripped_prefix_matches_by_format: dict[str, list[Path]] = {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
-    stripped_target_stem = _strip_bracketed_segments(target_stem)
+def _build_target_stems(filename: str | None, meta_data: dict | None) -> list[str]:
+    stems: list[str] = []
+    if filename:
+        stems.append(Path(filename).stem)
 
-    if not target_stem:
-        return matches_by_format
+    title = meta_data.get("title") if isinstance(meta_data, dict) else None
+    if isinstance(title, str) and title.strip():
+        broadcast_date = meta_data.get("broadcast_date")
+        if isinstance(broadcast_date, str):
+            date_match = re.fullmatch(r"(?P<year>\d{4})[-._]?(?P<month>\d{2})[-._]?(?P<day>\d{2})", broadcast_date.strip())
+            if date_match:
+                year = date_match.group("year")
+                month_day = f"{date_match.group('month')}{date_match.group('day')}"
+                stems.extend((f"{year[2:]}{month_day} {title}", f"{year}{month_day} {title}"))
+        stems.append(title)
+
+    normalized_stems: list[str] = []
+    for stem in stems:
+        normalized_stem = normalize_subtitle_stem(stem)
+        if normalized_stem and normalized_stem not in normalized_stems:
+            normalized_stems.append(normalized_stem)
+
+    return normalized_stems
+
+
+def _empty_matches() -> dict[str, list[Path]]:
+    return {source_format: [] for source_format in SUPPORTED_SUBTITLE_SOURCE_FORMATS}
+
+
+def _collect_matching_subtitles(subtitle_root: Path, upload_id: str, target_stems: list[str]) -> dict[str, list[Path]]:
+    upload_matches_by_format = _empty_matches()
+    normal_matches = [(_empty_matches(), _empty_matches()) for _ in target_stems]
+    stripped_matches = [(_empty_matches(), _empty_matches()) for _ in target_stems]
+    stripped_target_stems = [_strip_bracketed_segments(target_stem) for target_stem in target_stems]
 
     for candidate in subtitle_root.rglob("*"):
         source_format = normalize_source_format(candidate.suffix.lstrip("."))
@@ -216,25 +246,41 @@ def _collect_matching_subtitles(subtitle_root: Path, target_stem: str) -> dict[s
         if resolved_candidate is None:
             continue
 
-        if candidate_stem == target_stem:
-            exact_matches_by_format[source_format].append(resolved_candidate)
-        elif _contains_subtitle_stem(candidate_stem, target_stem):
-            prefix_matches_by_format[source_format].append(resolved_candidate)
+        if upload_id and upload_id in candidate_stem:
+            upload_matches_by_format[source_format].append(resolved_candidate)
 
         stripped_candidate_stem = _strip_bracketed_segments(candidate_stem)
-        if not stripped_target_stem or not stripped_candidate_stem:
-            continue
+        for index, target_stem in enumerate(target_stems):
+            exact_matches, prefix_matches = normal_matches[index]
+            if candidate_stem == target_stem:
+                exact_matches[source_format].append(resolved_candidate)
+            elif _contains_subtitle_stem(candidate_stem, target_stem):
+                prefix_matches[source_format].append(resolved_candidate)
 
-        if stripped_candidate_stem == stripped_target_stem:
-            stripped_exact_matches_by_format[source_format].append(resolved_candidate)
-        elif _contains_subtitle_stem(stripped_candidate_stem, stripped_target_stem):
-            stripped_prefix_matches_by_format[source_format].append(resolved_candidate)
+            stripped_target_stem = stripped_target_stems[index]
+            if not stripped_target_stem or not stripped_candidate_stem:
+                continue
 
-    matches_by_format = _merge_matching_subtitles(exact_matches_by_format, prefix_matches_by_format)
-    if _build_subtitle_tracks(matches_by_format):
-        return matches_by_format
+            stripped_exact_matches, stripped_prefix_matches = stripped_matches[index]
+            if stripped_candidate_stem == stripped_target_stem:
+                stripped_exact_matches[source_format].append(resolved_candidate)
+            elif _contains_subtitle_stem(stripped_candidate_stem, stripped_target_stem):
+                stripped_prefix_matches[source_format].append(resolved_candidate)
 
-    return _merge_matching_subtitles(stripped_exact_matches_by_format, stripped_prefix_matches_by_format)
+    if any(upload_matches_by_format.values()):
+        return upload_matches_by_format
+
+    for index, (exact_matches, prefix_matches) in enumerate(normal_matches):
+        matches_by_format = _merge_matching_subtitles(exact_matches, prefix_matches)
+        if _build_subtitle_tracks(matches_by_format):
+            return matches_by_format
+
+        stripped_exact_matches, stripped_prefix_matches = stripped_matches[index]
+        matches_by_format = _merge_matching_subtitles(stripped_exact_matches, stripped_prefix_matches)
+        if _build_subtitle_tracks(matches_by_format):
+            return matches_by_format
+
+    return _empty_matches()
 
 
 def _resolve_within_root(candidate: Path, subtitle_root: Path) -> Path | None:

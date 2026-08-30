@@ -103,6 +103,7 @@ def _build_subtitle_manifest(
     download_token: str,
     upload_id: str,
     filename: str | None,
+    meta_data: dict | None,
 ) -> schemas.SubtitleManifestResponse:
     subtitle_items = [
         schemas.SubtitleTrackResponse(
@@ -118,7 +119,7 @@ def _build_subtitle_manifest(
                 )
             ),
         )
-        for track in subtitles.list_subtitle_tracks(upload_id, filename)
+        for track in subtitles.list_subtitle_tracks(upload_id, filename, meta_data)
     ]
 
     return schemas.SubtitleManifestResponse(subtitles=subtitle_items)
@@ -473,9 +474,9 @@ async def list_file_subtitles(
     db: Annotated[AsyncSession, Depends(get_db)],
     is_admin: Annotated[bool, Depends(optional_admin_check)],
 ) -> schemas.SubtitleManifestResponse:
-    """List external subtitle tracks that match a completed upload filename."""
+    """List external subtitle tracks that match a completed upload."""
     _, record, _ = await _get_accessible_upload(download_token, upload_id, db, is_admin)
-    return _build_subtitle_manifest(request, download_token, upload_id, record.filename)
+    return _build_subtitle_manifest(request, download_token, upload_id, record.filename, record.meta_data)
 
 
 @router.get("/{download_token}/uploads/{upload_id}/subtitles/{source_format}", name="get_file_subtitle", response_model=None)
@@ -491,7 +492,7 @@ async def get_file_subtitle(
     """Return a matching subtitle file, converting SRT to WebVTT on demand."""
     async with SessionLocal() as db:
         _, record, _ = await _get_accessible_upload(download_token, upload_id, db, is_admin)
-        track = subtitles.get_subtitle_track(upload_id, record.filename, source_format)
+        track = subtitles.get_subtitle_track(upload_id, record.filename, source_format, record.meta_data)
 
     if track is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtitle not found")
