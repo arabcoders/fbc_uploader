@@ -8,14 +8,14 @@ from backend.tests import conftest
 def test_paths_share_run_directory():
     run_root = Path(tempfile.gettempdir()).parent
 
-    assert run_root.parent == Path("/tmp/fbc-tests")
+    assert run_root.parent == Path("/tmp/tests-fbc")
     assert Path(os.environ["FBC_CONFIG_PATH"]).parent == run_root
     assert Path(os.environ["FBC_STORAGE_PATH"]).parent == run_root
     assert Path(os.environ["FBC_FRONTEND_EXPORT_PATH"]).parent == run_root
 
 
 def test_cleanup_keeps_shared_root(tmp_path):
-    shared_root = tmp_path / "fbc-tests"
+    shared_root = tmp_path / "tests-fbc"
     run_root = shared_root / "run-123"
     run_root.mkdir(parents=True)
 

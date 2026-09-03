@@ -33,7 +33,7 @@ dev = [
 asyncio_mode = "auto"
 pythonpath = ["backend/"]
 testpaths = ["backend/tests"]
-addopts = "-v --tb=short"
+addopts = "-q --tb=short"
 required_plugins = ["pytest-timeout>=2.4.0"]
 timeout = 30
 session_timeout = 300
