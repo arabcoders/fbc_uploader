@@ -132,7 +132,7 @@ def validate_metadata(values: dict[str, Any]) -> dict[str, Any]:
             continue
 
         val = _coerce_type(val, ftype, key)
-        allow_custom: bool = field.get("allowCustom") or field.get("allow_custom")
+        allow_custom: bool = bool(field.get("allowCustom") or field.get("allow_custom"))
 
         if "multiselect" == ftype:
             if not isinstance(val, list):

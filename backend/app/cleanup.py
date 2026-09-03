@@ -52,12 +52,13 @@ async def _disable_expired_tokens(session: AsyncSession) -> int:
     )
 
     res: Result[Any] = await session.execute(stmt)
+    rowcount: int = getattr(res, "rowcount", 0)
 
-    if res.rowcount:
-        logger.info("Disabled %d expired tokens", res.rowcount)
+    if rowcount:
+        logger.info("Disabled %d expired tokens", rowcount)
 
     await session.commit()
-    return res.rowcount
+    return rowcount
 
 
 async def _remove_stale_uploads(session: AsyncSession) -> int:

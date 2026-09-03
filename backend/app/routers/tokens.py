@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse
-from sqlalchemy import Sequence, select
+from sqlalchemy import select
 from sqlalchemy.engine.result import Result
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Select
@@ -17,6 +17,8 @@ from backend.app.db import SessionLocal, get_db
 from backend.app.security import optional_admin_check, verify_admin
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from sqlalchemy.engine.result import Result
     from sqlalchemy.sql.selectable import Select
 

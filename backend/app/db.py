@@ -11,6 +11,10 @@ from sqlalchemy.pool import StaticPool
 
 from .config import settings
 
+if settings.database_url is None:
+    msg = "Database URL is not configured"
+    raise RuntimeError(msg)
+
 url: URL = make_url(settings.database_url)
 engine_kwargs: dict[str, Any] = {"future": True}
 if url.drivername.startswith("sqlite"):

@@ -6,16 +6,21 @@ import time
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from backend.app import config
 
-SUPPORTED_SUBTITLE_SOURCE_FORMATS: tuple[str, ...] = ("vtt", "srt", "ass")
-DELIVERY_FORMAT_BY_SOURCE_FORMAT: dict[str, str] = {
+SubtitleSourceFormat = Literal["vtt", "srt", "ass"]
+SubtitleDeliveryFormat = Literal["vtt", "ass"]
+SubtitleRenderer = Literal["native", "assjs"]
+
+SUPPORTED_SUBTITLE_SOURCE_FORMATS: tuple[SubtitleSourceFormat, ...] = ("vtt", "srt", "ass")
+DELIVERY_FORMAT_BY_SOURCE_FORMAT: dict[SubtitleSourceFormat, SubtitleDeliveryFormat] = {
     "vtt": "vtt",
     "srt": "vtt",
     "ass": "ass",
 }
-RENDERER_BY_SOURCE_FORMAT: dict[str, str] = {
+RENDERER_BY_SOURCE_FORMAT: dict[SubtitleSourceFormat, SubtitleRenderer] = {
     "vtt": "native",
     "srt": "native",
     "ass": "assjs",
@@ -33,9 +38,9 @@ WHITESPACE_RE = re.compile(r"\s+")
 @dataclass(frozen=True, slots=True)
 class SubtitleTrack:
     path: Path
-    source_format: str
-    delivery_format: str
-    renderer: str
+    source_format: SubtitleSourceFormat
+    delivery_format: SubtitleDeliveryFormat
+    renderer: SubtitleRenderer
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,12 +61,15 @@ def get_subtitle_root() -> Path | None:
     return Path(subtitle_path).expanduser().resolve()
 
 
-def normalize_source_format(source_format: str) -> str | None:
+def normalize_source_format(source_format: str) -> SubtitleSourceFormat | None:
     normalized_source_format = source_format.strip().casefold()
-    if normalized_source_format not in SUPPORTED_SUBTITLE_SOURCE_FORMATS:
-        return None
-
-    return normalized_source_format
+    if normalized_source_format == "vtt":
+        return "vtt"
+    if normalized_source_format == "srt":
+        return "srt"
+    if normalized_source_format == "ass":
+        return "ass"
+    return None
 
 
 def normalize_subtitle_stem(stem: str) -> str:
@@ -205,7 +213,7 @@ def _build_target_stems(filename: str | None, meta_data: dict | None) -> list[st
 
     title = meta_data.get("title") if isinstance(meta_data, dict) else None
     if isinstance(title, str) and title.strip():
-        broadcast_date = meta_data.get("broadcast_date")
+        broadcast_date = meta_data.get("broadcast_date") if isinstance(meta_data, dict) else None
         if isinstance(broadcast_date, str):
             date_match = re.fullmatch(r"(?P<year>\d{4})[-._]?(?P<month>\d{2})[-._]?(?P<day>\d{2})", broadcast_date.strip())
             if date_match:

@@ -211,6 +211,8 @@ async def _finalize_upload(
     if record.status in {"completed", "postprocessing"}:
         return record
 
+    if record.storage_path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Uploaded file not found")
     path = Path(record.storage_path)
     if not path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Uploaded file not found")
@@ -271,7 +273,7 @@ async def initiate_upload(
     request: Request,
     payload: schemas.UploadRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    token: Annotated[str, Query(description="Upload token")] = ...,
+    token: Annotated[str, Query(description="Upload token")],
 ) -> schemas.InitiateUploadResponse:
     """
     Initiate a new upload record and prepare for TUS upload.
@@ -375,10 +377,10 @@ async def tus_head(upload_id: str, db: Annotated[AsyncSession, Depends(get_db)])
 async def tus_patch(
     upload_id: str,
     request: Request,
-    upload_offset: Annotated[int, Header(convert_underscores=False, alias="Upload-Offset")] = ...,
+    upload_offset: Annotated[int, Header(convert_underscores=False, alias="Upload-Offset")],
+    content_type: Annotated[str, Header(convert_underscores=False, alias="Content-Type")],
     upload_checksum: Annotated[str | None, Header(convert_underscores=False, alias="Upload-Checksum")] = None,
     content_length: Annotated[int | None, Header()] = None,
-    content_type: Annotated[str, Header(convert_underscores=False, alias="Content-Type")] = ...,
 ) -> Response:
     """
     Handle TUS protocol PATCH request to upload file chunks.
@@ -417,6 +419,8 @@ async def tus_patch(
         if "completed" == record.status:
             return Response(status_code=status.HTTP_204_NO_CONTENT, headers={"Upload-Offset": str(record.upload_offset)})
 
+        if record.storage_path is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Uploaded file not found")
         path = Path(record.storage_path)
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -555,7 +559,7 @@ async def cancel_upload(
     upload_id: str,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
-    token: Annotated[str, Query(description="Upload token")] = ...,
+    token: Annotated[str, Query(description="Upload token")],
 ) -> dict[str, Any]:
     """
     Cancel an incomplete upload, delete the record, and restore the upload slot.
