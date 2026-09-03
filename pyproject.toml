@@ -37,7 +37,9 @@ addopts = "-q --tb=short"
 required_plugins = ["pytest-timeout>=2.4.0"]
 timeout = 30
 session_timeout = 300
-filterwarnings = []
+filterwarnings = [
+    'ignore:The anyio\.abc\.BlockingPortal alias is deprecated, use anyio\.from_thread\.BlockingPortal instead\.:DeprecationWarning:starlette\.testclient',
+]
 
 [tool.ruff]
 exclude = [
