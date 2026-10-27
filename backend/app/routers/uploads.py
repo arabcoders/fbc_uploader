@@ -5,14 +5,12 @@ import logging
 import secrets
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 import aiofiles
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
-from sqlalchemy.engine.result import Result
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.selectable import Select
 
 from backend.app import models, schemas
 from backend.app.config import settings
@@ -29,10 +27,6 @@ from backend.app.utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from sqlalchemy.engine.result import Result
-    from sqlalchemy.sql.selectable import Select
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
@@ -67,14 +61,14 @@ async def _ensure_token(
 
     """
     if token_value:
-        stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.token == token_value)
+        stmt = select(models.UploadToken).where(models.UploadToken.token == token_value)
     elif token_id:
-        stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.id == token_id)
+        stmt = select(models.UploadToken).where(models.UploadToken.id == token_id)
     else:
         msg = "Either token_value or token_id must be provided"
         raise ValueError(msg)
 
-    res: Result[tuple[models.UploadToken]] = await db.execute(stmt)
+    res = await db.execute(stmt)
     if not (token := res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
 
@@ -107,8 +101,8 @@ async def _get_upload_record(db: AsyncSession, upload_id: str) -> models.UploadR
         UploadRecord: The upload record object.
 
     """
-    stmt: Select[tuple[models.UploadRecord]] = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
-    res: Result[tuple[models.UploadRecord]] = await db.execute(stmt)
+    stmt = select(models.UploadRecord).where(models.UploadRecord.public_id == upload_id)
+    res = await db.execute(stmt)
     if not (record := res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
 
@@ -226,8 +220,8 @@ async def _finalize_upload(
             detail="Failed to detect file type",
         ) from exc
 
-    stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.id == record.token_id)
-    res: Result[tuple[models.UploadToken]] = await db.execute(stmt)
+    stmt = select(models.UploadToken).where(models.UploadToken.id == record.token_id)
+    res = await db.execute(stmt)
 
     if not (token := res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")

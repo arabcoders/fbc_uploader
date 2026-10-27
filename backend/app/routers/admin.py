@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -8,10 +8,6 @@ from backend.app.db import get_db
 from backend.app.models import UploadRecord
 from backend.app.security import verify_admin
 from backend.app.utils import delete_upload_artifacts
-
-if TYPE_CHECKING:
-    from sqlalchemy.engine.result import Result
-    from sqlalchemy.sql.selectable import Select
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -41,8 +37,8 @@ async def delete_upload(
         dict[str, str]: A confirmation message with the deleted upload ID.
 
     """
-    stmt: Select[tuple[UploadRecord]] = select(UploadRecord).where(UploadRecord.public_id == upload_id)
-    res: Result[tuple[UploadRecord]] = await db.execute(stmt)
+    stmt = select(UploadRecord).where(UploadRecord.public_id == upload_id)
+    res = await db.execute(stmt)
 
     if not (upload := res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")

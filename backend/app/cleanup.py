@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select, update
 from sqlalchemy.engine.result import Result
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.selectable import Select
 
 from . import config, models
 from .db import SessionLocal
@@ -17,7 +16,6 @@ from .utils import delete_upload_artifacts
 if TYPE_CHECKING:
     from sqlalchemy.engine.result import Result
     from sqlalchemy.sql.dml import Update
-    from sqlalchemy.sql.selectable import Select
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -77,12 +75,12 @@ async def _remove_stale_uploads(session: AsyncSession) -> int:
 
     total_removed = 0
 
-    stmt: Select[tuple[models.UploadRecord]] = (
+    stmt = (
         select(models.UploadRecord)
         .where(models.UploadRecord.status.in_(["pending", "in_progress"]))
         .where(models.UploadRecord.created_at < cutoff_naive)
     )
-    res: Result[tuple[models.UploadRecord]] = await session.execute(stmt)
+    res = await session.execute(stmt)
 
     for record in res.scalars().all():
         try:
@@ -117,15 +115,13 @@ async def _remove_disabled_tokens(session: AsyncSession) -> int:
 
     total_removed = 0
 
-    stmt: Select[tuple[models.UploadToken]] = (
-        select(models.UploadToken).where(models.UploadToken.disabled.is_(True)).where(models.UploadToken.expires_at < cutoff)
-    )
-    res: Result[tuple[models.UploadToken]] = await session.execute(stmt)
+    stmt = select(models.UploadToken).where(models.UploadToken.disabled.is_(True)).where(models.UploadToken.expires_at < cutoff)
+    res = await session.execute(stmt)
 
     for token in res.scalars().all():
         if config.settings.delete_files_on_token_cleanup:
-            uploads_stmt: Select[tuple[models.UploadRecord]] = select(models.UploadRecord).where(models.UploadRecord.token_id == token.id)
-            uploads_res: Result[tuple[models.UploadRecord]] = await session.execute(uploads_stmt)
+            uploads_stmt = select(models.UploadRecord).where(models.UploadRecord.token_id == token.id)
+            uploads_res = await session.execute(uploads_stmt)
 
             for upload in uploads_res.scalars().all():
                 try:

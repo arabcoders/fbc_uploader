@@ -7,9 +7,7 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
-from sqlalchemy.engine.result import Result
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.selectable import Select
 
 from backend.app import models, schemas, subtitles, utils
 from backend.app.config import settings
@@ -18,9 +16,6 @@ from backend.app.security import optional_admin_check, verify_admin
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from sqlalchemy.engine.result import Result
-    from sqlalchemy.sql.selectable import Select
 
 router = APIRouter(prefix="/api/tokens", tags=["tokens"])
 
@@ -56,8 +51,8 @@ async def _get_accessible_upload(
     db: AsyncSession,
     is_admin: bool,
 ) -> tuple[models.UploadToken, models.UploadRecord, Path]:
-    token_stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(models.UploadToken.download_token == download_token)
-    token_res: Result[tuple[models.UploadToken]] = await db.execute(token_stmt)
+    token_stmt = select(models.UploadToken).where(models.UploadToken.download_token == download_token)
+    token_res = await db.execute(token_stmt)
     if not (token_row := token_res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download token not found")
 
@@ -73,10 +68,10 @@ async def _get_accessible_upload(
         if token_row.disabled:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Token is disabled")
 
-    upload_stmt: Select[tuple[models.UploadRecord]] = select(models.UploadRecord).where(
+    upload_stmt = select(models.UploadRecord).where(
         models.UploadRecord.public_id == upload_id, models.UploadRecord.token_id == token_row.id
     )
-    upload_res: Result[tuple[models.UploadRecord]] = await db.execute(upload_stmt)
+    upload_res = await db.execute(upload_stmt)
 
     if not (record := upload_res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload not found")
@@ -146,13 +141,11 @@ async def list_tokens(
         TokenListResponse: A list of upload tokens with total count.
 
     """
-    count_stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken)
-    count_res: Result[tuple[models.UploadToken]] = await db.execute(count_stmt)
+    count_stmt = select(models.UploadToken)
+    count_res = await db.execute(count_stmt)
 
-    stmt: Select[tuple[models.UploadToken]] = (
-        select(models.UploadToken).order_by(models.UploadToken.created_at.desc()).offset(skip).limit(limit)
-    )
-    res: Result[tuple[models.UploadToken]] = await db.execute(stmt)
+    stmt = select(models.UploadToken).order_by(models.UploadToken.created_at.desc()).offset(skip).limit(limit)
+    res = await db.execute(stmt)
 
     return schemas.TokenListResponse(
         tokens=res.scalars().all(),
@@ -227,18 +220,16 @@ async def get_token(
         TokenPublicInfo: The upload token information
 
     """
-    stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(
-        (models.UploadToken.token == token_value) | (models.UploadToken.download_token == token_value)
-    )
-    res: Result[tuple[models.UploadToken]] = await db.execute(stmt)
+    stmt = select(models.UploadToken).where((models.UploadToken.token == token_value) | (models.UploadToken.download_token == token_value))
+    res = await db.execute(stmt)
 
     if not (token_row := res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
 
-    uploads_stmt: Select[tuple[models.UploadRecord]] = (
+    uploads_stmt = (
         select(models.UploadRecord).where(models.UploadRecord.token_id == token_row.id).order_by(models.UploadRecord.created_at.desc())
     )
-    uploads_res: Result[tuple[models.UploadRecord]] = await db.execute(uploads_stmt)
+    uploads_res = await db.execute(uploads_stmt)
     uploads: Sequence[models.UploadRecord] = uploads_res.scalars().all()
 
     uploads_list: list[schemas.UploadRecordResponse] = []
@@ -283,10 +274,10 @@ async def update_token(
         UploadToken: The updated upload token.
 
     """
-    token_stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(
+    token_stmt = select(models.UploadToken).where(
         (models.UploadToken.token == token_value) | (models.UploadToken.download_token == token_value)
     )
-    token_res: Result[tuple[models.UploadToken]] = await db.execute(token_stmt)
+    token_res = await db.execute(token_stmt)
 
     if not (token_row := token_res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
@@ -362,17 +353,17 @@ async def delete_token(
         Response: A response with status code 204 No Content.
 
     """
-    token_stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(
+    token_stmt = select(models.UploadToken).where(
         (models.UploadToken.token == token_value) | (models.UploadToken.download_token == token_value)
     )
-    token_res: Result[tuple[models.UploadToken]] = await db.execute(token_stmt)
+    token_res = await db.execute(token_stmt)
 
     if not (token_row := token_res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
 
     if delete_files:
-        uploads_stmt: Select[tuple[models.UploadRecord]] = select(models.UploadRecord).where(models.UploadRecord.token_id == token_row.id)
-        uploads_res: Result[tuple[models.UploadRecord]] = await db.execute(uploads_stmt)
+        uploads_stmt = select(models.UploadRecord).where(models.UploadRecord.token_id == token_row.id)
+        uploads_res = await db.execute(uploads_stmt)
         uploads: Sequence[models.UploadRecord] = uploads_res.scalars().all()
         for record in uploads:
             utils.delete_upload_artifacts(record.storage_path)
@@ -410,18 +401,16 @@ async def list_token_uploads(
         list[UploadRecordResponse]: A list of upload records with URLs.
 
     """
-    token_stmt: Select[tuple[models.UploadToken]] = select(models.UploadToken).where(
+    token_stmt = select(models.UploadToken).where(
         (models.UploadToken.token == token_value) | (models.UploadToken.download_token == token_value)
     )
-    token_res: Result[tuple[models.UploadToken]] = await db.execute(token_stmt)
+    token_res = await db.execute(token_stmt)
 
     if not (token_row := token_res.scalar_one_or_none()):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
 
-    stmt: Select[tuple[models.UploadRecord]] = (
-        select(models.UploadRecord).where(models.UploadRecord.token_id == token_row.id).order_by(models.UploadRecord.created_at.desc())
-    )
-    res: Result[tuple[models.UploadRecord]] = await db.execute(stmt)
+    stmt = select(models.UploadRecord).where(models.UploadRecord.token_id == token_row.id).order_by(models.UploadRecord.created_at.desc())
+    res = await db.execute(stmt)
     uploads: Sequence[models.UploadRecord] = res.scalars().all()
     uploads_list: list[schemas.UploadRecordResponse] = []
     for u in uploads:
