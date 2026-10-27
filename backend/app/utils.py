@@ -504,8 +504,9 @@ async def extract_ffprobe_metadata(file_path: str | Path) -> dict | None:
             return None
 
         dct: dict | None = json.loads(stdout.decode())
-        if dct and "format" in dct and "filename" in dct.get("format"):
-            dct["format"].pop("filename", None)
+        format_data = dct.get("format") if dct else None
+        if isinstance(format_data, dict):
+            format_data.pop("filename", None)
     except asyncio.CancelledError:
         if proc is not None:
             await _terminate_subprocess(proc)
@@ -711,11 +712,12 @@ def format_file_size(size_bytes: int) -> str:
         Formatted string like "1.5 MB", "500 KB", etc.
 
     """
+    size: float = size_bytes
     for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} PB"
+        if size < 1024.0:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
 
 
 def format_duration(seconds: int) -> str:

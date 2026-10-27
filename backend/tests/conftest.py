@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-TESTS_TMP_ROOT = Path("/tmp/fbc-tests")  # noqa: S108
+TESTS_TMP_ROOT = Path("/tmp/tests-fbc")  # noqa: S108
 TESTS_TMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 TEST_RUN_DIR = Path(tempfile.mkdtemp(prefix="run-", dir=str(TESTS_TMP_ROOT)))

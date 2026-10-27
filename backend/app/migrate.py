@@ -11,5 +11,8 @@ def run_migrations() -> None:
     root_cfg: Path = Path(__file__).resolve().parents[2] / "alembic.ini"
     cfg = Config(str(root_cfg))
     cfg.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "migrations"))
+    if settings.database_url is None:
+        msg = "Database URL is not configured"
+        raise RuntimeError(msg)
     cfg.set_main_option("sqlalchemy.url", settings.database_url)
     command.upgrade(cfg, "heads")

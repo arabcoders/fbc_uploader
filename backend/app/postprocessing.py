@@ -77,7 +77,7 @@ def _token_has_expired(expires_at: datetime) -> bool:
     return expires_at < datetime.now(UTC)
 
 
-async def _apply_media_normalization(record: models.UploadRecord, path: Path) -> tuple[Path, dict | None]:
+async def _apply_media_normalization(record: models.UploadRecord | SimpleNamespace, path: Path) -> tuple[Path, dict | None]:
     ffprobe_data = await extract_ffprobe_metadata(path)
 
     if should_remux_to_mp4(record.mimetype, ffprobe_data):
