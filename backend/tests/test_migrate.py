@@ -87,14 +87,17 @@ async def test_rejects_mismatched_revision(initialized_database, monkeypatch, re
     assert initialized_database.read_bytes() == original
 
 
-def test_cli_passes_migration_guard(monkeypatch):
-    monkeypatch.setenv("FBC_DEV_MODE", "1")
+@pytest.mark.parametrize(("dev_env", "dev_args"), [("0", ["--dev"]), ("1", [])], ids=["flag", "environment"])
+def test_cli_reloads_with_guard(monkeypatch, dev_env, dev_args):
+    monkeypatch.setenv("FBC_DEV_MODE", dev_env)
+    monkeypatch.setenv("FBC_NO_AUTO_MIGRATION", "0")
 
     def check_env(*args, reload, **kwargs):
+        assert os.environ["FBC_DEV_MODE"] == "1"
         assert os.environ["FBC_NO_AUTO_MIGRATION"] == "1"
         assert reload is True
 
-    with patch.dict(os.environ, {"FBC_NO_AUTO_MIGRATION": "0"}), patch("backend.main.uvicorn.run", side_effect=check_env) as server:
-        main(["--no-auto-migration"])
+    with patch("backend.main.uvicorn.run", side_effect=check_env) as server:
+        main([*dev_args, "--no-auto-migration"])
 
     server.assert_called_once()
