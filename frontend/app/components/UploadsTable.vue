@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="block md:hidden space-y-3">
-      <UCard v-for="(row, index) in rows" :key="row.public_id">
+      <UCard v-for="(row, index) in rows" :key="row.public_id" variant="outline">
         <template #header>
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0 flex-1">
@@ -51,23 +51,28 @@
 
             <div
               v-if="row.status !== 'completed' && row.status !== 'postprocessing'"
-              class="flex items-center justify-between"
+              class="space-y-1.5"
             >
-              <span class="text-muted">Progress</span>
-              <span class="text-sm text-muted">{{
-                percent(row.upload_offset, row.upload_length)
-              }}</span>
+              <div class="flex items-center justify-between">
+                <span class="text-muted">Progress</span>
+                <span class="text-sm text-muted">{{
+                  percent(row.upload_offset, row.upload_length)
+                }}</span>
+              </div>
+              <UProgress
+                v-if="row.upload_length"
+                :model-value="row.upload_offset ?? 0"
+                :max="row.upload_length"
+                size="xs"
+                role="group"
+                aria-label="Upload progress"
+              />
             </div>
           </div>
 
           <div class="flex flex-wrap gap-2 pt-2 border-t border-default">
             <UPopover :ui="{ content: 'p-3' }">
-              <UButton
-                size="xs"
-                color="neutral"
-                variant="soft"
-                icon="i-heroicons-information-circle-20-solid"
-              >
+              <UButton size="xs" color="neutral" variant="soft" icon="i-lucide-info">
                 Metadata
               </UButton>
               <template #content>
@@ -101,7 +106,7 @@
               color="warning"
               variant="soft"
               size="xs"
-              icon="i-heroicons-pause-20-solid"
+              icon="i-lucide-pause"
               @click="$emit('pause', row)"
             >
               Pause
@@ -115,7 +120,7 @@
               color="primary"
               variant="soft"
               size="xs"
-              icon="i-heroicons-play-20-solid"
+              icon="i-lucide-play"
               @click="$emit('resume', row)"
             >
               Resume
@@ -126,7 +131,7 @@
               color="primary"
               variant="soft"
               size="xs"
-              icon="i-heroicons-arrow-path"
+              icon="i-lucide-refresh-cw"
               @click="$emit('resume', row)"
             >
               Resume
@@ -141,7 +146,7 @@
               color="error"
               variant="soft"
               size="xs"
-              icon="i-heroicons-x-mark-20-solid"
+              icon="i-lucide-x"
               @click="$emit('cancel', row)"
             >
               Cancel
@@ -151,29 +156,21 @@
       </UCard>
     </div>
 
-    <div class="hidden md:block overflow-x-auto rounded-lg ring ring-default">
-      <table class="w-full divide-y divide-default">
-        <thead class="bg-elevated">
+    <div class="fbc-table-surface hidden md:block">
+      <table class="fbc-table" aria-label="Uploads">
+        <thead>
           <tr>
-            <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted w-20">ID</th>
-            <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted min-w-48">
-              File
-            </th>
-            <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted w-32">Status</th>
-            <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted w-40">Size</th>
-            <th class="px-4 py-3 text-right text-sm font-semibold text-highlighted w-32">
-              Actions
-            </th>
+            <th scope="col" class="w-16">ID</th>
+            <th scope="col" class="min-w-40">File</th>
+            <th scope="col" class="w-32">Status</th>
+            <th scope="col" class="w-56">Size</th>
+            <th scope="col" class="w-32 text-end">Actions</th>
           </tr>
         </thead>
-        <tbody class="bg-default divide-y divide-default">
-          <tr
-            v-for="(row, index) in rows"
-            :key="row.public_id"
-            class="hover:bg-elevated/50 transition-colors"
-          >
-            <td class="px-4 py-3 text-sm">{{ index + 1 }}</td>
-            <td class="px-4 py-3 text-sm">
+        <tbody>
+          <tr v-for="(row, index) in rows" :key="row.public_id">
+            <td>{{ index + 1 }}</td>
+            <td>
               <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">
                 <a
                   v-if="allowDownloads && row.download_url && row.status === 'completed'"
@@ -219,7 +216,7 @@
                 </template>
               </UPopover>
             </td>
-            <td class="px-4 py-3 text-sm">
+            <td>
               <UBadge :color="getStatusColor(row.status)" variant="soft">
                 <span class="flex items-center gap-1.5">
                   <UIcon
@@ -231,29 +228,39 @@
                 </span>
               </UBadge>
             </td>
-            <td class="px-4 py-3 text-sm">
+            <td class="whitespace-nowrap tabular-nums">
               <span
                 v-if="row.status === 'completed' || row.status === 'postprocessing'"
                 class="font-medium"
               >
                 {{ formatBytes(row.size_bytes ?? row.upload_length ?? 0) }}
               </span>
-              <span v-else class="text-sm">
-                <span class="font-medium">{{ formatBytes(row.upload_offset ?? 0) }}</span>
-                <span class="text-muted"> / {{ formatBytes(row.upload_length ?? 0) }}</span>
-                <span class="text-muted ml-1"
-                  >({{ percent(row.upload_offset, row.upload_length) }})</span
-                >
-              </span>
+              <div v-else class="space-y-1.5">
+                <div>
+                  <span class="font-medium">{{ formatBytes(row.upload_offset ?? 0) }}</span>
+                  <span class="text-muted"> / {{ formatBytes(row.upload_length ?? 0) }}</span>
+                  <span class="text-muted ml-1"
+                    >({{ percent(row.upload_offset, row.upload_length) }})</span
+                  >
+                </div>
+                <UProgress
+                  v-if="row.upload_length"
+                  :model-value="row.upload_offset ?? 0"
+                  :max="row.upload_length"
+                  size="xs"
+                  role="group"
+                  aria-label="Upload progress"
+                />
+              </div>
             </td>
-            <td class="px-4 py-3 text-sm text-right">
+            <td>
               <div class="flex gap-2 justify-end">
                 <UButton
                   v-if="row.slot?.working && !row.slot?.paused"
                   color="warning"
                   variant="soft"
                   size="xs"
-                  icon="i-heroicons-pause-20-solid"
+                  icon="i-lucide-pause"
                   @click="$emit('pause', row)"
                 >
                   Pause
@@ -267,7 +274,7 @@
                   color="primary"
                   variant="soft"
                   size="xs"
-                  icon="i-heroicons-play-20-solid"
+                  icon="i-lucide-play"
                   @click="$emit('resume', row)"
                 >
                   Resume
@@ -278,7 +285,7 @@
                   color="primary"
                   variant="soft"
                   size="xs"
-                  icon="i-heroicons-arrow-path"
+                  icon="i-lucide-refresh-cw"
                   @click="$emit('resume', row)"
                 >
                   Resume
@@ -293,7 +300,7 @@
                   color="error"
                   variant="soft"
                   size="xs"
-                  icon="i-heroicons-x-mark-20-solid"
+                  icon="i-lucide-x"
                   @click="$emit('cancel', row)"
                 >
                   Cancel
@@ -347,23 +354,23 @@ function getStatusColor(status: string): 'success' | 'error' | 'warning' | 'prim
 function getStatusIcon(status: string): string {
   switch (status) {
     case 'completed':
-      return 'i-heroicons-check-circle-20-solid';
+      return 'i-lucide-circle-check';
     case 'error':
     case 'validation_failed':
-      return 'i-heroicons-exclamation-circle-20-solid';
+      return 'i-lucide-circle-alert';
     case 'paused':
-      return 'i-heroicons-pause-circle-20-solid';
+      return 'i-lucide-circle-pause';
     case 'uploading':
     case 'in_progress':
-      return 'i-heroicons-arrow-path-20-solid';
+      return 'i-lucide-refresh-cw';
     case 'postprocessing':
-      return 'i-heroicons-cog-6-tooth-20-solid';
+      return 'i-lucide-settings';
     case 'initiating':
-      return 'i-heroicons-arrow-up-tray-20-solid';
+      return 'i-lucide-upload';
     case 'pending':
-      return 'i-heroicons-clock-20-solid';
+      return 'i-lucide-clock';
     default:
-      return 'i-heroicons-question-mark-circle-20-solid';
+      return 'i-lucide-circle-help';
   }
 }
 

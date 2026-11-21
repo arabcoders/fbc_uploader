@@ -1,5 +1,5 @@
 <template>
-  <UContainer class="py-10">
+  <UContainer class="py-6 sm:py-8">
     <div
       class="pointer-events-none fixed inset-0 z-10 bg-black/45 backdrop-blur-[1px] transition-all duration-500 ease-out"
       :class="isLightsOutActive ? 'opacity-100' : 'opacity-0'"
@@ -7,12 +7,39 @@
     />
 
     <div class="space-y-6">
-      <div v-if="notFound && !tokenInfo">
+      <PageHeader
+        section="File transfer"
+        title="Shared files"
+        icon="i-lucide-share-2"
+        :description="
+          tokenInfo
+            ? `${uploads.length} ${uploads.length === 1 ? 'file' : 'files'} available`
+            : undefined
+        "
+      >
+        <template v-if="tokenInfo && shareUrl" #actions>
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-copy"
+            label="Copy link"
+            @click="copyShareUrl"
+          />
+        </template>
+      </PageHeader>
+
+      <div v-if="loading" class="space-y-3" role="status">
+        <span class="sr-only">Loading shared files</span>
+        <USkeleton class="h-16 w-full" />
+        <USkeleton class="h-48 w-full" />
+      </div>
+
+      <div v-else-if="notFound && !tokenInfo">
         <UAlert
           color="error"
-          variant="solid"
+          variant="soft"
           :title="tokenError || 'Token not found'"
-          icon="i-heroicons-exclamation-triangle-20-solid"
+          icon="i-lucide-triangle-alert"
         />
       </div>
 
@@ -22,97 +49,47 @@
           color="warning"
           variant="soft"
           title="Token has expired"
-          icon="i-heroicons-clock-20-solid"
+          icon="i-lucide-clock"
         />
         <UAlert
           v-else-if="isDisabled"
           color="warning"
           variant="soft"
           title="Token is disabled"
-          icon="i-heroicons-lock-closed-20-solid"
+          icon="i-lucide-lock"
         />
       </div>
 
-      <div v-if="tokenInfo" class="space-y-4">
-        <UCard>
-          <div class="space-y-4">
-            <div class="flex items-start justify-between gap-4">
-              <div class="space-y-1">
-                <div class="flex items-center gap-2">
-                  <UIcon name="i-heroicons-share-20-solid" class="size-5 text-primary" />
-                  <h1 class="text-2xl font-bold">Shared Files</h1>
-                </div>
-                <p class="text-muted">
-                  {{ uploads.length }} {{ uploads.length === 1 ? 'file' : 'files' }} available
-                </p>
-              </div>
-              <UButton
-                v-if="shareUrl"
-                color="neutral"
-                variant="outline"
-                icon="i-heroicons-clipboard-document-20-solid"
-                @click="copyShareUrl"
-              >
-                Copy Link
-              </UButton>
-            </div>
-
-            <div class="flex flex-wrap gap-4 text-sm">
-              <div class="flex items-center gap-2">
-                <UIcon name="i-heroicons-calendar-20-solid" class="size-4 text-muted" />
-                <span class="text-muted">Expires:</span>
-                <span class="font-medium">{{ formatDate(tokenInfo.expires_at) }}</span>
-              </div>
-              <div v-if="tokenInfo.allowed_mime?.length" class="flex items-center gap-2">
-                <UIcon name="i-heroicons-document-20-solid" class="size-4 text-muted" />
-                <span class="text-muted">Types:</span>
-                <span class="font-medium">{{ tokenInfo.allowed_mime.join(', ') }}</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <UIcon
-                  :name="
-                    tokenInfo.allow_public_downloads
-                      ? 'i-heroicons-lock-open-20-solid'
-                      : 'i-heroicons-lock-closed-20-solid'
-                  "
-                  class="size-4 text-muted"
-                />
-                <span class="font-medium">
-                  {{
-                    tokenInfo.allow_public_downloads
-                      ? 'Public downloads enabled'
-                      : 'Downloads require authentication'
-                  }}
-                </span>
-              </div>
-            </div>
+      <UCard v-if="tokenInfo" variant="outline">
+        <div class="flex flex-wrap gap-x-5 gap-y-3 text-sm">
+          <div class="flex items-center gap-2">
+            <UIcon name="i-lucide-calendar-days" class="size-4 shrink-0 text-muted" />
+            <span class="text-muted">Expires:</span>
+            <span class="font-medium">{{ formatDate(tokenInfo.expires_at) }}</span>
           </div>
-        </UCard>
-      </div>
-
-      <UCard v-if="!notFound && notice" variant="outline">
-        <template #header>
-          <UCollapsible v-model:open="showNotice">
-            <button class="group flex items-center gap-2 w-full cursor-pointer">
-              <UIcon name="i-heroicons-megaphone-20-solid" />
-              <span class="font-semibold">Notice</span>
-              <UIcon
-                name="i-heroicons-chevron-down-20-solid"
-                class="ml-auto group-data-[state=open]:rotate-180 transition-transform duration-200"
-              />
-            </button>
-
-            <template #content>
-              <div class="px-4 sm:px-6 pb-4 sm:pb-6">
-                <Markdown :content="notice" class="max-w-7xl" />
-              </div>
-            </template>
-          </UCollapsible>
-        </template>
+          <div v-if="tokenInfo.allowed_mime?.length" class="flex min-w-0 items-center gap-2">
+            <UIcon name="i-lucide-file" class="size-4 shrink-0 text-muted" />
+            <span class="text-muted">Types:</span>
+            <span class="wrap-anywhere font-medium">{{ tokenInfo.allowed_mime.join(', ') }}</span>
+          </div>
+          <UBadge
+            :icon="tokenInfo.allow_public_downloads ? 'i-lucide-lock-open' : 'i-lucide-lock'"
+            :label="
+              tokenInfo.allow_public_downloads
+                ? 'Public downloads enabled'
+                : 'Downloads require authentication'
+            "
+            color="neutral"
+            variant="soft"
+          />
+        </div>
       </UCard>
+
+      <UploadNotice v-if="!notFound && notice" v-model:open="showNotice" :content="notice" />
 
       <UCard
         v-if="canPlaySelectedMedia && selectedUpload"
+        variant="outline"
         class="max-w-full overflow-hidden"
         :ui="{ body: 'p-0 sm:p-0', root: 'overflow-hidden' }"
       >
@@ -133,11 +110,7 @@
               <div class="min-w-0">
                 <div class="flex items-center gap-2 text-xs uppercase tracking-wide text-muted">
                   <UIcon
-                    :name="
-                      selectedIsVideo
-                        ? 'i-heroicons-film-20-solid'
-                        : 'i-heroicons-musical-note-20-solid'
-                    "
+                    :name="selectedIsVideo ? 'i-lucide-film' : 'i-lucide-music'"
                     class="size-4"
                   />
                   <span>{{
@@ -148,7 +121,10 @@
                       : 'Click to play'
                   }}</span>
                 </div>
-                <h2 class="mt-1 text-lg font-semibold text-highlighted">
+                <h2
+                  class="mt-1 line-clamp-2 text-lg font-semibold wrap-anywhere text-highlighted"
+                  :title="selectedUpload.filename"
+                >
                   {{ selectedUpload.filename || 'Untitled media' }}
                 </h2>
               </div>
@@ -177,17 +153,15 @@
               </div>
             </div>
 
-            <div v-else class="px-4 py-10 sm:px-6 lg:px-8">
-              <div class="rounded-2xl border border-default bg-default p-6 sm:p-8 shadow-sm">
+            <div v-else class="p-4 sm:p-6">
+              <div class="rounded-lg border border-default bg-default p-3 sm:p-4">
                 <button
                   v-if="!shouldRenderSelectedMedia"
                   type="button"
-                  class="group block w-full rounded-2xl text-left"
+                  class="group block w-full rounded-lg text-left"
                   @click="handlePlayerActivate"
                 >
-                  <div
-                    class="overflow-hidden rounded-2xl border border-default bg-elevated/80 shadow-sm"
-                  >
+                  <div class="overflow-hidden rounded-lg border border-default bg-elevated/80">
                     <img
                       v-if="selectedThumbnailUrl"
                       :src="selectedThumbnailUrl"
@@ -198,7 +172,7 @@
                       v-else
                       class="flex min-h-56 items-center justify-center bg-linear-to-br from-primary/15 via-default to-elevated text-primary"
                     >
-                      <UIcon name="i-heroicons-musical-note-20-solid" class="size-16" />
+                      <UIcon name="i-lucide-music" class="size-16" />
                     </div>
                     <div
                       class="flex items-center justify-between gap-4 border-t border-default bg-default/95 px-5 py-4"
@@ -214,29 +188,16 @@
                       <div
                         class="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring ring-default"
                       >
-                        <UIcon name="i-heroicons-play-20-solid" class="ml-0.5 size-7" />
+                        <UIcon name="i-lucide-play" class="ml-0.5 size-7" />
                       </div>
                     </div>
                   </div>
                 </button>
-                <div v-else class="flex items-center gap-3 text-highlighted">
-                  <div
-                    class="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary ring ring-default"
-                  >
-                    <UIcon name="i-heroicons-musical-note-20-solid" class="size-6" />
-                  </div>
-                  <div>
-                    <div class="text-xs uppercase tracking-wide text-muted">Now listening</div>
-                    <div class="text-lg font-semibold">
-                      {{ selectedUpload.filename || 'Untitled audio' }}
-                    </div>
-                  </div>
-                </div>
                 <audio
                   v-if="shouldRenderSelectedMedia"
                   ref="audioElement"
                   :key="selectedUpload.public_id"
-                  class="mt-6 w-full"
+                  class="block w-full"
                   controls
                   preload="metadata"
                   @error="handleMediaPlaybackError"
@@ -260,9 +221,7 @@
                     variant="soft"
                     size="sm"
                     :icon="
-                      effectiveStoredMediaVolume <= 0
-                        ? 'i-heroicons-speaker-x-mark-20-solid'
-                        : 'i-heroicons-speaker-wave-20-solid'
+                      effectiveStoredMediaVolume <= 0 ? 'i-lucide-volume-x' : 'i-lucide-volume-2'
                     "
                     :aria-label="effectiveStoredMediaVolume <= 0 ? 'Unmute audio' : 'Mute audio'"
                     @click="toggleCurrentMediaMute"
@@ -293,20 +252,15 @@
                   <div class="text-sm font-medium text-highlighted">Can't play this file here</div>
                   <p class="text-sm text-muted">{{ mediaPlaybackError }}</p>
                 </div>
-                <a
+                <UButton
                   v-if="selectedUpload.download_url"
-                  :href="selectedUpload.download_url"
-                  class="shrink-0"
-                >
-                  <UButton
-                    color="neutral"
-                    variant="outline"
-                    icon="i-heroicons-arrow-down-tray-20-solid"
-                    size="sm"
-                  >
-                    Download file
-                  </UButton>
-                </a>
+                  :to="selectedUpload.download_url"
+                  external
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-download"
+                  label="Download file"
+                />
               </div>
             </div>
           </div>
@@ -315,30 +269,21 @@
             <div class="space-y-6 p-4 sm:p-5">
               <div class="space-y-3">
                 <div class="grid gap-2" :class="showActionPair ? 'grid-cols-2' : 'grid-cols-1'">
-                  <a
+                  <UButton
                     v-if="selectedUpload.download_url"
-                    :href="selectedUpload.download_url"
-                    class="w-full"
-                  >
-                    <UButton
-                      color="neutral"
-                      variant="outline"
-                      icon="i-heroicons-arrow-down-tray-20-solid"
-                      size="sm"
-                      class="w-full justify-center"
-                    >
-                      Download
-                    </UButton>
-                  </a>
+                    :to="selectedUpload.download_url"
+                    external
+                    color="neutral"
+                    variant="outline"
+                    icon="i-lucide-download"
+                    label="Download"
+                    block
+                  />
                   <UButton
                     v-if="canShowPlayerFullscreenButton"
                     color="neutral"
                     variant="outline"
-                    :icon="
-                      isPlayerFullscreen
-                        ? 'i-heroicons-arrows-pointing-in-20-solid'
-                        : 'i-heroicons-arrows-pointing-out-20-solid'
-                    "
+                    :icon="isPlayerFullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'"
                     size="sm"
                     class="w-full justify-center"
                     :aria-label="isPlayerFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
@@ -359,10 +304,7 @@
 
               <div class="space-y-3">
                 <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
-                  <UIcon
-                    name="i-heroicons-information-circle-20-solid"
-                    class="size-5 text-primary"
-                  />
+                  <UIcon name="i-lucide-info" class="size-5 text-primary" />
                   <span>About this file</span>
                 </div>
                 <div class="grid gap-3 text-sm">
@@ -403,7 +345,7 @@
                 class="space-y-3 border-t border-default pt-5"
               >
                 <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
-                  <UIcon name="i-heroicons-user-group-20-solid" class="size-5 text-primary" />
+                  <UIcon name="i-lucide-users" class="size-5 text-primary" />
                   <span>Watch Party</span>
                 </div>
                 <p class="text-sm text-muted">Watch or listen with friends in sync.</p>
@@ -413,7 +355,7 @@
                     color="warning"
                     variant="soft"
                     title="Host disconnected. Playback is paused while we wait for the host to reconnect."
-                    icon="i-heroicons-pause-circle-20-solid"
+                    icon="i-lucide-circle-pause"
                   />
                   <div class="flex items-center justify-between gap-4">
                     <span class="text-muted">Status</span>
@@ -439,17 +381,14 @@
                     v-if="watchStatus === 'connected' && watchRole === 'guest'"
                     class="flex items-center gap-2 text-sm text-muted"
                   >
-                    <UIcon
-                      name="i-heroicons-information-circle-20-solid"
-                      class="size-4 shrink-0 text-primary"
-                    />
+                    <UIcon name="i-lucide-info" class="size-4 shrink-0 text-primary" />
                     <span>Playback is controlled by the host.</span>
                   </p>
                   <p
                     v-if="watchStatus === 'connected' && watchRole === 'host' && watchWasPromoted"
                     class="flex items-center gap-2 text-sm text-success"
                   >
-                    <UIcon name="i-heroicons-check-circle-20-solid" class="size-4 shrink-0" />
+                    <UIcon name="i-lucide-circle-check" class="size-4 shrink-0" />
                     <span>You are now the host and can control playback.</span>
                   </p>
                 </div>
@@ -459,7 +398,7 @@
                 <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                   <UButton
                     v-if="watchStatus === 'idle' && !watchRoomId"
-                    icon="i-heroicons-user-plus-20-solid"
+                    icon="i-lucide-user-plus"
                     size="sm"
                     class="w-full justify-center"
                     :loading="watchCreateInProgress"
@@ -470,7 +409,7 @@
                   </UButton>
                   <UButton
                     v-if="watchInvitePath"
-                    icon="i-heroicons-clipboard-document-20-solid"
+                    icon="i-lucide-copy"
                     size="sm"
                     color="neutral"
                     variant="outline"
@@ -481,7 +420,7 @@
                   </UButton>
                   <UButton
                     v-if="watchAutoplayBlocked"
-                    icon="i-heroicons-play-20-solid"
+                    icon="i-lucide-play"
                     size="sm"
                     class="w-full justify-center"
                     @click="resumeWatch"
@@ -490,7 +429,7 @@
                   </UButton>
                   <UButton
                     v-if="watchStatus !== 'idle'"
-                    icon="i-heroicons-arrow-left-on-rectangle-20-solid"
+                    icon="i-lucide-log-out"
                     size="sm"
                     color="neutral"
                     variant="ghost"
@@ -507,10 +446,7 @@
                 class="space-y-3 border-t border-default pt-5"
               >
                 <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
-                  <UIcon
-                    name="i-heroicons-chat-bubble-left-right-20-solid"
-                    class="size-5 text-primary"
-                  />
+                  <UIcon name="i-lucide-captions" class="size-5 text-primary" />
                   <span>Subtitles</span>
                 </div>
                 <div class="space-y-3 text-sm">
@@ -520,21 +456,16 @@
                       <div class="font-medium text-highlighted">Show subtitles</div>
                       <USwitch v-model="subtitleEnabled" :label="subtitleEnabled ? 'On' : 'Off'" />
                     </div>
-                    <a
+                    <UButton
                       v-if="activeSubtitleDownloadUrl"
-                      :href="activeSubtitleDownloadUrl"
+                      :to="activeSubtitleDownloadUrl"
+                      external
                       :download="activeSubtitleDownloadFilename"
-                      class="inline-flex"
-                    >
-                      <UButton
-                        color="neutral"
-                        variant="outline"
-                        icon="i-heroicons-arrow-down-tray-20-solid"
-                        size="sm"
-                      >
-                        Download active subtitle
-                      </UButton>
-                    </a>
+                      color="neutral"
+                      variant="outline"
+                      icon="i-lucide-download"
+                      label="Download active subtitle"
+                    />
                   </div>
                   <div v-else-if="subtitleLoadError" class="text-warning">
                     {{ subtitleLoadError }}
@@ -550,7 +481,7 @@
                 class="space-y-3 border-t border-default pt-5"
               >
                 <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
-                  <UIcon name="i-heroicons-tag-20-solid" class="size-5 text-primary" />
+                  <UIcon name="i-lucide-tag" class="size-5 text-primary" />
                   <span>Metadata</span>
                 </div>
                 <div class="space-y-2 text-sm">
@@ -567,7 +498,7 @@
 
               <div v-if="playableUploads.length > 1" class="space-y-3 border-t border-default pt-5">
                 <div class="flex items-center gap-2 text-sm font-semibold text-highlighted">
-                  <UIcon name="i-heroicons-queue-list-20-solid" class="size-5 text-primary" />
+                  <UIcon name="i-lucide-list" class="size-5 text-primary" />
                   <span>Other files</span>
                 </div>
                 <div class="space-y-2">
@@ -595,11 +526,7 @@
                         />
                         <UIcon
                           v-else
-                          :name="
-                            isVideoUpload(upload)
-                              ? 'i-heroicons-film-20-solid'
-                              : 'i-heroicons-musical-note-20-solid'
-                          "
+                          :name="isVideoUpload(upload) ? 'i-lucide-film' : 'i-lucide-music'"
                           class="size-5"
                         />
                       </div>
@@ -628,17 +555,19 @@
         variant="outline"
         title="Playback unavailable"
         description="Playback is unavailable because downloads are disabled for this link."
-        icon="i-heroicons-lock-closed-20-solid"
+        icon="i-lucide-lock"
       />
 
       <div v-if="uploads.length > 0" class="space-y-3">
-        <div class="flex items-center gap-2">
-          <UIcon name="i-heroicons-folder-open-20-solid" />
-          <h2 class="text-lg font-semibold">Files</h2>
+        <div class="flex items-center gap-3">
+          <span class="fbc-section-icon" aria-hidden="true">
+            <UIcon name="i-lucide-folder-open" class="size-4" />
+          </span>
+          <h2 class="font-semibold text-highlighted">Files</h2>
         </div>
 
         <div class="block md:hidden space-y-3">
-          <UCard v-for="upload in uploads" :key="upload.public_id">
+          <UCard v-for="upload in uploads" :key="upload.public_id" variant="outline">
             <template #header>
               <div class="flex items-start gap-3">
                 <UIcon
@@ -689,12 +618,7 @@
 
               <div class="flex gap-2 pt-2 border-t border-default">
                 <UPopover :ui="{ content: 'p-3' }">
-                  <UButton
-                    size="xs"
-                    color="neutral"
-                    variant="soft"
-                    icon="i-heroicons-information-circle-20-solid"
-                  >
+                  <UButton size="xs" color="neutral" variant="soft" icon="i-lucide-info">
                     Details
                   </UButton>
                   <template #content>
@@ -734,31 +658,19 @@
           </UCard>
         </div>
 
-        <div class="hidden md:block overflow-x-auto rounded-lg ring ring-default">
-          <table class="w-full divide-y divide-default">
-            <thead class="bg-elevated">
+        <div class="fbc-table-surface hidden md:block">
+          <table class="fbc-table" aria-label="Shared files">
+            <thead>
               <tr>
-                <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted min-w-48">
-                  Filename
-                </th>
-                <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted w-32">
-                  Status
-                </th>
-                <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted w-30">
-                  Size
-                </th>
-                <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted w-50">
-                  Uploaded
-                </th>
+                <th scope="col" class="min-w-40">Filename</th>
+                <th scope="col" class="w-32">Status</th>
+                <th scope="col" class="w-24">Size</th>
+                <th scope="col" class="w-44">Uploaded</th>
               </tr>
             </thead>
-            <tbody class="bg-default divide-y divide-default">
-              <tr
-                v-for="upload in uploads"
-                :key="upload.public_id"
-                class="hover:bg-elevated/50 transition-colors"
-              >
-                <td class="px-4 py-3 text-sm">
+            <tbody>
+              <tr v-for="upload in uploads" :key="upload.public_id">
+                <td>
                   <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">
                     <div class="flex items-center gap-2">
                       <UIcon
@@ -814,15 +726,15 @@
                     </template>
                   </UPopover>
                 </td>
-                <td class="px-4 py-3 text-sm">
+                <td>
                   <UBadge :color="getStatusColor(upload.status)" variant="soft">
                     {{ formatUploadStatus(upload.status) }}
                   </UBadge>
                 </td>
-                <td class="px-4 py-3 text-sm font-medium">
+                <td class="font-medium">
                   {{ formatBytes(upload.size_bytes || 0) }}
                 </td>
-                <td class="px-4 py-3 text-sm text-muted">
+                <td class="text-muted">
                   {{ formatDate(upload.created_at) }}
                 </td>
               </tr>
@@ -831,21 +743,17 @@
         </div>
       </div>
 
-      <div v-else-if="tokenInfo && !loading" class="max-w-full">
-        <UAlert
-          color="neutral"
-          variant="outline"
-          title="No files uploaded"
-          description="No files have been uploaded for this token."
-          icon="i-heroicons-inbox-20-solid"
-        />
-      </div>
+      <UEmpty
+        v-else-if="tokenInfo && !loading"
+        title="No files uploaded"
+        description="No files have been uploaded for this token."
+        icon="i-lucide-inbox"
+      />
 
-      <div v-if="loading" class="flex justify-center py-12">
-        <UIcon name="i-heroicons-arrow-path" class="size-8 animate-spin text-primary" />
-      </div>
-
-      <UModal v-model:open="showShortcutHelp" title="Keyboard Shortcuts">
+      <UModal v-model:open="showShortcutHelp">
+        <template #title>
+          <ModalTitle icon="i-lucide-keyboard" label="Keyboard Shortcuts" />
+        </template>
         <template #body>
           <div class="grid gap-5 text-sm sm:grid-cols-2">
             <div class="space-y-3">
@@ -1290,7 +1198,7 @@ function copyWatchInvite() {
   toast.add({
     title: 'Watch invite copied',
     color: 'success',
-    icon: 'i-heroicons-check-circle-20-solid',
+    icon: 'i-lucide-circle-check',
   });
 }
 
@@ -1362,7 +1270,7 @@ function copyShareUrl() {
   toast.add({
     title: 'Share link copied to clipboard',
     color: 'success',
-    icon: 'i-heroicons-check-circle-20-solid',
+    icon: 'i-lucide-circle-check',
   });
 }
 
@@ -1711,31 +1619,31 @@ function getFileIcon(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase();
   switch (ext) {
     case 'pdf':
-      return 'i-heroicons-document-text-20-solid';
+      return 'i-lucide-file-text';
     case 'jpg':
     case 'jpeg':
     case 'png':
     case 'gif':
     case 'webp':
-      return 'i-heroicons-photo-20-solid';
+      return 'i-lucide-image';
     case 'mp4':
     case 'mov':
     case 'avi':
     case 'mkv':
-      return 'i-heroicons-film-20-solid';
+      return 'i-lucide-film';
     case 'mp3':
     case 'wav':
     case 'flac':
-      return 'i-heroicons-musical-note-20-solid';
+      return 'i-lucide-music';
     case 'zip':
     case 'rar':
     case '7z':
-      return 'i-heroicons-archive-box-20-solid';
+      return 'i-lucide-archive';
     case 'doc':
     case 'docx':
-      return 'i-heroicons-document-20-solid';
+      return 'i-lucide-file';
     default:
-      return 'i-heroicons-document-20-solid';
+      return 'i-lucide-file';
   }
 }
 

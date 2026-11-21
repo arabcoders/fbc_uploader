@@ -1,13 +1,25 @@
 <template>
-  <UContainer class="py-10">
+  <UContainer class="py-6 sm:py-8">
     <div class="space-y-6">
-      <div v-if="notFound && !tokenInfo">
+      <PageHeader
+        section="File transfer"
+        title="Upload files"
+        icon="i-lucide-cloud-upload"
+        description="Add files using this upload link."
+      />
+
+      <div v-if="loading" class="space-y-3" role="status">
+        <span class="sr-only">Loading upload link</span>
+        <USkeleton class="h-20 w-full" />
+        <USkeleton class="h-48 w-full" />
+      </div>
+
+      <div v-else-if="notFound && !tokenInfo">
         <UAlert
           color="error"
-          variant="solid"
+          variant="soft"
           :title="tokenError || 'Token not found'"
-          icon="i-heroicons-exclamation-triangle-20-solid"
-          :ui="{ title: 'text-lg font-semibold', description: 'text-base' }"
+          icon="i-lucide-triangle-alert"
         />
       </div>
 
@@ -18,8 +30,7 @@
           variant="soft"
           title="Token has expired"
           description="This upload token has expired and can no longer be used."
-          icon="i-heroicons-clock-20-solid"
-          :ui="{ title: 'text-lg font-semibold', description: 'text-base' }"
+          icon="i-lucide-clock"
         />
         <UAlert
           v-else-if="isDisabled"
@@ -27,13 +38,12 @@
           variant="soft"
           title="Token is disabled"
           description="This token has been disabled and can no longer be used."
-          icon="i-heroicons-lock-closed-20-solid"
-          :ui="{ title: 'text-lg font-semibold', description: 'text-base' }"
+          icon="i-lucide-lock"
         />
       </div>
 
       <template v-else-if="tokenInfo">
-        <div class="space-y-4">
+        <UCard variant="outline">
           <TokenSummary
             :token-info="tokenInfo"
             :share-link="shareLinkText"
@@ -42,33 +52,16 @@
             @copy="copyShareLink"
             @refresh="refreshAll"
           />
-        </div>
-
-        <UCard v-if="notice" variant="outline">
-          <template #header>
-            <UCollapsible v-model:open="showNotice">
-              <button class="group flex items-center gap-2 w-full cursor-pointer">
-                <UIcon name="i-heroicons-megaphone-20-solid" />
-                <span class="font-semibold">Notice</span>
-                <UIcon
-                  name="i-heroicons-chevron-down-20-solid"
-                  class="ml-auto group-data-[state=open]:rotate-180 transition-transform duration-200"
-                />
-              </button>
-
-              <template #content>
-                <div class="px-4 sm:px-6 pb-4 sm:pb-6">
-                  <Markdown :content="notice" class="max-w-7xl" />
-                </div>
-              </template>
-            </UCollapsible>
-          </template>
         </UCard>
 
+        <UploadNotice v-if="notice" v-model:open="showNotice" :content="notice" />
+
         <div v-if="allRows.length > 0" class="space-y-3">
-          <div class="flex items-center gap-2">
-            <UIcon name="i-heroicons-list-bullet-20-solid" />
-            <h2 class="text-lg font-semibold">Uploads</h2>
+          <div class="flex items-center gap-3">
+            <span class="fbc-section-icon" aria-hidden="true">
+              <UIcon name="i-lucide-list" class="size-4" />
+            </span>
+            <h2 class="font-semibold text-highlighted">Uploads</h2>
           </div>
           <UploadsTable
             :rows="allRows"
@@ -79,18 +72,15 @@
           />
         </div>
 
-        <div v-else-if="!showForms" class="max-w-full">
-          <UAlert
-            color="neutral"
-            variant="outline"
-            title="No files uploaded"
-            description="This token has no remaining upload slots."
-            icon="i-heroicons-inbox-20-solid"
-          />
-        </div>
+        <UEmpty
+          v-else-if="!showForms"
+          title="No files uploaded"
+          description="This token has no remaining upload slots."
+          icon="i-lucide-inbox"
+        />
 
         <div v-if="showForms" class="space-y-4">
-          <div class="grid gap-4 md:grid-cols-2">
+          <div class="grid items-start gap-4 lg:grid-cols-2">
             <UploadSlotCard
               v-for="(slot, idx) in unintiatedSlots"
               :key="idx"
@@ -98,7 +88,7 @@
               :upload-slot="slot"
               :metadata-schema="metadataSchema"
               :accept-attr="acceptAttr"
-              @file="(e: Event) => onFile(slot, e)"
+              @file="(file) => onFile(slot, file)"
               @meta="(v) => onMetaChange(slot, v)"
               @start="start(slot, idx)"
             />
@@ -107,7 +97,7 @@
             v-if="canAddMoreSlots"
             color="neutral"
             variant="outline"
-            icon="i-heroicons-plus-20-solid"
+            icon="i-lucide-plus"
             @click="addSlot"
           >
             Add another upload ({{ (tokenInfo?.remaining_uploads || 0) - unintiatedSlots.length }}
@@ -142,7 +132,9 @@ import { useStorage } from '@vueuse/core';
 
 const route = useRoute();
 const toast = useToast();
-const token = ref<string>((route.params.token as string) || '');
+const token = ref(
+  typeof route.query.token === 'string' ? route.query.token : String(route.params.token || ''),
+);
 
 const {
   tokenInfo,
@@ -160,6 +152,7 @@ const { slots, seedSlots, addSlot, unintiatedSlots } = useUploadSlots(metadataSc
 const { pollUploadStatus, stopPolling, stopAllPolling } = useUploadPolling();
 
 const notice = ref<string>('');
+const loading = ref(true);
 
 const results = ref<Record<number, any>>({});
 const resumeTarget = ref<UploadRow | null>(null);
@@ -214,18 +207,20 @@ const acceptAttr = computed(() => {
 });
 
 async function refreshAll() {
-  await fetchTokenInfo();
-  await fetchMetadata();
-  seedSlots(tokenInfo.value);
+  try {
+    await fetchTokenInfo();
+    await fetchMetadata();
+    seedSlots(tokenInfo.value);
+  } finally {
+    loading.value = false;
+  }
 }
 
 function buildDefaultMetadataValues() {
   return Object.fromEntries(metadataSchema.value.map((field) => [field.key, field.default ?? '']));
 }
 
-async function onFile(slot: Slot, e: Event) {
-  const target = e.target as HTMLInputElement;
-  const selectedFile = target.files?.[0] || null;
+async function onFile(slot: Slot, selectedFile: File | null) {
   const defaultValues = buildDefaultMetadataValues();
 
   slot.file = selectedFile;
@@ -262,7 +257,7 @@ async function copyShareLink() {
   toast.add({
     title: 'Share link copied to clipboard',
     color: 'success',
-    icon: 'i-heroicons-check-circle-20-solid',
+    icon: 'i-lucide-circle-check',
   });
 }
 
@@ -365,7 +360,7 @@ async function handleCancel(row: UploadRowWithSlot) {
       title: 'Upload cancelled',
       description: 'Upload slot has been restored',
       color: 'success',
-      icon: 'i-heroicons-check-circle-20-solid',
+      icon: 'i-lucide-circle-check',
     });
 
     await refreshAll();
@@ -375,7 +370,7 @@ async function handleCancel(row: UploadRowWithSlot) {
       title: 'Failed to cancel upload',
       description: error?.data?.detail || error?.message || 'Unknown error',
       color: 'error',
-      icon: 'i-heroicons-exclamation-triangle-20-solid',
+      icon: 'i-lucide-triangle-alert',
     });
   }
 }
@@ -397,7 +392,7 @@ async function onResumeFile(e: Event) {
       title: 'File name mismatch',
       description: `Select ${resumeTarget.value.filename}; the selected file is ${file.name}.`,
       color: 'error',
-      icon: 'i-heroicons-exclamation-triangle-20-solid',
+      icon: 'i-lucide-triangle-alert',
     });
     if (resumeInput.value) resumeInput.value.value = '';
     resumeTarget.value = null;
@@ -413,7 +408,7 @@ async function onResumeFile(e: Event) {
           ? 'The original upload size is unavailable.'
           : `${formatBytes(expectedSize)} expected; the selected file is ${formatBytes(file.size)}.`,
       color: 'error',
-      icon: 'i-heroicons-exclamation-triangle-20-solid',
+      icon: 'i-lucide-triangle-alert',
     });
     if (resumeInput.value) resumeInput.value.value = '';
     resumeTarget.value = null;
@@ -471,12 +466,10 @@ watch(
       refreshAll();
     }
   },
-  { immediate: true },
 );
 
 onMounted(async () => {
-  if (token.value) refreshAll();
-  else notFound.value = true;
+  void refreshAll();
 
   const notice_req = await $fetch<{ notice: string | null }>('/api/notice/');
   if (notice_req.notice) {

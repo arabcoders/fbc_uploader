@@ -1,18 +1,16 @@
 <template>
   <div>
-    <div
-      v-if="loading"
-      class="flex items-center justify-center py-12 rounded-lg ring ring-default bg-default"
-    >
-      <UIcon name="i-heroicons-arrow-path" class="size-6 animate-spin text-muted" />
+    <div v-if="loading" class="space-y-3" role="status">
+      <span class="sr-only">Loading uploads</span>
+      <USkeleton v-for="row in 3" :key="row" class="h-12 w-full" />
     </div>
 
-    <div
+    <UEmpty
       v-else-if="!uploads.length"
-      class="flex items-center justify-center py-12 rounded-lg ring ring-default bg-default"
-    >
-      <p class="text-sm text-muted">No uploads found</p>
-    </div>
+      icon="i-lucide-inbox"
+      title="No uploads"
+      description="Files uploaded with this token will appear here."
+    />
 
     <template v-else>
       <div class="block md:hidden space-y-3">
@@ -60,12 +58,7 @@
 
             <div class="flex flex-wrap gap-2 pt-2 border-t border-default">
               <UPopover :ui="{ content: 'p-3' }">
-                <UButton
-                  size="xs"
-                  color="neutral"
-                  variant="soft"
-                  icon="i-heroicons-information-circle-20-solid"
-                >
+                <UButton size="xs" color="neutral" variant="soft" icon="i-lucide-info">
                   Metadata
                 </UButton>
                 <template #content>
@@ -100,7 +93,7 @@
                 size="xs"
                 color="error"
                 variant="soft"
-                icon="i-heroicons-trash-20-solid"
+                icon="i-lucide-trash-2"
                 @click="$emit('delete', upload)"
               >
                 Delete
@@ -110,32 +103,20 @@
         </UCard>
       </div>
 
-      <div class="hidden md:block overflow-x-auto rounded-lg ring ring-default">
-        <table class="w-full divide-y divide-default">
-          <thead class="bg-elevated">
+      <div class="fbc-table-surface hidden md:block">
+        <table class="fbc-table" aria-label="Uploaded files">
+          <thead>
             <tr>
-              <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted min-w-64">
-                File
-              </th>
-              <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted w-32">Size</th>
-              <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted w-40">
-                Uploaded
-              </th>
-              <th class="px-4 py-3 text-left text-sm font-semibold text-highlighted w-28">
-                Status
-              </th>
-              <th class="px-4 py-3 text-right text-sm font-semibold text-highlighted w-32">
-                Actions
-              </th>
+              <th scope="col" class="min-w-48">File</th>
+              <th scope="col" class="w-24">Size</th>
+              <th scope="col" class="w-40">Uploaded</th>
+              <th scope="col" class="w-28">Status</th>
+              <th scope="col" class="w-28 text-end">Actions</th>
             </tr>
           </thead>
-          <tbody class="bg-default divide-y divide-default">
-            <tr
-              v-for="upload in uploads"
-              :key="upload.public_id"
-              class="hover:bg-elevated/50 transition-colors"
-            >
-              <td class="px-4 py-3 text-sm">
+          <tbody>
+            <tr v-for="upload in uploads" :key="upload.public_id">
+              <td>
                 <div class="space-y-1">
                   <UPopover mode="hover" :content="{ align: 'start' }" :ui="{ content: 'p-3' }">
                     <a
@@ -179,13 +160,13 @@
                   <div class="text-xs text-muted">{{ upload.mimetype || 'Unknown type' }}</div>
                 </div>
               </td>
-              <td class="px-4 py-3 text-sm font-medium">
+              <td class="font-medium">
                 {{ formatBytes(upload.size_bytes || 0) }}
               </td>
-              <td class="px-4 py-3 text-sm">
+              <td>
                 {{ formatDate(upload.created_at as string) }}
               </td>
-              <td class="px-4 py-3 text-sm">
+              <td>
                 <UBadge
                   :color="upload.status === 'completed' ? 'success' : 'neutral'"
                   variant="subtle"
@@ -193,12 +174,12 @@
                   {{ formatUploadStatus(upload.status) }}
                 </UBadge>
               </td>
-              <td class="px-4 py-3 text-sm text-right">
+              <td class="text-end">
                 <UButton
                   size="sm"
                   color="error"
                   variant="ghost"
-                  icon="i-heroicons-trash-20-solid"
+                  icon="i-lucide-trash-2"
                   @click="$emit('delete', upload)"
                 >
                   Delete

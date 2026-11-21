@@ -21,7 +21,7 @@
         class="block h-full w-full bg-black object-contain opacity-90 transition duration-200 group-hover:opacity-100"
       />
       <div v-else class="flex h-full w-full items-center justify-center bg-black/90 text-white/80">
-        <UIcon name="i-heroicons-film-20-solid" class="size-12" />
+        <UIcon name="i-lucide-film" class="size-12" />
       </div>
       <div
         class="pointer-events-none absolute inset-0 bg-linear-to-t from-black/70 via-transparent to-black/20"
@@ -38,7 +38,7 @@
         <div
           class="flex size-16 shrink-0 items-center justify-center rounded-full bg-white/12 text-white backdrop-blur ring-1 ring-white/25"
         >
-          <UIcon name="i-heroicons-play-20-solid" class="ml-1 size-8" />
+          <UIcon name="i-lucide-play" class="ml-1 size-8" />
         </div>
       </div>
     </button>
@@ -117,9 +117,7 @@
                 variant="soft"
                 size="sm"
                 class="opacity-65 transition-opacity hover:opacity-100 focus-visible:opacity-100"
-                :icon="
-                  isCustomVideoPaused ? 'i-heroicons-play-20-solid' : 'i-heroicons-pause-20-solid'
-                "
+                :icon="isCustomVideoPaused ? 'i-lucide-play' : 'i-lucide-pause'"
                 :aria-label="isCustomVideoPaused ? 'Play video' : 'Pause video'"
                 @click="toggleCustomVideoPlayback"
               />
@@ -151,11 +149,7 @@
                 variant="soft"
                 size="sm"
                 class="opacity-65 transition-opacity hover:opacity-100 focus-visible:opacity-100"
-                :icon="
-                  effectiveStoredMediaVolume <= 0
-                    ? 'i-heroicons-speaker-x-mark-20-solid'
-                    : 'i-heroicons-speaker-wave-20-solid'
-                "
+                :icon="effectiveStoredMediaVolume <= 0 ? 'i-lucide-volume-x' : 'i-lucide-volume-2'"
                 :aria-label="effectiveStoredMediaVolume <= 0 ? 'Unmute video' : 'Mute video'"
                 @click="toggleCurrentMediaMute"
               />
@@ -175,11 +169,7 @@
                 variant="soft"
                 size="sm"
                 class="opacity-65 transition-opacity hover:opacity-100 focus-visible:opacity-100"
-                :icon="
-                  isPlayerFullscreen
-                    ? 'i-heroicons-arrows-pointing-in-20-solid'
-                    : 'i-heroicons-arrows-pointing-out-20-solid'
-                "
+                :icon="isPlayerFullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'"
                 :aria-label="isPlayerFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
                 @click="togglePlayerFullscreen"
               />

@@ -1,71 +1,73 @@
 <template>
-  <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-    <template v-for="field in schema" :key="field.key">
-      <div class="space-y-1">
-        <div class="flex items-center gap-1">
-          <label class="text-sm font-medium">{{ field.label }}</label>
-          <span v-if="field.required" class="text-xs text-primary-500">*</span>
-        </div>
+  <div v-if="schema.length" class="grid gap-4 sm:grid-cols-2">
+    <UFormField
+      v-for="field in schema"
+      :key="field.key"
+      :name="field.key"
+      :label="field.label"
+      :required="field.required"
+      :help="field.help || field.description"
+    >
+      <USelectMenu
+        v-if="(field.type === 'select' || field.type === 'multiselect') && !field.allowCustom"
+        :model-value="getValue(field)"
+        @update:model-value="(v) => setValue(field, v)"
+        :multiple="field.type === 'multiselect'"
+        :items="selectOptions(field)"
+        :aria-label="field.label"
+        :placeholder="field.placeholder || 'Select an option'"
+        value-key="value"
+        class="w-full"
+      />
 
-        <USelectMenu
-          v-if="(field.type === 'select' || field.type === 'multiselect') && !field.allowCustom"
-          :model-value="getValue(field)"
-          @update:model-value="(v) => setValue(field, v)"
-          :multiple="field.type === 'multiselect'"
-          :options="selectOptions(field)"
-          class="w-full"
-        />
-
+      <template v-else-if="field.type === 'select' || field.type === 'multiselect'">
         <UInput
-          v-else-if="field.type === 'select' || field.type === 'multiselect'"
           :model-value="displayCustom(field)"
           @update:model-value="(v) => setCustom(field, v as string)"
-          :list="`dl-${field.key}`"
+          :list="field.options?.length ? `${id}-${field.key}` : undefined"
           :placeholder="field.placeholder"
           class="w-full"
         />
-        <datalist v-if="field.allowCustom && field.options?.length" :id="`dl-${field.key}`">
+        <datalist v-if="field.options?.length" :id="`${id}-${field.key}`">
           <option v-for="opt in selectOptions(field)" :key="opt.value" :value="opt.value">
             {{ opt.label }}
           </option>
         </datalist>
+      </template>
 
-        <UTextarea
-          v-else-if="field.type === 'text'"
-          :model-value="getValue(field)"
-          @update:model-value="(v) => setValue(field, v)"
-          :placeholder="field.placeholder"
-          class="w-full"
-        />
+      <UTextarea
+        v-else-if="field.type === 'text'"
+        :model-value="getValue(field)"
+        @update:model-value="(v) => setValue(field, v)"
+        :placeholder="field.placeholder"
+        class="w-full"
+      />
 
-        <USwitch
-          v-else-if="field.type === 'boolean'"
-          :model-value="getValue(field)"
-          @update:model-value="(v) => setValue(field, v)"
-          class="w-full"
-        />
+      <USwitch
+        v-else-if="field.type === 'boolean'"
+        :model-value="getValue(field)"
+        @update:model-value="(v) => setValue(field, v)"
+        class="w-full"
+      />
 
-        <UInput
-          v-else
-          :model-value="getValue(field)"
-          @update:model-value="(v) => setValue(field, v)"
-          v-bind="inputProps(field)"
-          class="w-full"
-        />
-
-        <p v-if="field.help || field.description" class="text-xs opacity-70">
-          {{ field.help || field.description }}
-        </p>
-      </div>
-    </template>
+      <UInput
+        v-else
+        :model-value="getValue(field)"
+        @update:model-value="(v) => setValue(field, v)"
+        v-bind="inputProps(field)"
+        class="w-full"
+      />
+    </UFormField>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { Field } from '../types/metadata';
+import { useId } from 'vue';
 import { UInput, UTextarea, USwitch, USelectMenu } from '#components';
 
 const { schema } = defineProps<{ schema: Field[] }>();
+const id = useId();
 
 const modelValue = defineModel<Record<string, any>>({ required: true });
 const emit = defineEmits<{ change: [Record<string, any>] }>();
