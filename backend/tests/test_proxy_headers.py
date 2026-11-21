@@ -98,7 +98,7 @@ def test_server_disables_proxy_headers(monkeypatch):
     monkeypatch.setenv("FBC_DEV_MODE", "0")
 
     with patch("backend.main.uvicorn.run") as run_mock:
-        main()
+        main([])
 
     run_mock.assert_called_once_with(
         "backend.app.main:app",

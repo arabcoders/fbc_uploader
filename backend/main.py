@@ -1,6 +1,8 @@
+import argparse
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import uvicorn
@@ -12,7 +14,17 @@ if str(ROOT) not in sys.path:
 LOG: logging.Logger = logging.getLogger("fbc-uploader")
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Start FBC Uploader", allow_abbrev=False)
+    parser.add_argument(
+        "--no-auto-migration",
+        action="store_true",
+        help="Prevent automatic upgrades of initialized databases; new databases are still initialized",
+    )
+    if parser.parse_args(argv).no_auto_migration:
+        # Uvicorn's reload subprocess imports the app separately.
+        os.environ["FBC_NO_AUTO_MIGRATION"] = "1"
+
     uvicorn.run(
         "backend.app.main:app",
         host="0.0.0.0",

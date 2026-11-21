@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
 
         """
         if not settings.skip_migrations:
-            await run_in_threadpool(run_migrations)
+            await run_in_threadpool(run_migrations, no_auto_migration=settings.no_auto_migration)
 
         queue = ProcessingQueue()
         queue.start_worker()
