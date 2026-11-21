@@ -1,18 +1,19 @@
 <template>
   <form class="space-y-4" @submit.prevent="handleSubmit">
     <div class="grid gap-4 sm:grid-cols-2">
-      <UFormField label="Max uploads" description="Maximum number of uploads" required>
+      <UFormField label="Max uploads" name="max_uploads" required>
         <UInput v-model.number="state.max_uploads" type="number" min="1" required class="w-full" />
       </UFormField>
 
-      <UFormField label="Max file size" description="e.g. 100M, 1G, 500MB, 2GB" required>
+      <UFormField label="Max file size" name="max_size" help="e.g. 100M, 1G, 500MB, 2GB" required>
         <UInput v-model="state.max_size" required placeholder="1G" class="w-full" />
       </UFormField>
     </div>
 
     <UFormField
       label="Expiry date & time"
-      :description="
+      name="expiry"
+      :help="
         mode === 'create'
           ? 'Leave blank to use the server default'
           : 'Set a new expiry date and time'
@@ -23,7 +24,8 @@
 
     <UFormField
       label="Allowed MIME types"
-      description="Enter one type per line. Leave blank to allow any type. For example: video/*"
+      name="allowed_mime"
+      help="Enter one type per line. Leave blank to allow any type. For example: video/*"
     >
       <UTextarea
         v-model="state.allowed_mime"
@@ -34,12 +36,6 @@
     </UFormField>
 
     <UCheckbox v-if="mode === 'edit'" v-model="state.disabled" label="Disable this token" />
-
-    <div class="flex items-center justify-end gap-3 pt-2">
-      <UButton type="submit" color="primary" :loading="loading">
-        {{ submitLabel || (mode === 'edit' ? 'Save changes' : 'Create token') }}
-      </UButton>
-    </div>
   </form>
 </template>
 
@@ -65,14 +61,10 @@ const props = withDefaults(
       allowed_mime?: string[] | null;
       disabled?: boolean;
     } | null;
-    submitLabel?: string;
-    loading?: boolean;
   }>(),
   {
     mode: 'create',
     token: null,
-    submitLabel: undefined,
-    loading: false,
   },
 );
 

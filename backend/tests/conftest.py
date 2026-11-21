@@ -9,6 +9,7 @@ from importlib import reload
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 TESTS_TMP_ROOT = Path("/tmp/tests-fbc")  # noqa: S108
@@ -99,7 +100,7 @@ def reset_metadata_schema():
     metadata_schema._cache = {"mtime": None, "schema": []}
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def setup_db(test_run_dir):
     from backend.app.db import engine, init_db
 

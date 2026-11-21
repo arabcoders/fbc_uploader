@@ -1,52 +1,49 @@
 <template>
-  <UContainer class="py-14">
-    <div class="max-w-md mx-auto space-y-8">
-      <div class="space-y-2 text-center">
-        <h1 class="text-3xl font-bold">Admin sign-in</h1>
-        <p class="text-muted">Enter the FBC API key to manage upload tokens.</p>
-      </div>
-
-      <UCard variant="outline">
-        <form class="space-y-6" @submit.prevent="onSubmit">
-          <UFormField
-            label="API Key"
-            help="The key is stored locally in your browser."
-            required
-            size="xl"
-          >
-            <UInput
-              v-model="adminKey"
-              type="password"
-              autocomplete="off"
-              required
-              class="w-full"
-              placeholder="FBC API key"
-              icon="i-heroicons-key-20-solid"
-            />
-          </UFormField>
-
-          <UAlert
-            v-if="error"
-            color="error"
-            variant="soft"
-            icon="i-heroicons-exclamation-triangle-20-solid"
-            :title="error"
-          />
-
-          <div class="flex items-center gap-3">
-            <UButton
-              type="submit"
-              color="primary"
-              block
-              icon="i-heroicons-arrow-right-on-rectangle-20-solid"
-              :loading="loading"
-            >
-              Sign in
-            </UButton>
+  <UContainer class="flex justify-center py-10 sm:py-16">
+    <UCard variant="outline" class="w-full max-w-md">
+      <template #header>
+        <div class="flex items-center gap-3">
+          <span class="fbc-section-icon" aria-hidden="true">
+            <UIcon name="i-lucide-shield-check" class="size-5" />
+          </span>
+          <div>
+            <h1 class="font-semibold text-highlighted">Admin sign-in</h1>
+            <p class="text-sm text-toned">Enter your FBC API key to manage upload tokens.</p>
           </div>
-        </form>
-      </UCard>
-    </div>
+        </div>
+      </template>
+
+      <form class="space-y-5" @submit.prevent="onSubmit">
+        <UAlert
+          v-if="error"
+          color="error"
+          variant="soft"
+          icon="i-lucide-triangle-alert"
+          title="Could not sign in"
+          :description="error"
+        />
+
+        <UFormField
+          label="API key"
+          name="adminKey"
+          help="The key is stored locally in your browser."
+          required
+        >
+          <UInput
+            v-model="adminKey"
+            type="password"
+            autocomplete="off"
+            required
+            :disabled="loading"
+            class="w-full"
+            placeholder="FBC API key"
+            icon="i-lucide-key-round"
+          />
+        </UFormField>
+
+        <UButton type="submit" block icon="i-lucide-log-in" :loading="loading" label="Sign in" />
+      </form>
+    </UCard>
   </UContainer>
 </template>
 
@@ -78,13 +75,12 @@ const onSubmit = async () => {
 
   try {
     await $apiFetch('/api/admin/validate');
-    toast.add({ title: 'Signed in', color: 'success', icon: 'i-heroicons-check-circle-20-solid' });
+    toast.add({ title: 'Signed in', color: 'success', icon: 'i-lucide-circle-check' });
     await navigateTo(redirectTo.value);
   } catch (err) {
     const apiError = err as ApiError;
     adminToken.value = null;
     error.value = apiError?.data?.detail || apiError?.message || 'Invalid API key';
-    console.log('Admin sign-in error:', err, error.value);
   } finally {
     loading.value = false;
   }

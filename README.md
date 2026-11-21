@@ -4,6 +4,8 @@ FBC Uploader accepts token-authorized uploads without user accounts. Administrat
 
 Uploads can resume through TUS. A configurable schema validates upload metadata.
 
+To upload in the browser, open an upload link, choose a file or drop it onto the file picker, then fill out any required metadata and select **Start upload**.
+
 # Installation
 
 ## Run with Docker

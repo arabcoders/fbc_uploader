@@ -3,7 +3,8 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import inspect, pool
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 # Ensure project root on path so `backend` package resolves when running alembic from repo root
@@ -50,8 +51,24 @@ async def run_migrations_online() -> None:
         await connection.run_sync(do_run_migrations)
 
 
-def do_run_migrations(connection) -> None:
+def do_run_migrations(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
+
+    if config.attributes.get("no_auto_migration"):
+        current = set(context.get_context().get_current_heads())
+        expected = set(context.script.get_heads())
+        if current == expected:
+            return
+        schema = inspect(connection)
+        if current or schema.get_table_names() or schema.get_view_names():
+            revisions = ", ".join(sorted(current)) or "unversioned"
+            heads = ", ".join(sorted(expected))
+            msg = (
+                f"Database revision is {revisions}; expected {heads}. "
+                "Start without --no-auto-migration to apply pending migrations, "
+                "or use an FBC Uploader version matching the database revision."
+            )
+            raise RuntimeError(msg)
 
     with context.begin_transaction():
         context.run_migrations()

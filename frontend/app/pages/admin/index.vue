@@ -1,156 +1,159 @@
 <template>
-  <UContainer class="py-10 space-y-8">
-    <div class="flex flex-wrap items-center justify-between gap-4 pb-1">
-      <div>
-        <h1 class="text-3xl font-bold">Admin panel</h1>
-        <p class="text-muted mt-1">Manage upload tokens</p>
-      </div>
-      <div class="flex items-center gap-2">
+  <UContainer class="space-y-4 py-6 sm:py-8">
+    <header class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+      <h1 class="text-2xl font-semibold tracking-tight text-highlighted">Upload tokens</h1>
+      <div class="flex flex-wrap items-center gap-2">
         <UButton
           color="neutral"
           variant="ghost"
-          icon="i-heroicons-arrow-path"
+          icon="i-lucide-refresh-cw"
+          label="Refresh"
           @click="fetchTokens"
           :loading="loadingTokens"
-        >
-          Refresh
-        </UButton>
+        />
+        <UButton icon="i-lucide-plus" label="Create token" @click="openCreate" />
       </div>
+    </header>
+
+    <UAlert
+      v-if="tokensLoadFailed"
+      color="error"
+      variant="soft"
+      icon="i-lucide-triangle-alert"
+      title="Could not load tokens"
+      description="Use Refresh to try again."
+    />
+    <AdminTokensTable
+      v-else
+      :tokens="tokens"
+      :loading="loadingTokens"
+      @view-uploads="openUploads"
+      @edit="openEdit"
+      @delete="askDelete"
+    />
+
+    <div
+      v-if="totalTokens && !tokensLoadFailed"
+      class="flex flex-wrap items-center justify-between gap-3"
+    >
+      <p class="text-sm tabular-nums text-muted">
+        Showing {{ startIndex + 1 }}-{{ endIndex }} of {{ totalTokens }} tokens
+      </p>
+      <UPagination
+        v-if="totalPages > 1"
+        v-model:page="currentPage"
+        :items-per-page="itemsPerPage"
+        :total="totalTokens"
+        :sibling-count="0"
+        show-edges
+        :disabled="loadingTokens"
+        size="sm"
+        :ui="{ list: 'flex-wrap' }"
+      />
     </div>
 
-    <UCard variant="outline">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <UIcon name="i-heroicons-rectangle-group-20-solid" class="size-5" />
-            <span class="font-semibold">Tokens</span>
-            <UBadge color="primary" variant="soft">{{ totalTokens }}</UBadge>
-          </div>
-          <UButton color="primary" icon="i-heroicons-plus-20-solid" @click="openCreate">
-            Create token
-          </UButton>
-        </div>
-      </template>
-
-      <AdminTokensTable
-        :tokens="tokens"
-        :loading="loadingTokens"
-        @view-uploads="openUploads"
-        @edit="openEdit"
-        @delete="askDelete"
-      />
-
-      <template #footer>
-        <div class="flex items-center justify-between px-4 py-3">
-          <div class="text-sm text-muted">
-            <template v-if="totalTokens">
-              Showing {{ startIndex + 1 }}-{{ endIndex }} of {{ totalTokens }} tokens
-            </template>
-            <template v-else>&nbsp;</template>
-          </div>
-          <div class="flex items-center gap-2">
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-heroicons-chevron-left-20-solid"
-              :disabled="currentPage === 1 || !totalPages"
-              @click="goToPreviousPage"
-            />
-            <div class="text-sm font-medium">{{ currentPage }} / {{ totalPages }}</div>
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-heroicons-chevron-right-20-solid"
-              :disabled="currentPage === totalPages || !totalPages"
-              @click="goToNextPage"
-            />
-          </div>
-        </div>
-      </template>
-    </UCard>
-
-    <UModal v-model:open="createOpen" title="Create token">
-      <template #body>
-        <AdminTokenForm :loading="creating" @submit="handleCreate" />
-      </template>
-    </UModal>
-
-    <UModal v-model:open="editOpen" :title="`Edit (${selectedToken?.token})`">
-      <template #body>
-        <div v-if="selectedToken" class="space-y-4">
-          <AdminTokenForm
-            mode="edit"
-            :token="selectedToken"
-            :loading="savingEdit"
-            submit-label="Save changes"
-            @submit="handleUpdate"
-          />
-        </div>
-      </template>
-    </UModal>
-
-    <UModal
-      v-model:open="uploadsOpen"
-      :title="`Uploads (${uploadsToken?.token})`"
-      scrollable
-      :ui="{ content: 'max-w-5xl' }"
-    >
-      <template #body>
-        <div class="space-y-3">
-          <AdminUploadsTable
-            :uploads="uploads"
-            :loading="loadingUploads"
-            :allow-public-downloads="allowPublicDownloads"
-            :admin-token="adminToken"
-            @delete="askDeleteUpload"
-          />
-        </div>
-      </template>
-    </UModal>
-
-    <UModal v-model:open="deleteOpen">
-      <template #header>
-        <div class="flex items-center gap-2">
-          <UIcon name="i-heroicons-exclamation-triangle-20-solid" class="size-5 text-error" />
-          <span class="font-semibold">Delete token</span>
-        </div>
+    <UModal v-model:open="createOpen">
+      <template #title>
+        <ModalTitle icon="i-lucide-plus" label="Create token" />
       </template>
       <template #body>
-        <div class="space-y-4">
-          <p class="text-sm">
-            Are you sure you want to delete this token? This action cannot be undone.
-          </p>
-          <UCheckbox v-model="deleteFiles" label="Also delete all uploaded files" />
-        </div>
+        <AdminTokenForm id="create-token-form" @submit="handleCreate" />
       </template>
       <template #footer>
-        <div class="flex items-center justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="closeDelete">Cancel</UButton>
-          <UButton color="error" :loading="deleting" @click="confirmDelete">Delete token</UButton>
-        </div>
+        <UButton
+          type="submit"
+          form="create-token-form"
+          icon="i-lucide-plus"
+          label="Create token"
+          :loading="creating"
+        />
       </template>
     </UModal>
 
-    <UModal v-model:open="deleteUploadOpen">
-      <template #header>
-        <div class="flex items-center gap-2">
-          <UIcon name="i-heroicons-exclamation-triangle-20-solid" class="size-5 text-error" />
-          <span class="font-semibold">Delete upload</span>
-        </div>
+    <UModal v-model:open="editOpen">
+      <template #title>
+        <ModalTitle icon="i-lucide-pencil" :label="`Edit (${selectedToken?.token})`" />
+      </template>
+      <template #body>
+        <AdminTokenForm
+          v-if="selectedToken"
+          id="edit-token-form"
+          mode="edit"
+          :token="selectedToken"
+          @submit="handleUpdate"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="submit"
+          form="edit-token-form"
+          icon="i-lucide-check"
+          label="Save changes"
+          :loading="savingEdit"
+        />
+      </template>
+    </UModal>
+
+    <UModal v-model:open="uploadsOpen" scrollable :ui="{ content: 'max-w-5xl' }">
+      <template #title>
+        <ModalTitle icon="i-lucide-folder-open" :label="`Uploads (${uploadsToken?.token})`" />
+      </template>
+      <template #body>
+        <UAlert
+          v-if="uploadsLoadFailed"
+          color="error"
+          variant="soft"
+          icon="i-lucide-triangle-alert"
+          title="Could not load uploads"
+        />
+        <AdminUploadsTable
+          v-else
+          :uploads="uploads"
+          :loading="loadingUploads"
+          :allow-public-downloads="allowPublicDownloads"
+          :admin-token="adminToken"
+          @delete="askDeleteUpload"
+        />
+      </template>
+    </UModal>
+
+    <UModal v-model:open="deleteOpen" description="This action cannot be undone.">
+      <template #title>
+        <ModalTitle icon="i-lucide-triangle-alert" label="Delete token" danger />
+      </template>
+      <template #body>
+        <UCheckbox v-model="deleteFiles" label="Also delete all uploaded files" />
+      </template>
+      <template #footer>
+        <UButton
+          color="error"
+          icon="i-lucide-trash-2"
+          label="Delete token"
+          :loading="deleting"
+          @click="confirmDelete"
+        />
+      </template>
+    </UModal>
+
+    <UModal v-model:open="deleteUploadOpen" description="This action cannot be undone.">
+      <template #title>
+        <ModalTitle icon="i-lucide-triangle-alert" label="Delete upload" danger />
       </template>
       <template #body>
         <p class="text-sm">
-          Are you sure you want to delete <strong>{{ deleteUploadTarget?.filename }}</strong
+          Are you sure you want to delete
+          <strong class="wrap-anywhere">{{ deleteUploadTarget?.filename }}</strong
           >? This will permanently delete the file.
         </p>
       </template>
       <template #footer>
-        <div class="flex items-center justify-end gap-2">
-          <UButton color="neutral" variant="ghost" @click="closeDeleteUpload">Cancel</UButton>
-          <UButton color="error" :loading="deletingUpload" @click="confirmDeleteUpload"
-            >Delete</UButton
-          >
-        </div>
+        <UButton
+          color="error"
+          icon="i-lucide-trash-2"
+          label="Delete"
+          :loading="deletingUpload"
+          @click="confirmDeleteUpload"
+        />
       </template>
     </UModal>
   </UContainer>
@@ -173,11 +176,13 @@ const route = useRoute();
 const adminToken = useState<string | null>('adminToken', () => null);
 
 const tokens = ref<AdminToken[]>([]);
-const loadingTokens = ref(false);
+const loadingTokens = ref(true);
+const tokensLoadFailed = ref(false);
 const creating = ref(false);
 const savingEdit = ref(false);
 const deleting = ref(false);
 const loadingUploads = ref(false);
+const uploadsLoadFailed = ref(false);
 
 const selectedToken = ref<AdminToken | null>(null);
 const createOpen = ref(false);
@@ -215,25 +220,10 @@ function openCreate(): void {
   createOpen.value = true;
 }
 
-function goToPreviousPage(): void {
-  currentPage.value--;
-}
-
-function goToNextPage(): void {
-  currentPage.value++;
-}
-
-function closeDelete(): void {
-  deleteOpen.value = false;
-}
-
-function closeDeleteUpload(): void {
-  deleteUploadOpen.value = false;
-}
-
 async function fetchTokens() {
   if (!hasAuth.value) return;
   loadingTokens.value = true;
+  tokensLoadFailed.value = false;
   try {
     const res = await $apiFetch<{ tokens: AdminToken[]; total: number }>('/api/tokens/', {
       query: {
@@ -244,6 +234,7 @@ async function fetchTokens() {
     tokens.value = res.tokens;
     totalTokens.value = res.total;
   } catch (err) {
+    tokensLoadFailed.value = true;
     handleAuthError(err as ApiError);
   } finally {
     loadingTokens.value = false;
@@ -257,7 +248,7 @@ async function handleCreate(payload: Record<string, any>) {
     toast.add({
       title: 'Token created',
       color: 'success',
-      icon: 'i-heroicons-check-circle-20-solid',
+      icon: 'i-lucide-circle-check',
     });
     createOpen.value = false;
     await fetchTokens();
@@ -281,7 +272,7 @@ async function handleUpdate(payload: Record<string, any>) {
     toast.add({
       title: 'Token updated',
       color: 'success',
-      icon: 'i-heroicons-check-circle-20-solid',
+      icon: 'i-lucide-circle-check',
     });
     editOpen.value = false;
     await fetchTokens();
@@ -309,7 +300,7 @@ async function confirmDelete() {
     toast.add({
       title: 'Token deleted',
       color: 'success',
-      icon: 'i-heroicons-check-circle-20-solid',
+      icon: 'i-lucide-circle-check',
     });
     deleteOpen.value = false;
     await fetchTokens();
@@ -324,6 +315,7 @@ async function openUploads(token: AdminToken) {
   uploadsToken.value = token;
   uploadsOpen.value = true;
   loadingUploads.value = true;
+  uploadsLoadFailed.value = false;
   try {
     const tokenValue = ref(token.token);
     const { tokenInfo, fetchTokenInfo } = useTokenInfo(tokenValue);
@@ -332,9 +324,12 @@ async function openUploads(token: AdminToken) {
     if (tokenInfo.value) {
       allowPublicDownloads.value = tokenInfo.value.allow_public_downloads ?? true;
       uploads.value = tokenInfo.value.uploads;
+    } else {
+      uploadsLoadFailed.value = true;
     }
-  } catch (err: any) {
-    handleAuthError(err);
+  } catch (err) {
+    uploadsLoadFailed.value = true;
+    handleAuthError(err as ApiError);
   } finally {
     loadingUploads.value = false;
   }
@@ -355,7 +350,7 @@ async function confirmDeleteUpload() {
     toast.add({
       title: 'Upload deleted',
       color: 'success',
-      icon: 'i-heroicons-check-circle-20-solid',
+      icon: 'i-lucide-circle-check',
     });
     deleteUploadOpen.value = false;
     if (uploadsToken.value) {
@@ -375,7 +370,7 @@ function handleAuthError(err: ApiError) {
       title: 'Session expired',
       description: 'Please sign in again.',
       color: 'error',
-      icon: 'i-heroicons-exclamation-triangle-20-solid',
+      icon: 'i-lucide-triangle-alert',
     });
     navigateTo('/');
   } else {
@@ -383,7 +378,7 @@ function handleAuthError(err: ApiError) {
       title: 'Request failed',
       description: err?.data?.detail || err?.message || 'No error details were returned.',
       color: 'error',
-      icon: 'i-heroicons-exclamation-triangle-20-solid',
+      icon: 'i-lucide-triangle-alert',
     });
   }
 }

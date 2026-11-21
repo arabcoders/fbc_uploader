@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     disabled_tokens_ttl_days: int = Field(30, validation_alias="FBC_DISABLED_TOKENS_TTL_DAYS")
     delete_files_on_token_cleanup: bool = Field(True, validation_alias="FBC_DELETE_FILES_ON_TOKEN_CLEANUP")
     skip_migrations: bool = Field(False, validation_alias="FBC_SKIP_MIGRATIONS")
+    no_auto_migration: bool = Field(False, validation_alias="FBC_NO_AUTO_MIGRATION")
     skip_cleanup: bool = Field(False, validation_alias="FBC_SKIP_CLEANUP")
     max_chunk_bytes: int = Field(90 * 1024 * 1024, validation_alias="FBC_MAX_CHUNK_BYTES")
     max_remux_bytes: int = Field(5 * 1024 * 1024 * 1024, validation_alias="FBC_MAX_REMUX_BYTES")

@@ -1,25 +1,30 @@
 <template>
   <UApp>
-    <div class="min-h-screen">
-      <header class="backdrop-blur">
-        <UContainer class="flex items-center justify-between py-4">
+    <div class="fbc-shell-surface flex min-h-dvh flex-col">
+      <NuxtLoadingIndicator />
+      <header class="border-b border-default bg-default/35 backdrop-blur-md">
+        <UContainer class="flex min-h-15 items-center justify-between gap-2 py-2">
           <NuxtLink
             to="/"
-            class="flex items-center gap-3 text-lg font-semibold hover:text-primary-300"
+            class="flex min-w-0 items-center gap-2.5 rounded-md text-sm font-semibold text-highlighted hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <UIcon name="i-heroicons-home-20-solid" class="h-6 w-6" />
-            <span>FBC Uploader</span>
+            <span
+              class="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-default bg-elevated/80"
+            >
+              <img src="/images/favicon.png" alt="" class="size-6 object-contain" />
+            </span>
+            <span class="truncate">FBC Uploader</span>
           </NuxtLink>
-          <div class="flex items-center gap-3">
+          <div class="flex shrink-0 items-center gap-0.5 sm:gap-2">
             <template v-if="adminToken">
               <UButton
                 color="neutral"
                 variant="ghost"
                 size="sm"
-                aria-label="Dashboard"
-                title="Dashboard"
-                @click="goToAdmin"
-                icon="i-heroicons-shield-check-20-solid"
+                aria-label="Admin dashboard"
+                title="Admin dashboard"
+                to="/admin"
+                icon="i-lucide-layout-dashboard"
               >
                 <span class="hidden sm:inline">Dashboard</span>
               </UButton>
@@ -27,7 +32,7 @@
                 color="neutral"
                 variant="ghost"
                 size="sm"
-                icon="i-heroicons-arrow-left-on-rectangle-20-solid"
+                icon="i-lucide-log-out"
                 aria-label="Sign out"
                 title="Sign out"
                 @click="signOut"
@@ -50,39 +55,40 @@
         </UContainer>
       </header>
 
-      <main class="pb-12">
-        <NuxtLoadingIndicator />
+      <main class="min-w-0 flex-1">
         <NuxtPage />
       </main>
 
-      <footer class="border-t border-gray-200 dark:border-gray-800 mt-auto" v-if="version.loaded">
-        <UContainer class="py-6">
-          <div
-            class="flex items-center justify-start gap-2 text-sm text-gray-500 dark:text-gray-400"
-          >
-            <UPopover mode="hover" :ui="{ content: 'p-3' }">
-              <span class="cursor-help underline decoration-dotted">{{ version.version }}</span>
-              <template #content>
-                <div class="space-y-2 text-sm min-w-48">
-                  <div class="font-semibold text-highlighted">Build Information</div>
-                  <div class="space-y-1.5">
-                    <div class="grid grid-cols-[auto_1fr] gap-2">
-                      <span class="text-muted font-medium">Commit:</span>
-                      <span>{{ version.commit_hash }}</span>
-                    </div>
-                    <div class="grid grid-cols-[auto_1fr] gap-2">
-                      <span class="text-muted font-medium">Branch:</span>
-                      <span>{{ version.branch }}</span>
-                    </div>
-                    <div class="grid grid-cols-[auto_1fr] gap-2">
-                      <span class="text-muted font-medium">Built:</span>
-                      <span>{{ version.build_date }}</span>
-                    </div>
+      <footer v-if="version" class="border-t border-default bg-default/25">
+        <UContainer class="flex items-center py-2">
+          <UPopover :ui="{ content: 'p-3' }">
+            <UButton
+              color="neutral"
+              variant="ghost"
+              icon="i-lucide-info"
+              :aria-label="`Build information for ${version.version}`"
+              :label="version.version"
+            />
+            <template #content>
+              <div class="min-w-48 max-w-xs space-y-2 text-sm">
+                <div class="font-semibold text-highlighted">Build Information</div>
+                <div class="space-y-1.5">
+                  <div class="grid grid-cols-[auto_1fr] gap-2">
+                    <span class="text-muted font-medium">Commit:</span>
+                    <span>{{ version.commit_hash }}</span>
+                  </div>
+                  <div class="grid grid-cols-[auto_1fr] gap-2">
+                    <span class="text-muted font-medium">Branch:</span>
+                    <span class="wrap-anywhere">{{ version.branch }}</span>
+                  </div>
+                  <div class="grid grid-cols-[auto_1fr] gap-2">
+                    <span class="text-muted font-medium">Built:</span>
+                    <span>{{ version.build_date }}</span>
                   </div>
                 </div>
-              </template>
-            </UPopover>
-          </div>
+              </div>
+            </template>
+          </UPopover>
         </UContainer>
       </footer>
     </div>
@@ -96,18 +102,18 @@ const colorMode = useColorMode();
 const adminToken = useState<string | null>('adminToken', () => null);
 const toast = useToast();
 const colorModePreferences: Array<ColorModePreference> = ['system', 'light', 'dark'];
-const version = ref<{
-  loaded: boolean;
-  version: string;
-  commit_hash: string;
-  build_date: string;
-  branch: string;
-}>({
-  loaded: false,
-  version: 'unknown',
-  commit_hash: 'unknown',
-  build_date: 'unknown',
-  branch: 'unknown',
+const { data: version } = useFetch('/api/version', {
+  transform: (info: {
+    version: string;
+    commit_sha: string;
+    build_date: string;
+    branch: string;
+  }) => ({
+    version: info.version,
+    commit_hash: info.commit_sha.substring(0, 7),
+    build_date: info.build_date,
+    branch: info.branch,
+  }),
 });
 
 const colorModePreference = computed<ColorModePreference>(() => {
@@ -120,11 +126,11 @@ const colorModePreference = computed<ColorModePreference>(() => {
 const colorModeButtonIcon = computed(() => {
   switch (colorModePreference.value) {
     case 'light':
-      return 'i-heroicons-sun-20-solid';
+      return 'i-lucide-sun';
     case 'dark':
-      return 'i-heroicons-moon-20-solid';
+      return 'i-lucide-moon';
     default:
-      return 'i-heroicons-computer-desktop-20-solid';
+      return 'i-lucide-monitor';
   }
 });
 
@@ -170,37 +176,14 @@ const cycleColorMode = (): void => {
   colorMode.preference = nextColorModePreference.value;
 };
 
-const goToAdmin = async (): Promise<void> => {
-  await navigateTo('/admin');
-};
-
 const signOut = async () => {
   adminToken.value = null;
   localStorage.removeItem('adminToken');
   toast.add({
     title: 'Signed out',
     color: 'neutral',
-    icon: 'i-heroicons-arrow-left-on-rectangle-20-solid',
+    icon: 'i-lucide-log-out',
   });
   await navigateTo('/');
 };
-
-onMounted(async () => {
-  const v_info = await $fetch<{
-    version: string;
-    commit_sha: string;
-    build_date: string;
-    branch: string;
-  }>('/api/version');
-
-  if (v_info) {
-    version.value = {
-      loaded: true,
-      version: v_info.version,
-      commit_hash: v_info.commit_sha.substring(0, 7),
-      build_date: v_info.build_date,
-      branch: v_info.branch,
-    };
-  }
-});
 </script>

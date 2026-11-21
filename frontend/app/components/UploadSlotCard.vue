@@ -1,32 +1,41 @@
 <template>
-  <UCard>
+  <UCard variant="outline">
     <template #header>
-      <div class="flex items-center gap-2">
-        <UIcon name="i-heroicons-document-arrow-up-20-solid" />
-        <span class="font-semibold">Upload #{{ index + 1 }}</span>
+      <div class="flex items-center gap-3">
+        <span class="fbc-section-icon" aria-hidden="true">
+          <UIcon name="i-lucide-file-up" class="size-4" />
+        </span>
+        <h2 class="font-semibold text-highlighted">Upload #{{ index + 1 }}</h2>
       </div>
     </template>
 
-    <div class="space-y-4">
-      <div class="space-y-2">
-        <label class="text-sm font-medium">File</label>
-        <UInput
-          type="file"
-          class="w-full"
+    <div class="space-y-5">
+      <UFormField label="File" name="file" required>
+        <UFileUpload
+          :model-value="uploadSlot.file"
           :accept="acceptAttr"
-          @change="(e: Event) => $emit('file', e)"
+          :file-image="false"
+          :disabled="uploadSlot.working"
+          icon="i-lucide-cloud-upload"
+          label="Choose a file"
+          description="Or drag a file here"
+          size="sm"
+          layout="list"
+          class="w-full"
+          :ui="{ base: uploadSlot.file ? 'hidden' : undefined }"
+          @update:model-value="(file) => $emit('file', file ?? null)"
         />
-      </div>
+      </UFormField>
 
       <MetadataFields :schema="metadataSchema" v-model="metadataValues" />
 
       <div class="space-y-2">
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <UButton
             v-if="!uploadSlot.working && !uploadSlot.paused"
             :disabled="!uploadSlot.file || uploadSlot.errors.length > 0"
             color="primary"
-            icon="i-heroicons-cloud-arrow-up-20-solid"
+            icon="i-lucide-upload"
             @click="$emit('start')"
           >
             <span v-if="uploadSlot.status === 'validation_failed'">Fix errors then retry</span>
@@ -35,7 +44,7 @@
           <UButton
             v-if="uploadSlot.working && !uploadSlot.paused"
             color="warning"
-            icon="i-heroicons-pause-20-solid"
+            icon="i-lucide-pause"
             @click="$emit('pause')"
           >
             Pause
@@ -43,7 +52,7 @@
           <UButton
             v-if="uploadSlot.paused"
             color="primary"
-            icon="i-heroicons-play-20-solid"
+            icon="i-lucide-play"
             @click="$emit('resume')"
           >
             Resume
@@ -54,7 +63,7 @@
           v-if="uploadSlot.file && uploadSlot.errors.length > 0"
           color="error"
           variant="subtle"
-          icon="i-heroicons-exclamation-circle-20-solid"
+          icon="i-lucide-circle-alert"
           title="Please fix the following:"
         >
           <template #description>
@@ -65,8 +74,13 @@
         </UAlert>
 
         <div v-if="uploadSlot.status" class="space-y-1">
-          <UProgress :value="uploadSlot.progress" size="sm" color="primary" />
-          <p class="text-xs opacity-70">
+          <UProgress
+            :model-value="uploadSlot.progress"
+            size="sm"
+            role="group"
+            aria-label="Upload progress"
+          />
+          <p class="text-xs text-toned">
             Status: {{ formatUploadStatus(uploadSlot.status) }} ({{ uploadSlot.progress }}%)
           </p>
         </div>
@@ -74,7 +88,7 @@
           v-if="uploadSlot.error"
           color="error"
           variant="soft"
-          icon="i-heroicons-exclamation-triangle-20-solid"
+          icon="i-lucide-triangle-alert"
           :title="uploadSlot.error"
         />
       </div>
@@ -90,7 +104,7 @@ import MetadataFields from './MetadataFields.vue';
 import { formatUploadStatus } from '~/utils';
 
 const emit = defineEmits<{
-  file: [Event];
+  file: [File | null];
   start: [];
   pause: [];
   resume: [];
